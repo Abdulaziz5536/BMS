@@ -16,5 +16,9 @@
     "url": "https://github.com/Abdulaziz5536/BMS/issues"
   },
   "homepage": "https://github.com/Abdulaziz5536/BMS#readme",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "express": "^5.2.1",
+    "mongoose": "^9.2.1"
+  }
 }
