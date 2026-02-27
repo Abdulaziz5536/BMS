@@ -1,18 +1,17 @@
 import { useState } from "react";
 
-export default function Signup() {
-  const [name, setName] = useState("");
+export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
 
-  const signup = async () => {
-    const res = await fetch("http://localhost:3000/signup", { // <-- fixed endpoint
+  const login = async () => {
+    const res = await fetch("http://localhost:3000/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ name, email, password })
+      body: JSON.stringify({ email, password })
     });
 
     const data = await res.json();
@@ -25,14 +24,7 @@ export default function Signup() {
 
   return (
     <>
-      <h1>Sign Up</h1>
-
-      <input
-        placeholder="name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
-      <br />
+      <h1>Login</h1>
 
       <input
         placeholder="email"
@@ -49,7 +41,7 @@ export default function Signup() {
       />
       <br />
 
-      <button onClick={signup}>Sign Up</button>
+      <button onClick={login}>Login</button>
       <h2>{message}</h2>
     </>
   );
