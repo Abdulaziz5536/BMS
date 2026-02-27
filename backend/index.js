@@ -4,6 +4,8 @@ app.use(express.json());
 const mongoose=require('mongoose');
 const authRouter = require('./routes/auth-route');
 app.use(express.json());
+const cors = require('cors');
+app.use(cors());
 
 const PORT=3000;
 
