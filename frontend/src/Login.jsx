@@ -12,7 +12,6 @@ export default function Login() {
   const login = async () => {
     setMessage("");
 
-    
     if (!email || !password) {
       setMessage("Please fill in all fields");
       return;
@@ -34,13 +33,19 @@ export default function Login() {
       if (res.ok) {
         setMessage(data.message);
 
-        
+        // Redirect after short delay
         setTimeout(() => {
-          navigate("/dashboard"); // change if needed
+          navigate("/dashboard"); 
         }, 1000);
-
       } else {
-        setMessage(data.error);
+        // Friendly error message
+        if (data.error === "User not found") {
+          setMessage("Account does not exist. Please sign up.");
+        } else if (data.error === "Wrong password") {
+          setMessage("Incorrect password. Try again.");
+        } else {
+          setMessage(data.error);
+        }
       }
 
     } catch (error) {
@@ -51,39 +56,41 @@ export default function Login() {
   };
 
   return (
-    <>
-      <div className="login">
-        <h1>Login</h1>
+    <div className="signup">
+      <h1>Login</h1>
 
-        <input
-          placeholder="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <br />
+      <input
+        placeholder="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <br />
 
-        <input
-          type="password"
-          placeholder="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <br />
+      <input
+        type="password"
+        placeholder="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      <br />
 
-        <button id="login-button" onClick={login} disabled={loading}>
-          {loading ? "Logging in..." : "Login"}
-        </button>
-        <br />
+      <button
+        id="login-button"
+        onClick={login}
+        disabled={loading}
+      >
+        {loading ? "Logging in..." : "Login"}
+      </button>
+      <br />
 
-        <button
-          id="signup-button"
-          onClick={() => navigate("/signup")}
-        >
-          Don’t have an account? Sign Up
-        </button>
+      <button
+        id="signup-button"
+        onClick={() => navigate("/signup")}
+      >
+        Don’t have an account? Sign Up
+      </button>
 
-        <h2>{message}</h2>
-      </div>
-    </>
+      <h2>{message}</h2>
+    </div>
   );
 }
