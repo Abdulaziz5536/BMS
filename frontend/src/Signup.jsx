@@ -25,6 +25,7 @@ export default function Signup() {
     const data = await res.json();
     if (res.ok) {
       setMessage(data.message);
+      navigate("/login")
     } else {
       setMessage(data.error);
     }
@@ -58,7 +59,7 @@ export default function Signup() {
       <br />
       <button id="signup-b" onClick={signup}>Sign Up</button>
       <br/>
-      <button id="login-b" onClick={() => navigate("/login")} >Already have an account? Login</button>
+      <button id="navigate" onClick={() => navigate("/login")} >Already have an account? Login</button>
       <h2>{message}</h2>
       
     </div>

@@ -6,20 +6,10 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const login = async () => {
-    setMessage("");
-
-    if (!email || !password) {
-      setMessage("Please fill in all fields");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
+   
       const res = await fetch("http://localhost:3000/login", {
         method: "POST",
         headers: {
@@ -32,30 +22,18 @@ export default function Login() {
 
       if (res.ok) {
         setMessage(data.message);
-
-        // Redirect after short delay
         setTimeout(() => {
           navigate("/dashboard"); 
         }, 1000);
       } else {
-        // Friendly error message
-        if (data.error === "User not found") {
-          setMessage("Account does not exist. Please sign up.");
-        } else if (data.error === "Wrong password") {
-          setMessage("Incorrect password. Try again.");
-        } else {
-          setMessage(data.error);
-        }
+        setMessage(data.error)
+        
       }
 
-    } catch (error) {
-      setMessage("Server error. Please try again.");
-    }
-
-    setLoading(false);
-  };
+    } 
 
   return (
+    <>
     <div className="login">
       <h1>Login</h1>
 
@@ -74,17 +52,12 @@ export default function Login() {
       />
       <br />
 
-      <button
-        id="login-button"
-        onClick={login}
-        disabled={loading}
-      >
-        {loading ? "Logging in..." : "Login"}
-      </button>
+      <button onClick={login}>Login</button>
+    
       <br />
 
       <button
-        id="signup-button"
+        id = "navigate"
         onClick={() => navigate("/signup")}
       >
         Create account
@@ -92,5 +65,8 @@ export default function Login() {
 
       <h2>{message}</h2>
     </div>
+    
+    </>
+    
   );
 }
