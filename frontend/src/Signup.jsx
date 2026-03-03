@@ -1,13 +1,17 @@
+
 import { useState } from "react";
 import { useNavigate } from 'react-router-dom';
+import "./style.css";
+
 
 export default function Signup() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const navigate = useNavigate();
   const [message, setMessage] = useState("");
 
-  const navigate = useNavigate();
+  
 
   const signup = async () => {
     const res = await fetch("http://localhost:3000/signup", { // <-- fixed endpoint
@@ -28,7 +32,8 @@ export default function Signup() {
 
   return (
     <>
-      <h1>Sign Up</h1>
+    <div className="signup">
+     <h1>Sign Up</h1>
 
       <input
         placeholder="name"
@@ -51,10 +56,12 @@ export default function Signup() {
         onChange={(e) => setPassword(e.target.value)}
       />
       <br />
-
-      <button onClick={signup}>Sign Up</button>
-      <button onClick={() => navigate("/login")}>go to sign in page</button>
+      <button id="signup-b" onClick={signup}>Sign Up</button>
+      <br/>
+      <button id="login-b" onClick={() => navigate("/login")} >Already have an account? Login</button>
       <h2>{message}</h2>
+      
+    </div>
     </>
   );
 }
