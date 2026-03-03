@@ -54,9 +54,9 @@ export default function Signup() {
       />
       <br />
       
-      <button id="signup-button" onClick={signup}>Sign Up</button>
+      <button id="signup-b" onClick={signup}>Sign Up</button>
       <br/>
-      <button id="login-button" onClick={() => navigate("/login")} >Already have an account? Login</button>
+      <button id="login-b" onClick={() => navigate("/login")} >Already have an account? Login</button>
       <h2>{message}</h2>
       
     </div>

@@ -56,7 +56,7 @@ export default function Login() {
   };
 
   return (
-    <div className="signup">
+    <div className="login">
       <h1>Login</h1>
 
       <input
@@ -87,7 +87,7 @@ export default function Login() {
         id="signup-button"
         onClick={() => navigate("/signup")}
       >
-        Don’t have an account? Sign Up
+        Don't have an account? Sign Up
       </button>
 
       <h2>{message}</h2>
