@@ -57,7 +57,7 @@ export default function Signup() {
         onChange={(e) => setPassword(e.target.value)}
       />
       <br />
-      <button id="signup-b" onClick={signup}>Sign Up</button>
+      <button onClick={signup}>Sign Up</button>
       <br/>
       <button id="navigate" onClick={() => navigate("/login")} >Already have an account? Login</button>
       <h2>{message}</h2>

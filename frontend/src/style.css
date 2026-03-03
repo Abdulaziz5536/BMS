@@ -13,6 +13,42 @@ body{
   align-items: center;
   padding: 20px;
 }
+h1 {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #222;
+  text-align: center;
+  margin-bottom: 1.8rem;
+}
+
+
+
+h2 {
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 1rem 0;
+  min-height: 1.4rem;           
+}
+
+h2:empty {
+  display: none;
+}
+
+
+h2 {
+  color: #374151;
+}
+
+h2:has(+ button) {              
+  color: #166534;               
+}
+
+h2:not(:has(+ button)) {          
+  color: #991b1b;                
+}
+
+
 .signup {
    background-color: white;
   width: 100%;
@@ -23,14 +59,14 @@ body{
   border: 1px solid #e0e0e0;
 }
 
-h1 {
-  font-size: 1.8rem;
-  font-weight: 600;
-  color: #222;
-  text-align: center;
-  margin-bottom: 1.8rem;
+.login {
+padding: 25px;
+margin: 100px auto;
+width: 300px;
+background-color: white;
+border-radius: 8px;
+box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
-
 
 input {
   width: 100%;
@@ -86,40 +122,3 @@ button:active {
   background-color: #f3f4f6;
   border-color: #9ca3af;
 }
-
-.login {
-padding: 25px;
-margin: 100px auto;
-width: 300px;
-background-color: white;
-border-radius: 8px;
-box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-}
-h2 {
-  text-align: center;
-  font-size: 1rem;
-  font-weight: 500;
-  margin: 1rem 0;
-  min-height: 1.4rem;           
-}
-
-h2:empty {
-  display: none;
-}
-
-
-h2 {
-  color: #374151;
-}
-
-h2:has(+ button) {              
-  color: #166534;               
-}
-
-h2:not(:has(+ button)) {          
-  color: #991b1b;                
-}
-
-
-
-
