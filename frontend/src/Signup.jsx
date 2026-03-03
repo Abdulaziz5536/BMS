@@ -1,10 +1,13 @@
 import { useState } from "react";
+import { useNavigate } from 'react-router-dom';
 
 export default function Signup() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+
+  const navigate = useNavigate();
 
   const signup = async () => {
     const res = await fetch("http://localhost:3000/signup", { // <-- fixed endpoint
@@ -50,6 +53,7 @@ export default function Signup() {
       <br />
 
       <button onClick={signup}>Sign Up</button>
+      <button onClick={() => navigate("/login")}>go to sign in page</button>
       <h2>{message}</h2>
     </>
   );
