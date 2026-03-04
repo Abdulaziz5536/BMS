@@ -3,86 +3,105 @@
   padding: 0;
   box-sizing: border-box;
 }
-body{
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #f8f9fa;
-  color: #333;
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2f6 100%);
+  color: #111827;
   min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 20px;
 }
+
 h1 {
-  font-size: 1.8rem;
-  font-weight: 600;
-  color: #222;
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: #111827;
   text-align: center;
-  margin-bottom: 1.8rem;
+  margin-bottom: 2.25rem;
+  letter-spacing: -0.02em;
 }
-
-
 
 h2 {
   text-align: center;
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 500;
-  margin: 1rem 0;
-  min-height: 1.4rem;           
+  margin: 1.5rem 0 2rem;
+  min-height: 1.5rem;
+  color: #475569;
 }
 
 h2:empty {
   display: none;
 }
 
-
-h2 {
-  color: #374151;
+h2:has(+ button) {
+  color: #15803d;     
+  font-weight: 600;
 }
 
-h2:has(+ button) {              
-  color: #166534;               
-}
-
-h2:not(:has(+ button)) {          
-  color: #991b1b;                
+h2:not(:has(+ button)) {
+  color: #b91c1c;     
+  font-weight: 600;
 }
 
 
 .signup {
-   background-color: white;
+  background-color: white;
   width: 100%;
-  max-width: 420px;
-  padding: 2.5rem 2rem;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border: 1px solid #e0e0e0;
+  max-width: 440px;
+  padding: 2.75rem 2.25rem;
+  border-radius: 14px;
+  box-shadow: 
+    0 10px 25px -5px rgba(0, 0, 0, 0.08),
+    0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+  position: relative;
+  overflow: hidden;
 }
 
+
+.signup::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(to right, #374151, #4b5563);
+}
+
+
 .login {
-padding: 25px;
-margin: 100px auto;
-width: 300px;
-background-color: white;
-border-radius: 8px;
-box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  padding: 2.5rem 2rem;
+  margin: 80px auto;
+  width: 100%;
+  max-width: 400px;
+  background-color: white;
+  border-radius: 14px;
+  box-shadow: 
+    0 10px 25px -5px rgba(0, 0, 0, 0.08),
+    0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
 }
 
 input {
   width: 100%;
-  padding: 0.9rem 1rem;
-  margin-bottom: 1.2rem;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px;
+  padding: 1rem 1.125rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
   font-size: 1rem;
-  background-color: #fafafa;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  background-color: #f9fafb;
+  color: #111827;
+  transition: all 0.2s ease;
 }
 
 input:focus {
   outline: none;
   border-color: #9ca3af;
-  box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.12);
+  background-color: white;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
 }
 
 input::placeholder {
@@ -91,34 +110,50 @@ input::placeholder {
 
 button {
   width: 100%;
-  padding: 0.95rem;
+  padding: 1rem;
   font-size: 1.05rem;
-  font-weight: 500;
+  font-weight: 600;
   color: #ffffff;
-  background-color: #374151;          
+  background: #374151;          
   border: none;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
-  margin-bottom: 1rem;
+  transition: all 0.22s ease;
+  box-shadow: 0 3px 10px rgba(99, 102, 241, 0.18);
+  margin-bottom: 1.25rem;
 }
 
 button:hover {
-  background-color: #4b5563;
+  background: #4b5563;
+  transform: translateY(-1.5px);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.28);
 }
 
 button:active {
-  background-color: #1f2937;
+  transform: translateY(0);
+  box-shadow: 0 3px 8px rgba(99, 102, 241, 0.2);
 }
 
 #navigate {
   background-color: transparent;
-  color: #4b5563;
-  border: 1px solid #d1d5db;
-  font-weight: 500;
+  color: #475569;
+  border: 1.5px solid #cbd5e1;
+  font-weight: 600;
+  box-shadow: none;
 }
 
 #navigate:hover {
-  background-color: #f3f4f6;
-  border-color: #9ca3af;
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #111827;
+  transform: translateY(-1px);
+}
+
+
+button:disabled {
+  background: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
