@@ -1,17 +1,20 @@
 import { Routes, Route } from "react-router-dom";
 
-import Login from "./Login";
-import Signup from "./Signup";
-import Dashboard from "./Dashboard";
-import ProtectedRoute from "./ProtectedRoute";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import Dashboard from "./pages/Dashboard";
+import Floors from "./pages/Floors";
+import Rooms from "./pages/Rooms";
 
-export default function App(){
+import ProtectedRoute from "./components/ProtectedRoute";
 
-  return(
+function App() {
+
+  return (
 
     <Routes>
 
-      <Route path="/" element={<Login />} />
+      <Route path="/" element={<Login />} />   {/* ADD THIS */}
 
       <Route path="/login" element={<Login />} />
 
@@ -26,7 +29,27 @@ export default function App(){
         }
       />
 
+      <Route
+        path="/floors"
+        element={
+          <ProtectedRoute>
+            <Floors />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/floors/:floorId"
+        element={
+          <ProtectedRoute>
+            <Rooms />
+          </ProtectedRoute>
+        }
+      />
+
     </Routes>
 
-  )
+  );
 }
+
+export default App;

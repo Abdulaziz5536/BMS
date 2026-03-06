@@ -1,11 +1,10 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom"; 
 import { useEffect } from "react";
+import Sidebar from "../components/Sidebar";
 
 export default function Dashboard() {
 
   const navigate = useNavigate();
-
-  
   const token = localStorage.getItem("token");
 
   useEffect(() => {
@@ -19,15 +18,19 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="signup">
+    <div className="dashboard">
 
-      <h1>Dashboard</h1>
+      <Sidebar />
 
-      <p>You are logged in.</p>
+      <div className="content">
+        <h1>Dashboard</h1>
+        <p>Welcome to the hotel management system.</p>
 
-      <button onClick={logout}>
-        Logout
-      </button>
+        <button onClick={logout}>
+          Logout
+        </button>
+
+      </div>
 
     </div>
   );
