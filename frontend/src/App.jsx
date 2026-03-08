@@ -2,8 +2,8 @@ import { Routes, Route } from "react-router-dom";
 
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-import Dashboard from "./pages/Dashboard";
-import Floors from "./pages/Floors";
+import Dashboard from "./components/dashboard";
+import Floors from "./components/floors";
 import Rooms from "./pages/Rooms";
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -15,9 +15,7 @@ function App() {
     <Routes>
 
       <Route path="/" element={<Login />} />   {/* ADD THIS */}
-
       <Route path="/login" element={<Login />} />
-
       <Route path="/signup" element={<Signup />} />
 
       <Route

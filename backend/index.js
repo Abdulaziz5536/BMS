@@ -1,25 +1,26 @@
-const express=require('express');
-const app=express();
-const mongoose=require('mongoose');
-require('dotenv').config();
-const authRouter = require('./routes/auth-route');
-app.use(express.json());
-const cors = require('cors');
+const path = require("path");
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
 
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
-app.use(express.json());
+const authRouter = require("./routes/auth-route");
+const floorRouter = require("./routes/floor-route");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
 app.use(cors());
-
-
-
-const PORT=3000;
-
-mongoose.connect(process.env.MONGO_URI).then(() => console.log("mongoDB is connected"))
-.catch(err => console.log(err));
-
-
+app.use(express.json());
 app.use(authRouter);
+app.use(floorRouter);
 
-app.listen(PORT,()=>{
-    console.log(`Server is running on port ${PORT}`);
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("mongoDB is connected"))
+  .catch((err) => console.log(err));
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
