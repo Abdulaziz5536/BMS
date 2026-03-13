@@ -4,7 +4,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./components/dashboard";
 import Floors from "./components/floors";
-import Rooms from "./pages/Rooms";
+
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -36,14 +36,7 @@ function App() {
         }
       />
 
-      <Route
-        path="/floors/:floorId"
-        element={
-          <ProtectedRoute>
-            <Rooms />
-          </ProtectedRoute>
-        }
-      />
+     
 
     </Routes>
 

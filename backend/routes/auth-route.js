@@ -4,6 +4,8 @@ const User = require('../models/auth-model');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+router.use(express.json());
+
 router.post('/signup', async (req,res) => {
   const {name,email,password} = req.body;
 
