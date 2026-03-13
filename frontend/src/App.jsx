@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./components/dashboard";
 import Floors from "./components/floors";
+import Unit from "./components/Unit";
 
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -36,7 +37,8 @@ function App() {
         }
       />
 
-     
+<Route  path="/units" element={<Unit/>}/>
+  
 
     </Routes>
 
