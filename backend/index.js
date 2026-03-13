@@ -7,6 +7,7 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const authRouter = require("./routes/auth-route");
 const floorRouter = require("./routes/floor-route");
+const unitRouter = require("./routes/unit-route");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,6 +16,7 @@ app.use(cors());
 app.use(express.json());
 app.use(authRouter);
 app.use(floorRouter);
+app.use(unitRouter);
 
 mongoose
   .connect(process.env.MONGO_URI)

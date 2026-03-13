@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Sidebar from "./Sidebar";
 
 function Unit() {
   const [unitId, setUnitId] = useState("");
@@ -55,7 +56,11 @@ function Unit() {
 
   return (
     <>
-      <h1>Units</h1>
+
+    <div style={{display:"flex"}}>
+      <Sidebar />
+      <div>
+        <h1>Units</h1>
 
       <input
         placeholder="unitId"
@@ -76,8 +81,8 @@ function Unit() {
         <option value="">Select Floor</option>
 
         {floors.map((f) => (
-          <option key={f.id} value={f.id}>
-            {f.number}
+          <option key={f._id} value={f._id}>
+            {f.floor}
           </option>
         ))}
       </select>
@@ -89,14 +94,22 @@ function Unit() {
 
       <h2>List Units</h2>
         {units.map((u) => (
-          <div key={u.id}>
+          <div key={u._id}>
             <p>Unit ID: {u.unitId}</p>
             <p>Area: {u.area}</p>
             <p>Type: {u.type}</p>
-            <p>Floor: {u.floor}</p>
-            <button onClick={() => removeUnit(u.id)}>Remove</button>
+            <p>Floor: {u.floor.floor}</p>
+            <button onClick={() => removeUnit(u._id)}>Remove</button>
           </div>
         ))}
+
+
+      </div>
+          
+
+
+    </div>
+  
     </>
   );
 }
