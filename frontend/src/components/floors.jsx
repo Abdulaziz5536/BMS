@@ -20,11 +20,11 @@ export default function Floors() {
       setFloors(data);
       setMessage("");
     } else {
-      setMessage(data.error || "Failed to load floors");
+      setMessage(data.error );
     }
   } catch (error) {
     console.log("loadFloors fetch error:", error);
-    setMessage(error.message || "Cannot connect to backend");
+    setMessage(error.message );
   }
 };
 
@@ -55,17 +55,17 @@ const addFloor = async () => {
     const data = text ? JSON.parse(text) : {};
 
     if (res.ok) {
-      setMessage(data.message || "Floor added successfully");
+      setMessage(data.message );
       setFloor("");
       setUnits("");
       setSqm("");
       loadFloors();
     } else {
-      setMessage(data.error || "Failed to add floor");
+      setMessage(data.error );
     }
   } catch (error) {
     console.log("addFloor fetch error:", error);
-    setMessage(error.message || "Cannot connect to backend");
+    setMessage(error.message );
   }
 };
  
@@ -95,11 +95,11 @@ const addFloor = async () => {
         setMessage("Floor updated successfully");
         loadFloors();
       } else {
-        setMessage(data.error || "Failed to update floor");
+        setMessage(data.error );
       }
     } catch (error) {
       console.log("editFloor error:", error);
-      setMessage(error.message || "Server error while updating floor");
+      setMessage(error.message );
     }
   };
 
@@ -115,11 +115,11 @@ const addFloor = async () => {
         setMessage("Floor deleted successfully");
         loadFloors();
       } else {
-        setMessage(data.error || "Failed to delete floor");
+        setMessage(data.error );
       }
     } catch (error) {
       console.log("deleteFloor error:", error);
-      setMessage(error.message || "Server error while deleting floor");
+      setMessage(error.message );
     }
   };
 
