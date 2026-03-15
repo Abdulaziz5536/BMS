@@ -8,99 +8,99 @@ export default function Floors() {
   const [sqm, setSqm] = useState("");
   const [floors, setFloors] = useState([]);
   const [message, setMessage] = useState("");
+  const [editingId, setEditingId] = useState(null);
 
   const API = "http://localhost:3000/floors";
 
   const loadFloors = async () => {
-  try {
-    const res = await fetch(API);
-    const data = await res.json();
-
-    if (res.ok) {
-      setFloors(data);
-      setMessage("");
-    } else {
-      setMessage(data.error || "Failed to load floors");
-    }
-  } catch (error) {
-    console.log("loadFloors fetch error:", error);
-    setMessage(error.message || "Cannot connect to backend");
-  }
-};
-
-const addFloor = async () => {
-  setMessage("");
-
-  if (!floor || !units || !sqm) {
-    setMessage("Please fill in all fields");
-    return;
-  }
-
-  try {
-    const res = await fetch(API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        floor: Number(floor),
-        units: Number(units),
-        totalSqm: Number(sqm)
-      })
-    });
-
-    const text = await res.text();
-    console.log("POST /floors raw response:", text);
-
-    const data = text ? JSON.parse(text) : {};
-
-    if (res.ok) {
-      setMessage(data.message || "Floor added successfully");
-      setFloor("");
-      setUnits("");
-      setSqm("");
-      loadFloors();
-    } else {
-      setMessage(data.error || "Failed to add floor");
-    }
-  } catch (error) {
-    console.log("addFloor fetch error:", error);
-    setMessage(error.message || "Cannot connect to backend");
-  }
-};
- 
-  const editFloor = async (item) => {
-    const newFloor = prompt("Floor", item.floor);
-    const newUnits = prompt("Units", item.units);
-    const newSqm = prompt("Total SQM", item.totalSqm);
-
-    if (!newFloor || !newUnits || !newSqm) return;
-
     try {
-      const res = await fetch(`${API}/${item._id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          floor: Number(newFloor),
-          units: Number(newUnits),
-          totalSqm: Number(newSqm)
-        })
-      });
-
+      const res = await fetch(API);
       const data = await res.json();
 
       if (res.ok) {
-        setMessage("Floor updated successfully");
-        loadFloors();
+        setFloors(data);
+        setMessage("");
       } else {
-        setMessage(data.error || "Failed to update floor");
+        setMessage(data.error || "Failed to load floors");
       }
     } catch (error) {
-      console.log("editFloor error:", error);
-      setMessage(error.message || "Server error while updating floor");
+      console.log("loadFloors fetch error:", error);
+      setMessage(error.message || "Cannot connect to backend");
     }
+  };
+
+  useEffect(() => {
+    loadFloors();
+  }, []);
+
+  const clearForm = () => {
+    setFloor("");
+    setUnits("");
+    setSqm("");
+    setEditingId(null);
+  };
+
+  const saveFloor = async () => {
+    setMessage("");
+
+    if (!floor || !units || !sqm) {
+      setMessage("Please fill in all fields");
+      return;
+    }
+
+    try {
+      let res;
+
+      const bodyData = {
+        floor: Number(floor),
+        units: Number(units),
+        totalSqm: Number(sqm)
+      };
+
+      if (editingId) {
+        res = await fetch(`${API}/${editingId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(bodyData)
+        });
+      } else {
+        res = await fetch(API, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(bodyData)
+        });
+      }
+
+      const text = await res.text();
+      console.log("SAVE /floors raw response:", text);
+
+      const data = text ? JSON.parse(text) : {};
+
+      if (res.ok) {
+        setMessage(
+          data.message || (editingId ? "Floor updated successfully" : "Floor added successfully")
+        );
+        clearForm();
+        loadFloors();
+      } else {
+        setMessage(data.error || "Failed to save floor");
+      }
+    } catch (error) {
+      console.log("saveFloor fetch error:", error);
+      setMessage(error.message || "Cannot connect to backend");
+    }
+  };
+
+  const editFloor = (item) => {
+    setFloor(item.floor);
+    setUnits(item.units);
+    setSqm(item.totalSqm);
+    setEditingId(item._id);
+    setMessage("");
   };
 
   const deleteFloor = async (id) => {
@@ -152,7 +152,15 @@ const addFloor = async () => {
             onChange={(e) => setSqm(e.target.value)}
           />
 
-          <button onClick={addFloor}>Add Floor</button>
+          <button onClick={saveFloor}>
+            {editingId ? "Update Floor" : "Add Floor"}
+          </button>
+
+          {editingId && (
+            <button onClick={clearForm}>
+              Cancel
+            </button>
+          )}
         </div>
 
         {message && <p className="message">{message}</p>}
