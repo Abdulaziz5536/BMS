@@ -20,6 +20,31 @@ router.post('/units', async (req,res) => {
 
 });
 
+router.put('/units/:id', async (req,res) => {
+  const { unitId, area, type, floor } = req.body;
+
+  const existingID = await Unit.findOne({
+    unitId,
+    _id: { $ne: req.params.id }
+  });
+
+  if(existingID){
+    return res.status(400).json({ error: "unit id exists" });
+  }
+
+  const updatedUnit = await Unit.findByIdAndUpdate(
+    req.params.id,
+    { unitId, area, type, floor },
+    { new: true }
+  );
+
+  if(!updatedUnit){
+    return res.status(404).json({ error: "unit not found" });
+  }
+
+  res.json({ message: "unit updated", updatedUnit });
+});
+
 router.delete('/units/:id', async (req,res) => {
   await Unit.findByIdAndDelete(req.params.id);
   res.json({message:"unit deleted"});
