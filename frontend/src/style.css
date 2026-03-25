@@ -156,7 +156,7 @@ button:disabled {
 }
 
 .sidebar {
-  width: 240px;
+  width: 280px;
   background-color: #1f2937;
   color: white;
   padding: 1.5rem 1rem;
@@ -164,6 +164,7 @@ button:disabled {
   flex-direction: column;
   gap: 0.5rem;
   border-right: 1px solid #111827;
+  
 }
 
 .sidebar h2 {
@@ -172,6 +173,7 @@ button:disabled {
   text-align: left;
   font-size: 1.25rem;
   padding-left: 0.75rem;
+  
 }
 
 .sidebar a {
@@ -183,11 +185,23 @@ button:disabled {
   border-radius: 8px;
   font-weight: 500;
   transition: all 0.15s ease;
+  
+}
+.sidebar ul{
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
-.sidebar a:hover,
+
 .sidebar a.active {
+  background-color: #2e3540;
+  width: 250px;
+  color: white;
+}
+.sidebar a:hover {
   background-color: #374151;
+  width: 250px;
   color: white;
 }
 

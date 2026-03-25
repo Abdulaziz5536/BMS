@@ -1,24 +1,27 @@
-import { Link } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 
 export default function Sidebar() {
-
   return (
     <div className="sidebar" style={{ padding: "20px", height: "100vh" }}>
-
       <h2>Building Management System</h2>
 
-     <ul>
+      <ul>
         <li>
-          <Link to="/dashboard">Dashboard</Link>
+          <NavLink to="/dashboard" className={({ isActive }) => isActive ? "active" : ""}>
+            Dashboard
+          </NavLink>
         </li>
         <li>
-          <Link to="/floors">Floors</Link>
+          <NavLink to="/floors" className={({ isActive }) => isActive ? "active" : ""}>
+            Floors
+          </NavLink>
         </li>
         <li>
-          <Link to="/units">Units</Link>
+          <NavLink to="/units" className={({ isActive }) => isActive ? "active" : ""}>
+            Units
+          </NavLink>
         </li>
       </ul>
-
     </div>
   );
 }
