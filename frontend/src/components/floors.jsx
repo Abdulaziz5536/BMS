@@ -21,10 +21,10 @@ export default function Floors() {
         setFloors(data);
         setMessage("");
       } else {
-        setMessage(data.error || "Failed to load floors");
+        setMessage(data.error);
       }
     } catch (error) {
-      console.log("loadFloors fetch error:", error);
+      
       setMessage(error.message || "Cannot connect to backend");
     }
   };
@@ -76,7 +76,7 @@ export default function Floors() {
       }
 
       const text = await res.text();
-      console.log("SAVE /floors raw response:", text);
+      
 
       const data = text ? JSON.parse(text) : {};
 
