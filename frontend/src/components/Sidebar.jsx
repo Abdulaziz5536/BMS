@@ -21,6 +21,11 @@ export default function Sidebar() {
             Units
           </NavLink>
         </li>
+        <li>
+          <NavLink to="/tenants" className={({isActive}) => isActive ? "active" : ""}>
+            Tenants
+          </NavLink>
+        </li>
       </ul>
     </div>
   );
