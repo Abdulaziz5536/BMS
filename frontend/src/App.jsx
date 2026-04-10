@@ -6,8 +6,10 @@ import Dashboard from "./components/dashboard";
 import Floors from "./components/floors";
 import Unit from "./components/Unit";
 import Contracts from "./components/Contracts"; 
+import Employees from "./components/Employees";
 
 import ProtectedRoute from "./components/ProtectedRoute";
+
 
 function App() {
   return (
@@ -53,9 +55,17 @@ function App() {
           </ProtectedRoute>
         }
       />
-
+      <Route
+        path="/employees"
+        element={ 
+          <ProtectedRoute>
+            <Employees />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }
+
 
 export default App;
