@@ -2,21 +2,18 @@ import { Routes, Route } from "react-router-dom";
 
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-import Dashboard from "./components/Dashboard";
-import Floors from "./components/Floors";
+import Dashboard from "./components/dashboard";
+import Floors from "./components/floors";
 import Unit from "./components/Unit";
-import Tenants from "./pages/Tenants";
-
+import Contracts from "./components/Contracts"; 
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
-
   return (
-
     <Routes>
 
-      <Route path="/" element={<Login />} />   
+      <Route path="/" element={<Login />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
 
@@ -38,27 +35,26 @@ function App() {
         }
       />
 
-      <Route  
-         path="/units" 
-         element={
-         <ProtectedRoute>
-            <Unit/>
-         </ProtectedRoute>}/>
-  
       <Route
-          path="/tenants"
-          elements={
-            <ProtectedRoute>
-             <Tenants />
-            </ProtectedRoute>
-              
-            
-          }>
-        
-      </Route>
+        path="/units"
+        element={
+          <ProtectedRoute>
+            <Unit />
+          </ProtectedRoute>
+        }
+      />
 
-      </Routes>
+      {/* CONTRACTS ROUTE ADDED */}
+      <Route
+        path="/contracts"
+        element={
+          <ProtectedRoute>
+            <Contracts />
+          </ProtectedRoute>
+        }
+      />
 
+    </Routes>
   );
 }
 

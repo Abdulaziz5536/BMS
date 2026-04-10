@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
 
+
+
 export default function Sidebar() {
   return (
     <div className="sidebar" style={{ padding: "20px", height: "100vh" }}>
@@ -22,11 +24,18 @@ export default function Sidebar() {
           </NavLink>
         </li>
         <li>
-          <NavLink to="/tenants" className={({isActive}) => isActive ? "active" : ""}>
+          <NavLink to="/tenants" className={({ isActive }) => isActive ? "active" : ""}>
             Tenants
           </NavLink>
         </li>
+
+        {/*  ADDED */}
+        <li>
+          <NavLink to="/contracts" className={({ isActive }) => isActive ? "active" : ""}>
+            Contracts
+          </NavLink>
+        </li>
+
       </ul>
-    </div>
-  );
+  </div> );
 }
