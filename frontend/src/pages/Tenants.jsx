@@ -105,7 +105,7 @@ export default function Tenant() {
         <div key={t._id}>
 
           {t.name} |
-          Unit {t.unit?.unitNumber} |
+          Unit {t.unit?.unitId} |
           Floor {t.unit?.floor?.number}
 
           <button onClick={() => deleteTenant(t._id)}>❌</button>

@@ -22,7 +22,7 @@ router.post('/tenants', async (req,res) => {
       return res.status(400).json({error:"fields should not be empty"});
     }
 
-    const tenant = await Tenant.create({tenantId,phone,unit});
+    const tenant = await Tenant.create({tenantId,tenantName,phone,unit});
     
   } catch (error) {
     res.status(500).json({error:error.message});
