@@ -19,4 +19,4 @@ const tenantSchema = new mongoose.Schema({
   }
 
 })
-module.exports = mongoose.model('Tenat', tenantSchema);
+module.exports = mongoose.model('Tenant', tenantSchema);
