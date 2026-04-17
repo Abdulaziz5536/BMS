@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import Sidebar from "../components/Sidebar";
+import Sidebar from "./Sidebar";
 import "../style.css";
-import { data } from "react-router-dom";
+
 
 
 export default function Employees() {

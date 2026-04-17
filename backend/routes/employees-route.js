@@ -2,6 +2,16 @@ const express = require('express');
 const router = express.Router();
 const Employee = require('../models/employees-model');
 
+router.get('/employees', async(req,res) => {
+  try {
+    const employee = await Employee.find();
+    res.json(employee);
+  } catch (error) {
+    res.status(500).json({error:error.message});
+  }
+
+})
+
 router.post('/employees', async (req,res) => {
   try{
        const {name,position} = req.body;
@@ -15,7 +25,7 @@ router.post('/employees', async (req,res) => {
 
 });
 
-router.delete('/employee/:id', async (req,res) => {
+router.delete('/employees/:id', async (req,res) => {
   try {
     await Employee.findByIdAndDelete(req.params.id);
     res.json();

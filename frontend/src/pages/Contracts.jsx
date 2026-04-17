@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import Sidebar from "../components/Sidebar";
+import Sidebar from "./Sidebar";
 import "../style.css";
 import { data } from "react-router-dom";
 
@@ -19,7 +19,7 @@ export default function Contracts() {
   
   const fetchContract = async () => {
     try {
-      const res = await fetch(`${API}/contracts`);
+      const res = await fetch(`${API}/contract`);
       const data = await res.json();
       setContracts(data);
      
@@ -54,7 +54,7 @@ export default function Contracts() {
     }
 
     try {
-      const res = await fetch(`${API}/contracts`, {
+      const res = await fetch(`${API}/contract`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -83,7 +83,7 @@ export default function Contracts() {
 
   const deleteContract = async (id) => {
     try {
-      const res = await fetch(`${API}/contracts/${id}`, {
+      const res = await fetch(`${API}/contract/${id}`, {
         method: "DELETE"
       });
 
@@ -107,7 +107,7 @@ export default function Contracts() {
 
         <div className="floors-form">
 
-          {/* TENANT DROPDOWN */}
+          
           <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
             <option value="">Select Tenant</option>
             {tenants.map(t => (

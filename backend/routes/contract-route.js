@@ -2,6 +2,24 @@ const express = require('express');
 const router = express.Router();
 const Contract = require('../models/contract-model');
 
+router.get('/contract', async (req,res) => {
+  try {
+    const contract = await Contract.find().populate({
+      path: "tenant",
+      populate: {
+        path: "unit",
+        populate: {
+          path: "floor"
+        }
+      }
+    });
+    res.json(contract);
+    
+  } catch (error) {
+    res.status(500).json({error:error.message});
+  }
+})
+
 router.post('/contract', async (req,res) => {
   
   try{

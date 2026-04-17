@@ -29,10 +29,15 @@ export default function Sidebar() {
           </NavLink>
         </li>
 
-        {/*  ADDED */}
+       
         <li>
           <NavLink to="/contracts" className={({ isActive }) => isActive ? "active" : ""}>
             Contracts
+          </NavLink>
+        </li>
+        <li>
+          <NavLink to="/employees" className={({ isActive }) => isActive ? "active" : ""}>
+            Employees
           </NavLink>
         </li>
 

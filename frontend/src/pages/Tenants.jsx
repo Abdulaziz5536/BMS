@@ -1,76 +1,130 @@
-import { useEffect, useState } from "react";
-import Sidebar from "../components/Sidebar";
-import "../style.css";
+import { useState, useEffect } from "react";
+import Sidebar from "./Sidebar";
 
-export default function Tenants() {
+export default function Tenant() {
 
-    const [tenantId,setTenantId] = useState("");
-    const [unit, setunit] = useState("");
-    const [Phone, setPhone] = useState("");
-    const [tenants, setTenants] = useState([]);
-    const [units,setUnits] = useState([]);
-    const [message, setMessage] = useState(""); 
-    
-    
-    const API = "http://localhost:3000/tenants";
+  const [tenants, setTenants] = useState([]);
+  const [units, setUnits] = useState([]);
 
-    const fetchTenants = async () => {   
-    
-        const res = await fetch(API);   
-        const data = await res.json();
+  const [tenantId,setTenantId] = useState("");
+  const [tenantName, setTenantName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [unit, setUnit] = useState("");
 
-        if (res.ok) {
-        setTenants(data);
-        
-        } else {
-        setMessage(data.error);
-        }   
-    } 
+  const [message, setMessage] = useState("");
 
-     useEffect(() => {
-          fetchTenants();
-    }, []); 
+  const fetchUnits = async () => {
+    const res = await fetch("http://localhost:3000/units");
+    const data = await res.json();
+    setUnits(data);
+  };
 
-    const addTenant = async () => {
-    
-        const res = await fetch(API, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ tenantId, unit, Phone })
-        });
+  const fetchTenants = async () => {
+    const res = await fetch("http://localhost:3000/tenants");
+    const data = await res.json();
+    setTenants(data);
+  };
 
-        const data = res.json();
+  useEffect(() => {
+    fetchUnits();
+    fetchTenants();
+  }, []);
 
-        if(res.ok){
-            setMessage(data.message);
-            fetchTenants();
+  
+  const addTenant = async () => {
 
-        }
-        else{
-            setMessage(data.error);
-        }
+    const res = await fetch("http://localhost:3000/tenants", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        tenantId,
+        tenantName,
+        phone,
+        unit
+      })
+    });
 
-    
-    };
+    const data = await res.json();
 
-   
+    if (res.ok) {
+      setMessage(data.message);
+      fetchTenants();
+    } else {
+      setMessage(data.error);
+    }
+  };
 
-    return (
+  
+  const deleteTenant = async (id) => {
+    await fetch(`http://localhost:3000/tenants/${id}`, {
+      method: "DELETE"
+    });
+    fetchTenants();
+  };
+
+  return (
     <>
     <div style={{display:"flex"}}>
-          <Sidebar />
 
-          <div style={{padding:20}}>
+        <Sidebar />
+
+        <div style={{padding:20}}>
 
             <h1>Tenants</h1>
 
-          </div>
+      <h3>Add Tenant</h3>
+
+      <input placeholder="Id" onChange={e => setTenantId(e.target.value)} />
+      <input placeholder="Name" onChange={e => setTenantName(e.target.value)} />
+      <input placeholder="Email" onChange={e => setEmail(e.target.value)} />
+      <input placeholder="Phone" onChange={e => setPhone(e.target.value)} />
+
+      
+      <select onChange={e => setUnit(e.target.value)}>
+        <option>Select Unit</option>
+
+        {units.map(u => (
+          <option key={u._id} value={u._id}>
+            Unit {u.unitId}
+          </option>
+        ))}
+
+      </select>
+
+      <button onClick={addTenant}>Add Tenant</button>
+
+      <h2>{message}</h2>
+
+      <hr />
+
+      <h3>Tenants List</h3>
+
+      {tenants.map(t => (
+        <div key={t._id}>
+
+          {t.name} |
+          Unit {t.unit?.unitNumber} |
+          Floor {t.unit?.floor?.number}
+
+          <button onClick={() => deleteTenant(t._id)}>❌</button>
+
+        </div>
+      ))}
+
+
+        </div>
+
+        
+        
+
+
     </div>
-       
-    </> 
-    );
-}   
+      
+
+    </>
+  );
+}  
 
 

@@ -5,6 +5,10 @@ const tenantSchema = new mongoose.Schema({
     type:Number,
     required:true
   },
+  tenantName:{
+    type:String,
+    required:true
+  },
   phone:{
     type:Number,
     required:true

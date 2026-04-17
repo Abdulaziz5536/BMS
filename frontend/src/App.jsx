@@ -1,12 +1,13 @@
 import { Routes, Route } from "react-router-dom";
 
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import Dashboard from "./components/dashboard";
-import Floors from "./components/floors";
-import Unit from "./components/Unit";
-import Contracts from "./components/Contracts"; 
-import Employees from "./components/Employees";
+import Login from "./components/Login";
+import Signup from "./components/Signup";
+import Dashboard from "./pages/dashboard";
+import Floors from "./pages/floors";
+import Unit from "./pages/Unit";
+import Tenants from "./pages/Tenants";
+import Contracts from "./pages/Contracts"; 
+import Employees from "./pages/Employees";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -46,7 +47,16 @@ function App() {
         }
       />
 
-      {/* CONTRACTS ROUTE ADDED */}
+      <Route
+        path="/tenants"
+        element={
+          <ProtectedRoute>
+            <Tenants />
+          </ProtectedRoute>
+        }
+      />
+
+      
       <Route
         path="/contracts"
         element={
