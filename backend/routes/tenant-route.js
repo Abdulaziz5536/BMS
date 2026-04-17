@@ -16,13 +16,13 @@ router.get('/tenants', async (req,res) => {
 
 router.post('/tenants', async (req,res) => {
   try {
-    const {tenantId,phone,unit} = req.body;
+    const {tenantId,tenantName,phone,unit} = req.body;
 
-    if(!tenantId || !phone || !unit){
+    if(!tenantId || !tenantName || !phone || !unit){
       return res.status(400).json({error:"fields should not be empty"});
     }
 
-    const tenant = await Tenant.create({tenantId,phone,unit});
+    const tenant = await Tenant.create({tenantId,tenantName,phone,unit});
     
   } catch (error) {
     res.status(500).json({error:error.message});

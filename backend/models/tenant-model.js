@@ -5,6 +5,10 @@ const tenantSchema = new mongoose.Schema({
     type:Number,
     required:true
   },
+  tenantName:{
+    type:String,
+    required:true
+  },
   phone:{
     type:Number,
     required:true
@@ -15,4 +19,4 @@ const tenantSchema = new mongoose.Schema({
   }
 
 })
-module.exports = mongoose.model('Tenat', tenantSchema);
+module.exports = mongoose.model('Tenant', tenantSchema);

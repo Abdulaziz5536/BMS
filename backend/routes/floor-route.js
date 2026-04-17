@@ -32,11 +32,11 @@ router.post('/floors', async (req, res) => {
 
 router.get('/floors', async (req, res) => {
   try {
-    console.log("GET /floors route hit");
+    
     const floors = await Floor.find().sort({ floor: 1 });
     res.json(floors);
   } catch (error) {
-    console.log("GET /floors error:", error);
+    
     res.status(500).json({ error: error.message });
   }
 });
