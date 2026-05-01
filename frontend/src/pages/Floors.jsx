@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import "../style.css";
+import { set } from "mongoose";
 
 export default function Floors() {
   const [floor, setFloor] = useState("");
@@ -8,6 +9,7 @@ export default function Floors() {
   const [sqm, setSqm] = useState("");
   const [floors, setFloors] = useState([]);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
 
   const API = "http://localhost:3000/floors";
@@ -21,11 +23,11 @@ export default function Floors() {
         setFloors(data);
         setMessage("");
       } else {
-        setMessage(data.error);
+        setError(data.error);
       }
     } catch (error) {
       
-      setMessage(error.message || "Cannot connect to backend");
+      setError(error.message || "Cannot connect to backend");
     }
   };
 
@@ -42,9 +44,9 @@ export default function Floors() {
 
   const saveFloor = async () => {
     setMessage("");
-
+    setError("");
     if (!floor || !units || !sqm) {
-      setMessage("Please fill in all fields");
+      setError("Please fill in all fields");
       return;
     }
 
@@ -87,11 +89,11 @@ export default function Floors() {
         clearForm();
         loadFloors();
       } else {
-        setMessage(data.error || "Failed to save floor");
+        setError(data.error || "Failed to save floor");
       }
     } catch (error) {
       console.log("saveFloor fetch error:", error);
-      setMessage(error.message || "Cannot connect to backend");
+      setError(error.message || "Cannot connect to backend");
     }
   };
 
@@ -101,6 +103,7 @@ export default function Floors() {
     setSqm(item.totalSqm);
     setEditingId(item._id);
     setMessage("");
+    setError("");
   };
 
   const deleteFloor = async (id) => {
@@ -115,11 +118,11 @@ export default function Floors() {
         setMessage("Floor deleted successfully");
         loadFloors();
       } else {
-        setMessage(data.error || "Failed to delete floor");
+        setError(data.error || "Failed to delete floor");
       }
     } catch (error) {
       console.log("deleteFloor error:", error);
-      setMessage(error.message || "Server error while deleting floor");
+      setError(error.message || "Server error while deleting floor");
     }
   };
 
@@ -164,6 +167,7 @@ export default function Floors() {
         </div>
 
         {message && <p className="message">{message}</p>}
+        {error && <p className="error">{error}</p>}
 
         <h2>Floors List</h2>
 

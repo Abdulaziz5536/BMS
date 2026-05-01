@@ -12,6 +12,7 @@ export default function Tenant() {
   const [unit, setUnit] = useState("");
 
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const fetchUnits = async () => {
     const res = await fetch("http://localhost:3000/units");
@@ -52,7 +53,7 @@ export default function Tenant() {
       setMessage(data.message);
       fetchTenants();
     } else {
-      setMessage(data.error);
+      setError(data.error);
     }
   };
 
@@ -95,7 +96,9 @@ export default function Tenant() {
 
       <button onClick={addTenant}>Add Tenant</button>
 
-      <h2>{message}</h2>
+      <h2 className="message">{message}</h2>
+      <h2 className="error">{error}</h2>
+
 
       <hr />
 

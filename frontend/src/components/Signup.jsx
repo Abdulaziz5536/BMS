@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../style.css";
+import { set } from "mongoose";
 
 export default function Signup() {
 
@@ -8,6 +9,7 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
@@ -15,20 +17,20 @@ export default function Signup() {
   const signup = async () => {
 
     setMessage("");
-
+    setError("");
     
     if (!name || !email || !password) {
-      setMessage("Please fill in all fields");
+      setError("Please fill in all fields");
       return;
     }
 
     if (!email.includes("@")) {
-      setMessage("Enter a valid email");
+      setError("Enter a valid email");
       return;
     }
 
     if (password.length < 6) {
-      setMessage("Password must be at least 6 characters");
+      setError("Password must be at least 6 characters");
       return;
     }
 
@@ -56,13 +58,13 @@ export default function Signup() {
 
       } else {
 
-        setMessage(data.error);
+        setError(data.error);
 
       }
 
     } catch (error) {
 
-      setMessage("Server error. Please try again.");
+      setError("Server error. Please try again.");
 
     }
 
@@ -114,7 +116,9 @@ export default function Signup() {
         Already have an account? Login
       </button>
 
-      <h2>{message}</h2>
+      <h2 className="message">{message}</h2>
+      <h2 className="error">{error}</h2>
+
 
     </div>
   );

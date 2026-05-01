@@ -7,6 +7,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
@@ -14,10 +15,10 @@ export default function Login() {
   const login = async () => {
 
     setMessage("");
-
+    setError("");
    
     if (!email || !password) {
-      setMessage("Please fill in all fields");
+      setError("Please fill in all fields");
       return;
     }
 
@@ -49,20 +50,20 @@ export default function Login() {
       } else {
 
         if (data.error === "User not found") {
-          setMessage("Account does not exist. Please sign up.");
+          setError("Account does not exist. Please sign up.");
         } 
         else if (data.error === "Wrong password") {
-          setMessage("Incorrect password. Try again.");
+          setError("Incorrect password. Try again.");
         } 
         else {
-          setMessage(data.error);
+          setError(data.error);
         }
 
       }
 
     } catch (error) {
 
-      setMessage("Server error. Please try again.");
+      setError("Server error. Please try again.");
 
     }
 
@@ -108,8 +109,8 @@ export default function Login() {
       >
         Don’t have an account? Sign Up
       </button>
-
-      <h2>{message}</h2>
+      <h2 className="message">{message}</h2>
+      <h2 className="error">{error}</h2>
 
     </div>
   );

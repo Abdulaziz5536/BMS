@@ -36,15 +36,17 @@ h2:empty {
   display: none;
 }
 
-/* Status-like headings (green = ok/active, red = alert/problem) */
-h2:has(+ button) {
-  color: #15803d;     
-  font-weight: 700;
+h2.error{
+  color: red;
 }
-
-h2:not(:has(+ button)) {
-  color: #b91c1c;     
-  font-weight: 700;
+h2.message{
+  color: green;
+}
+p.error{
+  color: red;
+}
+p.message{
+  color: green;
 }
 
 /* More professional card style for forms/login/signup */

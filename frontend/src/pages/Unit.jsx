@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
+import { set } from "mongoose";
 
 function Unit() {
   const [unitId, setUnitId] = useState("");
@@ -7,6 +8,7 @@ function Unit() {
   const [type, setType] = useState("");
   const [units, setUnits] = useState([]);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [floors, setFloors] = useState([]);
   const [floor, setFloor] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -38,7 +40,7 @@ function Unit() {
 
   const saveUnit = async () => {
     if (!unitId || !area || !type || !floor) {
-      setMessage("Please fill all fields");
+      setError("Please fill all fields");
       return;
     }
 
@@ -69,7 +71,7 @@ function Unit() {
       clearForm();
       fetchUnits();
     } else {
-      setMessage(data.error);
+      setError(data.error);
     }
   };
 
@@ -80,6 +82,7 @@ function Unit() {
     setFloor(u.floor?._id || "");
     setEditingId(u._id);
     setMessage("");
+    setError("");
   };
 
   const removeUnit = async (id) => {
@@ -135,7 +138,8 @@ function Unit() {
           </button>
         )}
 
-        <p>{message}</p>
+        <p className="message">{message}</p>
+        <p className="error">{error}</p>
         <hr />
 
         <h2>List Units</h2>

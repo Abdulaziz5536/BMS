@@ -13,6 +13,7 @@ export default function Contracts() {
   
 
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const API = "http://localhost:3000";
 
@@ -25,7 +26,7 @@ export default function Contracts() {
      
 
     } catch (error) {
-      setMessage(error.message);
+      setError(error.message);
     }
   };
 
@@ -37,7 +38,7 @@ export default function Contracts() {
      
 
     } catch (error) {
-      setMessage(error.message);
+      setError(error.message);
     }
   };
 
@@ -49,7 +50,7 @@ export default function Contracts() {
  
   const addContract = async () => {
     if (!tenantId || !amount || !date) {
-      setMessage("Fill all fields");
+      setError("Fill all fields");
       return;
     }
 
@@ -72,11 +73,11 @@ export default function Contracts() {
         setMessage("Contract added");
        fetchContract();
       } else {
-        setMessage(data.error);
+        setError(data.error);
       }
 
     } catch (error) {
-      setMessage(error.message);
+      setError(error.message);
     }
   };
 
@@ -91,10 +92,10 @@ export default function Contracts() {
         setMessage(data.message);
         fetchContract();
       }else {
-        setMessage(data.error);
+        setError(data.error);
       }
     } catch (error) {
-      setMessage(error.message);
+      setError(error.message);
     }
   };
 
@@ -129,7 +130,8 @@ export default function Contracts() {
           <button onClick={addContract}>Add Contract</button>
         </div>
 
-        {message && <p>{message}</p>}
+        {message && <p className="message">{message}</p>}
+        {error && <p className="error">{error}</p>}
 
         <h2>Contracts List</h2>
 

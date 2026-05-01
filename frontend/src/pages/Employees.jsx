@@ -10,6 +10,7 @@ export default function Employees() {
   const [name, setName] = useState("");
   const [position, setPosition] = useState("");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const API = "http://localhost:3000";
 
@@ -22,7 +23,7 @@ export default function Employees() {
     
     
     catch (error) {
-      setMessage(error.message);
+      setError(error.message);
     }
   };        
 
@@ -33,7 +34,7 @@ useEffect(() => {
 
     const addEmployee = async () => {       
         if (!name || !position) {
-            setMessage("Fill all fields");
+            setError("Fill all fields");
             return;
         }
 
@@ -56,10 +57,10 @@ useEffect(() => {
                 fetchEmployees();
             }
             else {
-                setMessage(data.error);
+                setError(data.error);
             }
         } catch (error) {
-            setMessage(error.message);
+            setError(error.message);
         }
         };  
     return (
@@ -82,7 +83,8 @@ useEffect(() => {
                     />
                     <button onClick={addEmployee}>Add Employee</button>
                 </div>
-                {message && <p>{message}</p>}
+                {message && <p className="message">{message}</p>}
+                {error && <p className="error">{error}</p>}
                 <div className="employee-list">
                     {employees.map((employee) => (
                         <div key={employee._id} className="employee-item">
