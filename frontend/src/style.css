@@ -312,7 +312,8 @@ button:disabled {
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 1.5rem;
+  
+  
 }
 
 .logout-btn:hover {

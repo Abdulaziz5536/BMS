@@ -30,11 +30,11 @@ export default function Dashboard() {
 
       <div className="main-content">
         <h1>Dashboard</h1>
-        <p>Welcome to the Building Management System.</p>
+        
 
-        <div>Floors | {dashboard?.totalFloors}</div>
-        <div>Units | {dashboard?.totalUnits}</div>
-        <div>Tenants | {dashboard?.totalTenants}</div>
+        <div style={{display:"flex",justifyContent:"left",fontSize:30,fontWeight:"bolder"}}>Total Floors 🧱 {dashboard?.totalFloors}</div>
+        <div style={{display:"flex",justifyContent:"center",fontSize:30,fontWeight:"bolder"}}>Total Units 🏠 {dashboard?.totalUnits}</div>
+        <div style={{display:"flex",justifyContent:"right",fontSize:30,fontWeight:"bolder"}}>Total Tenants 🔑 {dashboard?.totalTenants}</div>
 
 
         <button className="logout-btn" onClick={logout}>
