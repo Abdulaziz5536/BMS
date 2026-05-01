@@ -79,7 +79,6 @@ export default function Tenant() {
 
       <input placeholder="Id" onChange={e => setTenantId(e.target.value)} />
       <input placeholder="Name" onChange={e => setTenantName(e.target.value)} />
-      <input placeholder="Email" onChange={e => setEmail(e.target.value)} />
       <input placeholder="Phone" onChange={e => setPhone(e.target.value)} />
 
       
@@ -107,7 +106,7 @@ export default function Tenant() {
       {tenants.map(t => (
         <div key={t._id}>
 
-          {t.name} |
+          {t.tenantName} |
           Unit {t.unit?.unitId} |
           Floor {t.unit?.floor?.number}
 
