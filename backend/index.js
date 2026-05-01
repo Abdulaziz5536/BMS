@@ -26,6 +26,18 @@ app.use(employeeRouter);
 app.use(contractRouter);
 app.use(dashboardRouter);
 
+app.use((req, res) => {
+  res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });
+});
+
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
+    return res.status(400).json({ error: "Invalid JSON request body" });
+  }
+
+  res.status(500).json({ error: err.message || "Server error" });
+});
+
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("mongoDB is connected"))

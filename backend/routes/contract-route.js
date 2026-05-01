@@ -23,11 +23,31 @@ router.get('/contract', async (req,res) => {
 router.post('/contract', async (req,res) => {
   
   try{
-    const {tenant,amount,date} = req.body;
+    const {tenant,amount,date,contractLength,paymentFrequency} = req.body;
  
-  const contract = await Contract.create({tenant,amount,date});
+  await Contract.create({tenant,amount,date,contractLength,paymentFrequency});
   res.json({message:"contract created"});
 
+  }catch(err){
+    res.status(500).json({err:err.message});
+  }
+});
+
+router.put('/contract/:id', async (req,res) => {
+  try{
+    const {tenant,amount,date,contractLength,paymentFrequency} = req.body;
+
+    const contract = await Contract.findByIdAndUpdate(
+      req.params.id,
+      {tenant,amount,date,contractLength,paymentFrequency},
+      {new:true}
+    );
+
+    if(!contract){
+      return res.status(404).json({err:"contract not found"});
+    }
+
+    res.json({message:"contract updated", contract});
   }catch(err){
     res.status(500).json({err:err.message});
   }

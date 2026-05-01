@@ -4,7 +4,7 @@ import { NavLink } from "react-router-dom";
 
 export default function Sidebar() {
   return (
-    <div className="sidebar" style={{ padding: "20px", height: "100vh" }}>
+    <div className="sidebar">
       <h2>Building Management System</h2>
 
       <ul>

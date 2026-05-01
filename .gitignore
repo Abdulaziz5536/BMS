@@ -1,2 +1,6 @@
 node_modules
 .env
+vite-dev*.log
+vite-dev*.err
+backend-dev*.log
+backend-dev*.err

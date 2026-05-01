@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
-import { set } from "mongoose";
 
 function Unit() {
   const [unitId, setUnitId] = useState("");
@@ -14,15 +13,23 @@ function Unit() {
   const [editingId, setEditingId] = useState(null);
 
   const fetchUnits = async () => {
-    const res = await fetch("http://localhost:3000/units");
-    const data = await res.json();
-    setUnits(data);
+    try {
+      const res = await fetch("http://localhost:3000/units");
+      const data = await res.json();
+      setUnits(data);
+    } catch (error) {
+      setError(error.message);
+    }
   };
 
   const fetchFloors = async () => {
-    const res = await fetch("http://localhost:3000/floors");
-    const data = await res.json();
-    setFloors(data);
+    try {
+      const res = await fetch("http://localhost:3000/floors");
+      const data = await res.json();
+      setFloors(data);
+    } catch (error) {
+      setError(error.message);
+    }
   };
 
   useEffect(() => {
@@ -39,124 +46,167 @@ function Unit() {
   };
 
   const saveUnit = async () => {
+    setMessage("");
+    setError("");
+
     if (!unitId || !area || !type || !floor) {
       setError("Please fill all fields");
       return;
     }
 
-    let res;
+    try {
+      const res = await fetch(
+        editingId
+          ? `http://localhost:3000/units/${editingId}`
+          : "http://localhost:3000/units",
+        {
+          method: editingId ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ unitId, area, type, floor })
+        }
+      );
 
-    if (editingId) {
-      res = await fetch(`http://localhost:3000/units/${editingId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ unitId, area, type, floor })
-      });
-    } else {
-      res = await fetch("http://localhost:3000/units", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ unitId, area, type, floor })
-      });
-    }
+      const data = await res.json();
 
-    const data = await res.json();
-
-    if (res.ok) {
-      setMessage(data.message);
-      clearForm();
-      fetchUnits();
-    } else {
-      setError(data.error);
+      if (res.ok) {
+        setMessage(data.message || (editingId ? "Unit updated" : "Unit added"));
+        clearForm();
+        fetchUnits();
+      } else {
+        setError(data.error || "Failed to save unit");
+      }
+    } catch (error) {
+      setError(error.message);
     }
   };
 
-  const editUnit = (u) => {
-    setUnitId(u.unitId);
-    setArea(u.area);
-    setType(u.type);
-    setFloor(u.floor?._id || "");
-    setEditingId(u._id);
+  const editUnit = (unit) => {
+    setUnitId(unit.unitId || "");
+    setArea(unit.area || "");
+    setType(unit.type || "");
+    setFloor(unit.floor?._id || "");
+    setEditingId(unit._id);
     setMessage("");
     setError("");
   };
 
   const removeUnit = async (id) => {
-    await fetch(`http://localhost:3000/units/${id}`, {
-      method: "DELETE"
-    });
+    try {
+      setMessage("");
+      setError("");
 
-    fetchUnits();
+      const res = await fetch(`http://localhost:3000/units/${id}`, {
+        method: "DELETE"
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setMessage(data.message || "Unit deleted");
+        fetchUnits();
+      } else {
+        setError(data.error || "Failed to delete unit");
+      }
+    } catch (error) {
+      setError(error.message);
+    }
   };
 
   return (
-    <div style={{ display: "flex" }}>
+    <div className="app-layout">
       <Sidebar />
 
-      <div style={{ padding: "20px" }}>
+      <div className="main-content">
         <h1>Units</h1>
 
-        <input
-          placeholder="unitId"
-          value={unitId}
-          onChange={(e) => setUnitId(e.target.value)}
-        />
+        <section className="panel">
+          <h2>{editingId ? "Edit Unit" : "Add Unit"}</h2>
 
-        <input
-          placeholder="area"
-          value={area}
-          onChange={(e) => setArea(e.target.value)}
-        />
+          <div className="form-grid">
+            <input
+              placeholder="Unit ID"
+              value={unitId}
+              onChange={(e) => setUnitId(e.target.value)}
+            />
 
-        <input
-          placeholder="type"
-          value={type}
-          onChange={(e) => setType(e.target.value)}
-        />
+            <input
+              placeholder="Area"
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+            />
 
-        <select value={floor} onChange={(e) => setFloor(e.target.value)}>
-          <option value="">Select Floor</option>
+            <input
+              placeholder="Type"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+            />
 
-          {floors.map((f) => (
-            <option key={f._id} value={f._id}>
-              {f.floor}
-            </option>
-          ))}
-        </select>
-
-        <button onClick={saveUnit}>
-          {editingId ? "Update Unit" : "Add Unit"}
-        </button>
-
-        {editingId && (
-          <button onClick={clearForm} style={{ marginLeft: "10px" }}>
-            Cancel
-          </button>
-        )}
-
-        <p className="message">{message}</p>
-        <p className="error">{error}</p>
-        <hr />
-
-        <h2>List Units</h2>
-
-        {units.map((u) => (
-          <div key={u._id}>
-            <p>Unit ID: {u.unitId}</p>
-            <p>Area: {u.area}</p>
-            <p>Type: {u.type}</p>
-            <p>Floor: {u.floor?.floor}</p>
-
-            <button onClick={() => editUnit(u)}>Edit</button>
-            <button onClick={() => removeUnit(u._id)}>Remove</button>
-
-            <hr />
+            <select value={floor} onChange={(e) => setFloor(e.target.value)}>
+              <option value="">Select Floor</option>
+              {floors.map((item) => (
+                <option key={item._id} value={item._id}>
+                  Floor {item.floor}
+                </option>
+              ))}
+            </select>
           </div>
-        ))}
+
+          <div className="form-actions">
+            <button onClick={saveUnit}>
+              {editingId ? "Update Unit" : "Add Unit"}
+            </button>
+
+            {editingId && (
+              <button className="secondary-btn" onClick={clearForm}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </section>
+
+        {message && <p className="message">{message}</p>}
+        {error && <p className="error">{error}</p>}
+
+        <h2>Units List</h2>
+
+        <table className="floors-table">
+          <thead>
+            <tr>
+              <th>Unit ID</th>
+              <th>Area</th>
+              <th>Type</th>
+              <th>Floor</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {units.length > 0 ? (
+              units.map((unit) => (
+                <tr key={unit._id}>
+                  <td>{unit.unitId}</td>
+                  <td>{unit.area}</td>
+                  <td>{unit.type}</td>
+                  <td>{unit.floor?.floor || "No floor"}</td>
+                  <td>
+                    <button onClick={() => editUnit(unit)}>
+                      Edit
+                    </button>
+                    <button className="danger-btn" onClick={() => removeUnit(unit._id)}>
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="5">No units added yet</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

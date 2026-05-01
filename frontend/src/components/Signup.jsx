@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../style.css";
-import { set } from "mongoose";
 
 export default function Signup() {
 

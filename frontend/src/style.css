@@ -16,6 +16,10 @@ body {
   line-height: 1.5;
 }
 
+#root {
+  min-height: 100vh;
+}
+
 h1 {
   font-size: 2rem;
   font-weight: 700;
@@ -78,19 +82,21 @@ p.message{
   border-radius: 12px 12px 0 0;
 }
 
-input {
+input,
+select {
   width: 100%;
-  padding: 0.95rem 1.1rem;
-  margin-bottom: 1.25rem;
+  padding: 0.78rem 0.95rem;
+  margin-bottom: 1rem;
   border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 1rem;
-  background-color: #f9fafb;
+  border-radius: 7px;
+  font-size: 0.95rem;
+  background-color: #ffffff;
   color: #111827;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-input:focus {
+input:focus,
+select:focus {
   outline: none;
   border-color: #9ca3af;
   background-color: white;
@@ -103,18 +109,19 @@ input::placeholder {
 }
 
 button {
-  width: 100%;
-  padding: 1rem;
-  font-size: 1.05rem;
+  width: auto;
+  min-width: 96px;
+  padding: 0.62rem 0.95rem;
+  font-size: 0.92rem;
   font-weight: 600;
   color: #ffffff;
   background: #374151;          
   border: none;
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 2px 6px rgba(55, 65, 81, 0.15);
-  margin-bottom: 1rem;
+  margin: 10px;
 }
 
 button:hover {
@@ -129,6 +136,7 @@ button:active {
 }
 
 #navigate {
+  width: 100%;
   background-color: transparent;
   color: #475569;
   border: 1.5px solid #cbd5e1;
@@ -151,14 +159,26 @@ button:disabled {
   box-shadow: none;
 }
 
+.signup button,
+.login button {
+  width: 100%;
+}
+
 /* ── Dashboard / BMS layout ──────────────────────────────────────── */
 .app-layout {
   display: flex;
   min-height: 100vh;
+  align-items: stretch;
 }
 
 .sidebar {
   width: 280px;
+  min-height: 100vh;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  flex-shrink: 0;
+  overflow-y: auto;
   background-color: #1f2937;
   color: white;
   padding: 1.5rem 1rem;
@@ -198,19 +218,18 @@ button:disabled {
 
 .sidebar a.active {
   background-color: #2e3540;
-  width: 250px;
   color: white;
 }
 .sidebar a:hover {
   background-color: #374151;
-  width: 250px;
   color: white;
 }
 
 .main-content {
   flex: 1;
-  padding: 2.5rem 3rem;
+  padding: 2rem 2.5rem;
   background: #f8fafc;
+  min-width: 0;
 }
 
 .main-content h1 {
@@ -220,29 +239,63 @@ button:disabled {
 }
 
 /* Forms in dashboard context */
-.floors-form {
-  max-width: 540px;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  margin-bottom: 2rem;
+.panel {
+  max-width: 860px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
-.floors-form input {
-  padding: 1rem 1.125rem;
-  border: 1px solid #d1d5db;
+.panel h2 {
+  margin-top: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+}
+
+.form-grid input,
+.form-grid select {
+  margin-bottom: 0;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.floors-form {
+  max-width: 860px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding: 1.25rem;
+  background: white;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  font-size: 1rem;
-  background-color: white;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.floors-form input,
+.floors-form select {
+  margin-bottom: 0;
 }
 
 .floors-form button {
-  padding: 1rem;
+  align-self: center;
+  padding: 0.68rem 1rem;
   border: none;
-  border-radius: 8px;
+  border-radius: 7px;
   background-color: #374151;
   color: white;
-  font-size: 1.05rem;
+  font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -252,6 +305,13 @@ button:disabled {
 }
 
 .message {
+  color: #15803d;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 1.25rem;
+}
+
+.error {
   color: #b91c1c;
   font-weight: 600;
   font-size: 0.95rem;
@@ -272,9 +332,10 @@ button:disabled {
 
 .floors-table th,
 .floors-table td {
-  padding: 1rem 1.25rem;
+  padding: 0.85rem 1rem;
   text-align: left;
   border-bottom: 1px solid #e5e7eb;
+  vertical-align: middle;
 }
 
 .floors-table th {
@@ -292,7 +353,8 @@ button:disabled {
 
 .floors-table button {
   margin: 0 0.35rem;
-  padding: 0.5rem 1rem;
+  min-width: 76px;
+  padding: 0.45rem 0.75rem;
   border: none;
   border-radius: 6px;
   background-color: #374151;
@@ -303,6 +365,65 @@ button:disabled {
 
 .floors-table button:hover {
   background-color: #1f2937;
+}
+
+.danger-btn,
+.floors-table .danger-btn {
+  background-color: #b91c1c;
+}
+
+.danger-btn:hover,
+.floors-table .danger-btn:hover {
+  background-color: #991b1b;
+}
+
+.secondary-btn {
+  background-color: #64748b;
+}
+
+.secondary-btn:hover {
+  background-color: #475569;
+}
+
+.container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  padding: 2rem 2.5rem;
+  background: #f8fafc;
+}
+
+.form {
+  max-width: 860px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.form input {
+  margin-bottom: 0;
+}
+
+.employee-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.employee-item {
+  padding: 1rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
 }
 
 .logout-btn {

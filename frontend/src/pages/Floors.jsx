@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import "../style.css";
-import { set } from "mongoose";
 
 export default function Floors() {
   const [floor, setFloor] = useState("");
@@ -27,7 +26,7 @@ export default function Floors() {
       }
     } catch (error) {
       
-      setError(error.message || "Cannot connect to backend");
+      setError(error.message);
     }
   };
 
@@ -89,11 +88,11 @@ export default function Floors() {
         clearForm();
         loadFloors();
       } else {
-        setError(data.error || "Failed to save floor");
+        setError(data.error);
       }
     } catch (error) {
       console.log("saveFloor fetch error:", error);
-      setError(error.message || "Cannot connect to backend");
+      setError(error.message);
     }
   };
 
@@ -118,11 +117,11 @@ export default function Floors() {
         setMessage("Floor deleted successfully");
         loadFloors();
       } else {
-        setError(data.error || "Failed to delete floor");
+        setError(data.error);
       }
     } catch (error) {
       console.log("deleteFloor error:", error);
-      setError(error.message || "Server error while deleting floor");
+      setError(error.message);
     }
   };
 
