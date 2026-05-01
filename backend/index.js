@@ -11,6 +11,7 @@ const unitRouter = require("./routes/unit-route");
 const tenantRouter = require("./routes/tenant-route");
 const employeeRouter = require("./routes/employees-route");
 const contractRouter = require("./routes/contract-route");
+const dashboardRouter = require("./routes/dashboard-route");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +24,7 @@ app.use(unitRouter);
 app.use(tenantRouter);
 app.use(employeeRouter);
 app.use(contractRouter);
+app.use(dashboardRouter);
 
 mongoose
   .connect(process.env.MONGO_URI)
