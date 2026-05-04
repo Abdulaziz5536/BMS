@@ -2,6 +2,7 @@ import Sidebar from "./Sidebar";
 import "../style.css";
 import { useState } from "react";
 import { useEffect } from "react";
+import { BuildingOfficeIcon, UserGroupIcon, KeyIcon } from "@heroicons/react/24/outline";
 
 export default function Dashboard() {
 
@@ -32,9 +33,21 @@ export default function Dashboard() {
         <h1>Dashboard</h1>
         
 
-        <div style={{display:"flex",justifyContent:"left",fontSize:30,fontWeight:"bolder"}}>Total Floors 🧱 {dashboard?.totalFloors}</div>
-        <div style={{display:"flex",justifyContent:"center",fontSize:30,fontWeight:"bolder"}}>Total Units 🏠 {dashboard?.totalUnits}</div>
-        <div style={{display:"flex",justifyContent:"right",fontSize:30,fontWeight:"bolder"}}>Total Tenants 🔑 {dashboard?.totalTenants}</div>
+      <div className="dashboard-container">
+
+        <div className="card">
+          <BuildingOfficeIcon className="card-icon"/>
+          Total Units <br /> {dashboard?.totalUnits}</div>
+        <div className="card">
+          <KeyIcon className="card-icon"/>
+          
+          Total Tenants  <br/> {dashboard?.totalTenants}</div>
+          <div className="card">
+            <UserGroupIcon className="card-icon"/>
+            Total Employees <br/> {dashboard?.totalEmployees}</div>
+
+      </div>
+        
 
 
         <button className="logout-btn" onClick={logout}>

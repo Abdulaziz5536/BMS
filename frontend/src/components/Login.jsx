@@ -38,7 +38,7 @@ export default function Login() {
 
       if (res.ok) {
 
-        // Save authentication 
+         
         localStorage.setItem("token", data.token);
 
         setMessage(data.message);
