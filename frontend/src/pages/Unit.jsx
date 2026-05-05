@@ -189,7 +189,7 @@ function Unit() {
                   <td>{unit.unitId}</td>
                   <td>{unit.area}</td>
                   <td>{unit.type}</td>
-                  <td>{unit.floor?.floor || "No floor"}</td>
+                  <td>{unit.floor?.floor}</td>
                   <td>
                     <button onClick={() => editUnit(unit)}>
                       Edit

@@ -215,7 +215,7 @@ export default function Tenant() {
                     <td>{tenant.tenantName}</td>
                     <td>{tenant.phone}</td>
                     <td>{tenantUnit?.unitId || "Unassigned"}</td>
-                    <td>{tenantUnit?.floor?.floor || "No floor"}</td>
+                    <td>{tenantUnit?.floor?.floor}</td>
                     <td>
                       <button onClick={() => editTenant(tenant)}>
                         Edit

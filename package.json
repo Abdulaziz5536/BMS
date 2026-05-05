@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "npm.cmd --prefix frontend run dev",
+    "dev": "start \"bms-backend\" /B node backend/index.js && npm.cmd --prefix frontend run dev",
+    "dev:frontend": "npm.cmd --prefix frontend run dev",
+    "dev:backend": "node backend/index.js",
     "build": "npm.cmd --prefix frontend run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
