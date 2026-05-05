@@ -137,6 +137,21 @@ export default function Contracts() {
       setError(error.message);
     }
   };
+  const markAsPaid = async (id) => {
+  const res = await fetch(`${API}/contract/${id}`, {
+    method: "PUT"
+  });
+
+  const data = await res.json();
+
+  if (res.ok) {
+    setMessage(data.message);
+    fetchContract(); 
+  } else {
+    console.log(data.error);
+    setError(error.message);
+  }
+};
 
   return (
     <div className="app-layout">
@@ -217,6 +232,7 @@ export default function Contracts() {
               <th>Start Date</th>
               <th>Length</th>
               <th>Payment</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -230,6 +246,11 @@ export default function Contracts() {
                   <td>{contract.date}</td>
                   <td>{contract.contractLength ? `${contract.contractLength} years` : "-"}</td>
                   <td>{contract.paymentFrequency || "-"}</td>
+                    <td> {contract.status === "paid" ? (
+                      <span style={{ color: "green" }}>Paid</span>
+                     ) : (
+                         <span style={{ color: "orange" }}>Pending</span> )}</td>
+                         
                   <td>
                     <button onClick={() => editContract(contract)}>
                       Edit
@@ -237,6 +258,9 @@ export default function Contracts() {
                     <button className="danger-btn" onClick={() => deleteContract(contract._id)}>
                       Delete
                     </button>
+                    {contract.status === "pending" && (
+                         <button onClick={() => markAsPaid(contract._id)}>
+                                     Mark as Paid </button> )}
                   </td>
                 </tr>
               ))

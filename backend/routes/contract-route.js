@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Contract = require('../models/contract-model');
 
+
 router.get('/contract', async (req,res) => {
   try {
     const contract = await Contract.find().populate({
@@ -25,7 +26,7 @@ router.post('/contract', async (req,res) => {
   try{
     const {tenant,amount,date,contractLength,paymentFrequency} = req.body;
  
-  await Contract.create({tenant,amount,date,contractLength,paymentFrequency});
+  await Contract.create({tenant,amount:Number(amount),date,contractLength,paymentFrequency});
   res.json({message:"contract created"});
 
   }catch(err){
@@ -33,23 +34,25 @@ router.post('/contract', async (req,res) => {
   }
 });
 
-router.put('/contract/:id', async (req,res) => {
-  try{
-    const {tenant,amount,date,contractLength,paymentFrequency} = req.body;
+router.put('/contract/:id', async (req, res) => {
+  try {
 
-    const contract = await Contract.findByIdAndUpdate(
-      req.params.id,
-      {tenant,amount,date,contractLength,paymentFrequency},
-      {new:true}
-    );
+    const contract = await Contract.findById(req.params.id);
 
-    if(!contract){
-      return res.status(404).json({err:"contract not found"});
+    if (!contract) {
+      return res.status(404).json({ error: "Contract not found" });
     }
 
-    res.json({message:"contract updated", contract});
-  }catch(err){
-    res.status(500).json({err:err.message});
+    contract.status = "paid";
+    await contract.save();
+
+    return res.json({
+      message: "Payment marked as paid",
+      contract
+    });
+
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

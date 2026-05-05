@@ -24,6 +24,8 @@ export default function Dashboard() {
     localStorage.removeItem("token");
     window.location.href = "/login";
   };
+  console.log("Dashboard",dashboard);
+  
 
   return (
     <div className="app-layout">
@@ -37,7 +39,7 @@ export default function Dashboard() {
 
         <div className="card">
           <BuildingOfficeIcon className="card-icon"/>
-          Total Units <br /> {dashboard?.totalUnits}</div>
+          Total Units Occupied <br /> {dashboard?.totalUnitsOccupied}</div>
         <div className="card">
           <KeyIcon className="card-icon"/>
           
@@ -46,6 +48,17 @@ export default function Dashboard() {
             <UserGroupIcon className="card-icon"/>
             Total Employees <br/> {dashboard?.totalEmployees}</div>
 
+
+      </div>
+
+      <div className="revenue-container">
+        
+            <div className="card">
+             Revenue: ${dashboard?.totalRevenue}</div>
+         <div className="card">
+               Pending: {dashboard?.pendingPayments}</div>
+         <div className="card">
+             Occupancy: {dashboard?.occupancyRate}%</div>
       </div>
         
 

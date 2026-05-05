@@ -332,6 +332,13 @@ button:disabled {
   
 }
 
+.revenue-container{
+   display: flex;
+  flex-direction: row;
+   margin-top: 150px;
+  gap: 20px;
+}
+
 
 .message {
   color: #15803d;
