@@ -463,6 +463,7 @@ button:disabled {
 }
 
 .logout-btn {
+  margin-top: 100px;
   padding: 0.9rem 1.5rem;
   border: none;
   border-radius: 8px;
