@@ -13,8 +13,7 @@ const contractSchema = new mongoose.Schema({
   },  
 
   date: {
-    type: Date,
-    default: Date.now
+    type: String
   },
 
   contractLength: String,
