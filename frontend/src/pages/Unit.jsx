@@ -1,7 +1,16 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
+import {
+  API_BASE,
+  invalidateCache,
+  loadCachedJson,
+  readResponse,
+  withBuilding
+} from "../buildingSelection";
+import useSelectedBuilding from "../hooks/useSelectedBuilding";
 
 function Unit() {
+  const selectedBuildingId = useSelectedBuilding();
   const [unitId, setUnitId] = useState("");
   const [area, setArea] = useState("");
   const [type, setType] = useState("");
@@ -12,31 +21,6 @@ function Unit() {
   const [floor, setFloor] = useState("");
   const [editingId, setEditingId] = useState(null);
 
-  const fetchUnits = async () => {
-    try {
-      const res = await fetch("http://localhost:3000/units");
-      const data = await res.json();
-      setUnits(data);
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
-  const fetchFloors = async () => {
-    try {
-      const res = await fetch("http://localhost:3000/floors");
-      const data = await res.json();
-      setFloors(data);
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
-  useEffect(() => {
-    fetchUnits();
-    fetchFloors();
-  }, []);
-
   const clearForm = () => {
     setUnitId("");
     setArea("");
@@ -45,9 +29,52 @@ function Unit() {
     setEditingId(null);
   };
 
+  const fetchUnits = async (useCache = true) => {
+    if (!selectedBuildingId) {
+      setUnits([]);
+      return;
+    }
+
+    await loadCachedJson(
+      withBuilding("/units", selectedBuildingId),
+      setUnits,
+      setError,
+      "Failed to load units",
+      { useCache }
+    );
+  };
+
+  const fetchFloors = async (useCache = true) => {
+    if (!selectedBuildingId) {
+      setFloors([]);
+      return;
+    }
+
+    await loadCachedJson(
+      withBuilding("/floors", selectedBuildingId),
+      setFloors,
+      setError,
+      "Failed to load floors",
+      { useCache }
+    );
+  };
+
+  useEffect(() => {
+    clearForm();
+    setMessage("");
+    setError("");
+    fetchUnits();
+    fetchFloors();
+  }, [selectedBuildingId]);
+
   const saveUnit = async () => {
     setMessage("");
     setError("");
+
+    if (!selectedBuildingId) {
+      setError("Add or select a building first");
+      return;
+    }
 
     if (!unitId || !area || !type || !floor) {
       setError("Please fill all fields");
@@ -56,24 +83,29 @@ function Unit() {
 
     try {
       const res = await fetch(
-        editingId
-          ? `http://localhost:3000/units/${editingId}`
-          : "http://localhost:3000/units",
+        editingId ? `${API_BASE}/units/${editingId}` : `${API_BASE}/units`,
         {
           method: editingId ? "PUT" : "POST",
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ unitId, area, type, floor })
+          body: JSON.stringify({
+            building: selectedBuildingId,
+            unitId,
+            area,
+            type,
+            floor
+          })
         }
       );
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
         setMessage(data.message || (editingId ? "Unit updated" : "Unit added"));
         clearForm();
-        fetchUnits();
+        invalidateCache(selectedBuildingId);
+        fetchUnits(false);
       } else {
         setError(data.error || "Failed to save unit");
       }
@@ -97,15 +129,16 @@ function Unit() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`http://localhost:3000/units/${id}`, {
+      const res = await fetch(`${API_BASE}/units/${id}`, {
         method: "DELETE"
       });
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
         setMessage(data.message || "Unit deleted");
-        fetchUnits();
+        invalidateCache(selectedBuildingId);
+        fetchUnits(false);
       } else {
         setError(data.error || "Failed to delete unit");
       }
@@ -121,6 +154,10 @@ function Unit() {
       <div className="main-content">
         <h1>Units</h1>
 
+        {!selectedBuildingId && (
+          <p className="error">Add or select a building before managing units.</p>
+        )}
+
         <section className="panel">
           <h2>{editingId ? "Edit Unit" : "Add Unit"}</h2>
 
@@ -129,21 +166,28 @@ function Unit() {
               placeholder="Unit ID"
               value={unitId}
               onChange={(e) => setUnitId(e.target.value)}
+              disabled={!selectedBuildingId}
             />
 
             <input
               placeholder="Area"
               value={area}
               onChange={(e) => setArea(e.target.value)}
+              disabled={!selectedBuildingId}
             />
 
             <input
               placeholder="Type"
               value={type}
               onChange={(e) => setType(e.target.value)}
+              disabled={!selectedBuildingId}
             />
 
-            <select value={floor} onChange={(e) => setFloor(e.target.value)}>
+            <select
+              value={floor}
+              onChange={(e) => setFloor(e.target.value)}
+              disabled={!selectedBuildingId}
+            >
               <option value="">Select Floor</option>
               {floors.map((item) => (
                 <option key={item._id} value={item._id}>
@@ -154,7 +198,7 @@ function Unit() {
           </div>
 
           <div className="form-actions">
-            <button onClick={saveUnit}>
+            <button onClick={saveUnit} disabled={!selectedBuildingId}>
               {editingId ? "Update Unit" : "Add Unit"}
             </button>
 
@@ -178,6 +222,7 @@ function Unit() {
               <th>Area</th>
               <th>Type</th>
               <th>Floor</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -189,7 +234,12 @@ function Unit() {
                   <td>{unit.unitId}</td>
                   <td>{unit.area}</td>
                   <td>{unit.type}</td>
-                  <td>{unit.floor?.floor}</td>
+                  <td>{unit.floor?.floor || "-"}</td>
+                  <td>
+                    <span className={unit.status === "Occupied" ? "occupied-status" : "available-status"}>
+                      {unit.status || "Available"}
+                    </span>
+                  </td>
                   <td>
                     <button onClick={() => editUnit(unit)}>
                       Edit
@@ -202,7 +252,7 @@ function Unit() {
               ))
             ) : (
               <tr>
-                <td colSpan="5">No units added yet</td>
+                <td colSpan="6">No units added yet</td>
               </tr>
             )}
           </tbody>

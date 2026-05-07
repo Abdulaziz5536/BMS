@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
+import {
+  API_BASE,
+  invalidateCache,
+  loadCachedJson,
+  readResponse,
+  withBuilding
+} from "../buildingSelection";
+import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import "../style.css";
 
 export default function Employees() {
+  const selectedBuildingId = useSelectedBuilding();
   const [employees, setEmployees] = useState([]);
   const [name, setName] = useState("");
   const [position, setPosition] = useState("");
@@ -11,42 +20,6 @@ export default function Employees() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const API = "http://localhost:3000";
-
-  const readResponse = async (res) => {
-    const text = await res.text();
-    const contentType = res.headers.get("content-type") || "";
-
-    if (!text) {
-      return {};
-    }
-
-    if (contentType.includes("application/json")) {
-      return JSON.parse(text);
-    }
-
-    throw new Error("Backend returned a non-JSON response. Restart the backend server and try again.");
-  };
-
-  const fetchEmployees = async () => {
-    try {
-      const res = await fetch(`${API}/employees`);
-      const data = await readResponse(res);
-
-      if (res.ok) {
-        setEmployees(data);
-      } else {
-        setError(data.error || data.err || "Failed to load employees");
-      }
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
-
   const clearForm = () => {
     setName("");
     setPosition("");
@@ -54,9 +27,36 @@ export default function Employees() {
     setEditingId(null);
   };
 
+  const fetchEmployees = async (useCache = true) => {
+    if (!selectedBuildingId) {
+      setEmployees([]);
+      return;
+    }
+
+    await loadCachedJson(
+      withBuilding("/employees", selectedBuildingId),
+      setEmployees,
+      setError,
+      "Failed to load employees",
+      { useCache }
+    );
+  };
+
+  useEffect(() => {
+    clearForm();
+    setMessage("");
+    setError("");
+    fetchEmployees();
+  }, [selectedBuildingId]);
+
   const saveEmployee = async () => {
     setMessage("");
     setError("");
+
+    if (!selectedBuildingId) {
+      setError("Add or select a building first");
+      return;
+    }
 
     if (!name || !position || !phoneNumber) {
       setError("Please fill in all fields");
@@ -65,13 +65,18 @@ export default function Employees() {
 
     try {
       const res = await fetch(
-        editingId ? `${API}/employees/${editingId}` : `${API}/employees`,
+        editingId ? `${API_BASE}/employees/${editingId}` : `${API_BASE}/employees`,
         {
           method: editingId ? "PUT" : "POST",
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ name, position, phoneNumber })
+          body: JSON.stringify({
+            building: selectedBuildingId,
+            name,
+            position,
+            phoneNumber
+          })
         }
       );
 
@@ -80,7 +85,8 @@ export default function Employees() {
       if (res.ok) {
         setMessage(data.message || (editingId ? "Employee updated" : "Employee added"));
         clearForm();
-        fetchEmployees();
+        invalidateCache(selectedBuildingId);
+        fetchEmployees(false);
       } else {
         setError(data.error || data.err || "Failed to save employee");
       }
@@ -103,7 +109,7 @@ export default function Employees() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API}/employees/${id}`, {
+      const res = await fetch(`${API_BASE}/employees/${id}`, {
         method: "DELETE"
       });
 
@@ -111,7 +117,8 @@ export default function Employees() {
 
       if (res.ok) {
         setMessage(data.message || "Employee deleted");
-        fetchEmployees();
+        invalidateCache(selectedBuildingId);
+        fetchEmployees(false);
       } else {
         setError(data.error || data.err || "Failed to delete employee");
       }
@@ -127,6 +134,10 @@ export default function Employees() {
       <div className="main-content">
         <h1>Employees</h1>
 
+        {!selectedBuildingId && (
+          <p className="error">Add or select a building before managing employees.</p>
+        )}
+
         <section className="panel">
           <h2>{editingId ? "Edit Employee" : "Add Employee"}</h2>
 
@@ -136,6 +147,7 @@ export default function Employees() {
               placeholder="Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              disabled={!selectedBuildingId}
             />
 
             <input
@@ -143,6 +155,7 @@ export default function Employees() {
               placeholder="Position"
               value={position}
               onChange={(e) => setPosition(e.target.value)}
+              disabled={!selectedBuildingId}
             />
 
             <input
@@ -150,11 +163,12 @@ export default function Employees() {
               placeholder="Phone Number"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
+              disabled={!selectedBuildingId}
             />
           </div>
 
           <div className="form-actions">
-            <button onClick={saveEmployee}>
+            <button onClick={saveEmployee} disabled={!selectedBuildingId}>
               {editingId ? "Update Employee" : "Add Employee"}
             </button>
 

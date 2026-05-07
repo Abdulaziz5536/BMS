@@ -3,28 +3,32 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 
-require('dotenv').config();
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const authRouter = require("./routes/auth-route");
+const buildingRouter = require("./routes/building-route");
 const floorRouter = require("./routes/floor-route");
 const unitRouter = require("./routes/unit-route");
 const tenantRouter = require("./routes/tenant-route");
 const employeeRouter = require("./routes/employees-route");
 const contractRouter = require("./routes/contract-route");
 const dashboardRouter = require("./routes/dashboard-route");
+const utilityRouter = require("./routes/utility-route");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "20mb" }));
 app.use(authRouter);
+app.use(buildingRouter);
 app.use(floorRouter);
 app.use(unitRouter);
 app.use(tenantRouter);
 app.use(employeeRouter);
 app.use(contractRouter);
 app.use(dashboardRouter);
+app.use(utilityRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });

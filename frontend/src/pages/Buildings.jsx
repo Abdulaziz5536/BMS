@@ -1,0 +1,254 @@
+import { useEffect, useState } from "react";
+import Sidebar from "./Sidebar";
+import {
+  API_BASE,
+  getSelectedBuildingId,
+  invalidateCache,
+  loadCachedJson,
+  notifyBuildingsUpdated,
+  readResponse,
+  setSelectedBuildingId
+} from "../buildingSelection";
+import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import "../style.css";
+
+export default function Buildings() {
+  const selectedBuildingId = useSelectedBuilding();
+  const [buildings, setBuildings] = useState([]);
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [managerName, setManagerName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [notes, setNotes] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const loadBuildings = async () => {
+    await loadCachedJson(
+      `${API_BASE}/buildings`,
+      (data) => {
+        setBuildings(data);
+
+        if (!getSelectedBuildingId() && data.length > 0) {
+          setSelectedBuildingId(data[0]._id);
+        }
+      },
+      setError,
+      "Failed to load buildings"
+    );
+  };
+
+  useEffect(() => {
+    loadBuildings();
+  }, []);
+
+  const clearForm = () => {
+    setName("");
+    setAddress("");
+    setManagerName("");
+    setPhone("");
+    setNotes("");
+    setEditingId(null);
+  };
+
+  const saveBuilding = async () => {
+    setMessage("");
+    setError("");
+
+    if (!name) {
+      setError("Building name is required");
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        editingId ? `${API_BASE}/buildings/${editingId}` : `${API_BASE}/buildings`,
+        {
+          method: editingId ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ name, address, managerName, phone, notes })
+        }
+      );
+
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        setMessage(data.message || (editingId ? "Building updated" : "Building added"));
+        clearForm();
+        invalidateCache("/buildings");
+
+        if (data.building?._id) {
+          setSelectedBuildingId(data.building._id);
+        }
+
+        notifyBuildingsUpdated();
+        loadBuildings();
+      } else {
+        setError(data.error || "Failed to save building");
+      }
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const editBuilding = (building) => {
+    setName(building.name || "");
+    setAddress(building.address || "");
+    setManagerName(building.managerName || "");
+    setPhone(building.phone || "");
+    setNotes(building.notes || "");
+    setEditingId(building._id);
+    setMessage("");
+    setError("");
+  };
+
+  const deleteBuilding = async (buildingId) => {
+    const shouldDelete = window.confirm(
+      "Delete this building and all of its floors, units, tenants, contracts, employees, and utilities?"
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      setMessage("");
+      setError("");
+
+      const res = await fetch(`${API_BASE}/buildings/${buildingId}`, {
+        method: "DELETE"
+      });
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        const remainingBuildings = buildings.filter((building) => building._id !== buildingId);
+        invalidateCache();
+
+        if (selectedBuildingId === buildingId) {
+          setSelectedBuildingId(remainingBuildings[0]?._id || "");
+        }
+
+        setMessage(data.message || "Building deleted");
+        clearForm();
+        notifyBuildingsUpdated();
+        loadBuildings();
+      } else {
+        setError(data.error || "Failed to delete building");
+      }
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  return (
+    <div className="app-layout">
+      <Sidebar />
+
+      <div className="main-content">
+        <h1>Buildings</h1>
+
+        <section className="panel">
+          <h2>{editingId ? "Edit Building" : "Add Building"}</h2>
+
+          <div className="form-grid">
+            <input
+              placeholder="Building Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+
+            <input
+              placeholder="Address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
+
+            <input
+              placeholder="Manager Name"
+              value={managerName}
+              onChange={(e) => setManagerName(e.target.value)}
+            />
+
+            <input
+              type="tel"
+              placeholder="Phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+
+            <input
+              placeholder="Notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+
+          <div className="form-actions">
+            <button onClick={saveBuilding}>
+              {editingId ? "Update Building" : "Add Building"}
+            </button>
+
+            {editingId && (
+              <button className="secondary-btn" onClick={clearForm}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </section>
+
+        {message && <p className="message">{message}</p>}
+        {error && <p className="error">{error}</p>}
+
+        <h2>Buildings List</h2>
+
+        <table className="floors-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Address</th>
+              <th>Manager</th>
+              <th>Phone</th>
+              <th>Active</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {buildings.length > 0 ? (
+              buildings.map((building) => (
+                <tr
+                  key={building._id}
+                  className={selectedBuildingId === building._id ? "selected-row" : ""}
+                >
+                  <td>{building.name}</td>
+                  <td>{building.address || "-"}</td>
+                  <td>{building.managerName || "-"}</td>
+                  <td>{building.phone || "-"}</td>
+                  <td>{selectedBuildingId === building._id ? "Selected" : "-"}</td>
+                  <td>
+                    <button onClick={() => setSelectedBuildingId(building._id)}>
+                      Select
+                    </button>
+                    <button onClick={() => editBuilding(building)}>
+                      Edit
+                    </button>
+                    <button className="danger-btn" onClick={() => deleteBuilding(building._id)}>
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="6">No buildings added yet</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

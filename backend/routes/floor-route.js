@@ -4,39 +4,50 @@ const Floor = require('../models/floor-model');
 
 router.post('/floors', async (req, res) => {
   try {
-    console.log("POST /floors body:", req.body);
+    const { building, floor, units, totalSqm } = req.body;
+    const floorNumber = Number(floor);
+    const unitCount = Number(units);
+    const totalArea = Number(totalSqm);
 
-    const { floor, units, totalSqm } = req.body;
-
-    if (floor === undefined || units === undefined || totalSqm === undefined) {
+    if (!building || floor === undefined || units === undefined || totalSqm === undefined) {
       return res.status(400).json({ error: "All fields are required" });
     }
 
-    const newFloor = await Floor.create({
-      floor: Number(floor),
-      units: Number(units),
-      totalSqm: Number(totalSqm)
+    if (!Number.isFinite(floorNumber) || !Number.isFinite(unitCount) || !Number.isFinite(totalArea)) {
+      return res.status(400).json({ error: "Floor, units, and total SQM must be valid numbers" });
+    }
+
+    const existingFloor = await Floor.findOne({
+      building,
+      floor: floorNumber
     });
 
-    console.log("Floor added successfully:", newFloor);
+    if (existingFloor) {
+      return res.status(400).json({ error: "Floor already exists in this building" });
+    }
+
+    const newFloor = await Floor.create({
+      building,
+      floor: floorNumber,
+      units: unitCount,
+      totalSqm: totalArea
+    });
 
     res.status(201).json({
       message: "Floor added successfully",
       newFloor
     });
   } catch (error) {
-    console.log("POST /floors error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 router.get('/floors', async (req, res) => {
   try {
-    
-    const floors = await Floor.find().sort({ floor: 1 });
+    const filter = req.query.building ? { building: req.query.building } : {};
+    const floors = await Floor.find(filter).sort({ floor: 1 });
     res.json(floors);
   } catch (error) {
-    
     res.status(500).json({ error: error.message });
   }
 });
@@ -44,14 +55,36 @@ router.get('/floors', async (req, res) => {
 router.put('/floors/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { floor, units, totalSqm } = req.body;
+    const { building, floor, units, totalSqm } = req.body;
+    const floorNumber = Number(floor);
+    const unitCount = Number(units);
+    const totalArea = Number(totalSqm);
+
+    if (!building || floor === undefined || units === undefined || totalSqm === undefined) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
+    if (!Number.isFinite(floorNumber) || !Number.isFinite(unitCount) || !Number.isFinite(totalArea)) {
+      return res.status(400).json({ error: "Floor, units, and total SQM must be valid numbers" });
+    }
+
+    const existingFloor = await Floor.findOne({
+      building,
+      floor: floorNumber,
+      _id: { $ne: id }
+    });
+
+    if (existingFloor) {
+      return res.status(400).json({ error: "Floor already exists in this building" });
+    }
 
     const updatedFloor = await Floor.findByIdAndUpdate(
       id,
       {
-        floor: Number(floor),
-        units: Number(units),
-        totalSqm: Number(totalSqm)
+        building,
+        floor: floorNumber,
+        units: unitCount,
+        totalSqm: totalArea
       },
       { new: true }
     );
@@ -65,7 +98,6 @@ router.put('/floors/:id', async (req, res) => {
       updatedFloor
     });
   } catch (error) {
-    console.log("PUT /floors error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -82,7 +114,6 @@ router.delete('/floors/:id', async (req, res) => {
 
     res.json({ message: "Floor deleted successfully" });
   } catch (error) {
-    console.log("DELETE /floors error:", error);
     res.status(500).json({ error: error.message });
   }
 });

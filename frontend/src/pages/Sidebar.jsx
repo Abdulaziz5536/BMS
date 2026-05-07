@@ -1,13 +1,88 @@
 import { NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
+import {
+  API_BASE,
+  buildingsUpdatedEvent,
+  getSelectedBuildingId,
+  loadCachedJson,
+  prefetchBuildingData,
+  setSelectedBuildingId
+} from "../buildingSelection";
 
 
 
 export default function Sidebar() {
+  const [buildings, setBuildings] = useState([]);
+  const [selectedBuilding, setSelectedBuilding] = useState(getSelectedBuildingId());
+
+  const loadBuildings = async () => {
+    await loadCachedJson(
+      `${API_BASE}/buildings`,
+      (data) => {
+        setBuildings(data);
+
+        if (!getSelectedBuildingId() && data.length > 0) {
+          setSelectedBuildingId(data[0]._id);
+          setSelectedBuilding(data[0]._id);
+          prefetchBuildingData(data[0]._id);
+        } else {
+          const activeBuildingId = getSelectedBuildingId();
+          setSelectedBuilding(activeBuildingId);
+          prefetchBuildingData(activeBuildingId);
+        }
+      },
+      null,
+      "Failed to load buildings"
+    );
+  };
+
+  useEffect(() => {
+    loadBuildings();
+
+    const syncSelectedBuilding = (event) => {
+      setSelectedBuilding(event.detail || getSelectedBuildingId());
+    };
+
+    window.addEventListener("buildingChanged", syncSelectedBuilding);
+    window.addEventListener(buildingsUpdatedEvent, loadBuildings);
+
+    return () => {
+      window.removeEventListener("buildingChanged", syncSelectedBuilding);
+      window.removeEventListener(buildingsUpdatedEvent, loadBuildings);
+    };
+  }, []);
+
+  const changeBuilding = (buildingId) => {
+    setSelectedBuilding(buildingId);
+    setSelectedBuildingId(buildingId);
+    prefetchBuildingData(buildingId);
+  };
+
   return (
     <div className="sidebar">
       <h2>Building Management System</h2>
 
+      <div className="building-switcher">
+        <label>Active Building</label>
+        <select
+          value={selectedBuilding}
+          onChange={(e) => changeBuilding(e.target.value)}
+        >
+          <option value="">Select Building</option>
+          {buildings.map((building) => (
+            <option key={building._id} value={building._id}>
+              {building.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <ul>
+        <li>
+          <NavLink to="/buildings" className={({ isActive }) => isActive ? "active" : ""}>
+            Buildings
+          </NavLink>
+        </li>
         <li>
           <NavLink to="/dashboard" className={({ isActive }) => isActive ? "active" : ""}>
             Dashboard
@@ -38,6 +113,11 @@ export default function Sidebar() {
         <li>
           <NavLink to="/employees" className={({ isActive }) => isActive ? "active" : ""}>
             Employees
+          </NavLink>
+        </li>
+        <li>
+          <NavLink to="/utilities" className={({ isActive }) => isActive ? "active" : ""}>
+            Utilities
           </NavLink>
         </li>
 

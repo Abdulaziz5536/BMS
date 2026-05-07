@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const floorSchema = new mongoose.Schema({
+  building: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Building",
+    index: true
+  },
 
   floor: {
     type: Number,

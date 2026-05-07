@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
+import {
+  API_BASE,
+  invalidateCache,
+  loadCachedJson,
+  readResponse,
+  withBuilding
+} from "../buildingSelection";
+import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import "../style.css";
 
 export default function Floors() {
+  const selectedBuildingId = useSelectedBuilding();
   const [floor, setFloor] = useState("");
   const [units, setUnits] = useState("");
   const [sqm, setSqm] = useState("");
@@ -11,29 +20,6 @@ export default function Floors() {
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
 
-  const API = "http://localhost:3000/floors";
-
-  const loadFloors = async () => {
-    try {
-      const res = await fetch(API);
-      const data = await res.json();
-
-      if (res.ok) {
-        setFloors(data);
-        setMessage("");
-      } else {
-        setError(data.error);
-      }
-    } catch (error) {
-      
-      setError(error.message);
-    }
-  };
-
-  useEffect(() => {
-    loadFloors();
-  }, []);
-
   const clearForm = () => {
     setFloor("");
     setUnits("");
@@ -41,57 +27,74 @@ export default function Floors() {
     setEditingId(null);
   };
 
+  const loadFloors = async (useCache = true) => {
+    if (!selectedBuildingId) {
+      setFloors([]);
+      return;
+    }
+
+    await loadCachedJson(
+      withBuilding("/floors", selectedBuildingId),
+      setFloors,
+      setError,
+      "Failed to load floors",
+      { useCache }
+    );
+  };
+
+  useEffect(() => {
+    clearForm();
+    setMessage("");
+    setError("");
+    loadFloors();
+  }, [selectedBuildingId]);
+
   const saveFloor = async () => {
     setMessage("");
     setError("");
+
+    if (!selectedBuildingId) {
+      setError("Add or select a building first");
+      return;
+    }
+
     if (!floor || !units || !sqm) {
       setError("Please fill in all fields");
       return;
     }
 
     try {
-      let res;
-
       const bodyData = {
+        building: selectedBuildingId,
         floor: Number(floor),
         units: Number(units),
         totalSqm: Number(sqm)
       };
 
-      if (editingId) {
-        res = await fetch(`${API}/${editingId}`, {
-          method: "PUT",
+      const res = await fetch(
+        editingId ? `${API_BASE}/floors/${editingId}` : `${API_BASE}/floors`,
+        {
+          method: editingId ? "PUT" : "POST",
           headers: {
             "Content-Type": "application/json"
           },
           body: JSON.stringify(bodyData)
-        });
-      } else {
-        res = await fetch(API, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(bodyData)
-        });
-      }
+        }
+      );
 
-      const text = await res.text();
-      
-
-      const data = text ? JSON.parse(text) : {};
+      const data = await readResponse(res);
 
       if (res.ok) {
         setMessage(
           data.message || (editingId ? "Floor updated successfully" : "Floor added successfully")
         );
         clearForm();
-        loadFloors();
+        invalidateCache(selectedBuildingId);
+        loadFloors(false);
       } else {
-        setError(data.error);
+        setError(data.error || "Failed to save floor");
       }
     } catch (error) {
-      console.log("saveFloor fetch error:", error);
       setError(error.message);
     }
   };
@@ -107,20 +110,23 @@ export default function Floors() {
 
   const deleteFloor = async (id) => {
     try {
-      const res = await fetch(`${API}/${id}`, {
+      setMessage("");
+      setError("");
+
+      const res = await fetch(`${API_BASE}/floors/${id}`, {
         method: "DELETE"
       });
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
-        setMessage("Floor deleted successfully");
-        loadFloors();
+        setMessage(data.message || "Floor deleted successfully");
+        invalidateCache(selectedBuildingId);
+        loadFloors(false);
       } else {
-        setError(data.error);
+        setError(data.error || "Failed to delete floor");
       }
     } catch (error) {
-      console.log("deleteFloor error:", error);
       setError(error.message);
     }
   };
@@ -132,12 +138,17 @@ export default function Floors() {
       <div className="main-content">
         <h1>Floors Management</h1>
 
+        {!selectedBuildingId && (
+          <p className="error">Add or select a building before managing floors.</p>
+        )}
+
         <div className="floors-form">
           <input
             type="number"
             placeholder="Floor Number"
             value={floor}
             onChange={(e) => setFloor(e.target.value)}
+            disabled={!selectedBuildingId}
           />
 
           <input
@@ -145,6 +156,7 @@ export default function Floors() {
             placeholder="Units"
             value={units}
             onChange={(e) => setUnits(e.target.value)}
+            disabled={!selectedBuildingId}
           />
 
           <input
@@ -152,9 +164,10 @@ export default function Floors() {
             placeholder="Total SQM"
             value={sqm}
             onChange={(e) => setSqm(e.target.value)}
+            disabled={!selectedBuildingId}
           />
 
-          <button onClick={saveFloor}>
+          <button onClick={saveFloor} disabled={!selectedBuildingId}>
             {editingId ? "Update Floor" : "Add Floor"}
           </button>
 
@@ -189,7 +202,7 @@ export default function Floors() {
                   <td>{item.totalSqm}</td>
                   <td>
                     <button onClick={() => editFloor(item)}>Edit</button>
-                    <button onClick={() => deleteFloor(item._id)}>Delete</button>
+                    <button className="danger-btn" onClick={() => deleteFloor(item._id)}>Delete</button>
                   </td>
                 </tr>
               ))

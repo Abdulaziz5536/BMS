@@ -1,102 +1,121 @@
 import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
+import {
+  API_BASE,
+  invalidateCache,
+  loadCachedJson,
+  readResponse,
+  withBuilding
+} from "../buildingSelection";
+import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import "../style.css";
 
 export default function Contracts() {
+  const selectedBuildingId = useSelectedBuilding();
   const [tenants, setTenants] = useState([]);
   const [contracts, setContracts] = useState([]);
 
   const [tenantId, setTenantId] = useState("");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState("");
-  const [contractLength, setContractLength] = useState("");
+  const [leaseStartDate, setLeaseStartDate] = useState("");
+  const [leaseEndDate, setLeaseEndDate] = useState("");
   const [paymentFrequency, setPaymentFrequency] = useState("");
+  const [contractStatus, setContractStatus] = useState("pending");
   const [editingId, setEditingId] = useState(null);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const API = "http://localhost:3000";
-
-  const fetchContract = async () => {
-    try {
-      const res = await fetch(`${API}/contract`);
-      const data = await res.json();
-
-      if (res.ok) {
-        setContracts(data);
-        setError("");
-      } else {
-        setError(data.error || data.err || "Failed to load contracts");
-      }
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
-  const fetchTenants = async () => {
-    try {
-      const res = await fetch(`${API}/tenants`);
-      const data = await res.json();
-
-      if (res.ok) {
-        setTenants(data);
-        setError("");
-      } else {
-        setError(data.error || data.err || "Failed to load tenants");
-      }
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
-  useEffect(() => {
-    fetchContract();
-    fetchTenants();
-  }, []);
-
   const clearForm = () => {
     setTenantId("");
     setAmount("");
-    setDate("");
-    setContractLength("");
+    setLeaseStartDate("");
+    setLeaseEndDate("");
     setPaymentFrequency("");
+    setContractStatus("pending");
     setEditingId(null);
   };
+
+  const fetchContract = async (useCache = true) => {
+    if (!selectedBuildingId) {
+      setContracts([]);
+      return;
+    }
+
+    await loadCachedJson(
+      withBuilding("/contract", selectedBuildingId),
+      setContracts,
+      setError,
+      "Failed to load contracts",
+      { useCache }
+    );
+  };
+
+  const fetchTenants = async (useCache = true) => {
+    if (!selectedBuildingId) {
+      setTenants([]);
+      return;
+    }
+
+    await loadCachedJson(
+      withBuilding("/tenants", selectedBuildingId),
+      setTenants,
+      setError,
+      "Failed to load tenants",
+      { useCache }
+    );
+  };
+
+  useEffect(() => {
+    clearForm();
+    setMessage("");
+    setError("");
+    fetchContract();
+    fetchTenants();
+  }, [selectedBuildingId]);
 
   const saveContract = async () => {
     setMessage("");
     setError("");
 
-    if (!tenantId || !amount || !date || !contractLength || !paymentFrequency) {
+    if (!selectedBuildingId) {
+      setError("Add or select a building first");
+      return;
+    }
+
+    if (!tenantId || !amount || !leaseStartDate || !leaseEndDate || !paymentFrequency) {
       setError("Please fill in all fields");
       return;
     }
 
     try {
       const res = await fetch(
-        editingId ? `${API}/contract/${editingId}` : `${API}/contract`,
+        editingId ? `${API_BASE}/contract/${editingId}` : `${API_BASE}/contract`,
         {
           method: editingId ? "PUT" : "POST",
           headers: {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
+            building: selectedBuildingId,
             tenant: tenantId,
             amount,
-            date,
-            contractLength,
-            paymentFrequency
+            date: leaseStartDate,
+            leaseStartDate,
+            leaseEndDate,
+            paymentFrequency,
+            status: contractStatus
           })
         }
       );
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
         setMessage(data.message || (editingId ? "Contract updated" : "Contract added"));
         clearForm();
-        fetchContract();
+        invalidateCache(selectedBuildingId);
+        fetchContract(false);
       } else {
         setError(data.error || data.err || "Failed to save contract");
       }
@@ -108,9 +127,10 @@ export default function Contracts() {
   const editContract = (contract) => {
     setTenantId(contract.tenant?._id || contract.tenant || "");
     setAmount(contract.amount || "");
-    setDate(contract.date || "");
-    setContractLength(contract.contractLength || "");
+    setLeaseStartDate(contract.leaseStartDate || contract.date || "");
+    setLeaseEndDate(contract.leaseEndDate || "");
     setPaymentFrequency(contract.paymentFrequency || "");
+    setContractStatus(contract.status || "pending");
     setEditingId(contract._id);
     setMessage("");
     setError("");
@@ -121,15 +141,16 @@ export default function Contracts() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API}/contract/${id}`, {
+      const res = await fetch(`${API_BASE}/contract/${id}`, {
         method: "DELETE"
       });
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
         setMessage(data.message || "Contract deleted");
-        fetchContract();
+        invalidateCache(selectedBuildingId);
+        fetchContract(false);
       } else {
         setError(data.error || data.err || "Failed to delete contract");
       }
@@ -137,21 +158,29 @@ export default function Contracts() {
       setError(error.message);
     }
   };
+
   const markAsPaid = async (id) => {
-  const res = await fetch(`${API}/contract/${id}`, {
-    method: "PUT"
-  });
+    try {
+      setMessage("");
+      setError("");
 
-  const data = await res.json();
+      const res = await fetch(`${API_BASE}/contract/${id}/pay`, {
+        method: "PATCH"
+      });
 
-  if (res.ok) {
-    setMessage(data.message);
-    fetchContract(); 
-  } else {
-    console.log(data.error);
-    setError(error.message);
-  }
-};
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        setMessage(data.message || "Payment marked as paid");
+        invalidateCache(selectedBuildingId);
+        fetchContract(false);
+      } else {
+        setError(data.error || "Failed to mark payment as paid");
+      }
+    } catch (error) {
+      setError(error.message);
+    }
+  };
 
   return (
     <div className="app-layout">
@@ -160,11 +189,19 @@ export default function Contracts() {
       <div className="main-content">
         <h1>Contracts</h1>
 
+        {!selectedBuildingId && (
+          <p className="error">Add or select a building before managing contracts.</p>
+        )}
+
         <section className="panel">
           <h2>{editingId ? "Edit Contract" : "Add Contract"}</h2>
 
-          <div className="form-grid">
-            <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+          <div className="form-grid contract-form-grid">
+            <select
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              disabled={!selectedBuildingId}
+            >
               <option value="">Select Tenant</option>
               {tenants.map((tenant) => (
                 <option key={tenant._id} value={tenant._id}>
@@ -175,28 +212,36 @@ export default function Contracts() {
 
             <input
               type="number"
-              placeholder="Amount"
+              placeholder="Amount (Br)"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              disabled={!selectedBuildingId}
             />
 
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <label className="field-label">
+              Lease Start Date
+              <input
+                type="date"
+                value={leaseStartDate}
+                onChange={(e) => setLeaseStartDate(e.target.value)}
+                disabled={!selectedBuildingId}
+              />
+            </label>
 
-            <input
-              type="number"
-              min="1"
-              placeholder="Contract Length (Years)"
-              value={contractLength}
-              onChange={(e) => setContractLength(e.target.value)}
-            />
+            <label className="field-label">
+              Lease End Date
+              <input
+                type="date"
+                value={leaseEndDate}
+                onChange={(e) => setLeaseEndDate(e.target.value)}
+                disabled={!selectedBuildingId}
+              />
+            </label>
 
             <select
               value={paymentFrequency}
               onChange={(e) => setPaymentFrequency(e.target.value)}
+              disabled={!selectedBuildingId}
             >
               <option value="">Payment Frequency</option>
               <option value="Monthly">Monthly</option>
@@ -207,7 +252,7 @@ export default function Contracts() {
           </div>
 
           <div className="form-actions">
-            <button onClick={saveContract}>
+            <button onClick={saveContract} disabled={!selectedBuildingId}>
               {editingId ? "Update Contract" : "Add Contract"}
             </button>
 
@@ -229,8 +274,8 @@ export default function Contracts() {
             <tr>
               <th>Tenant</th>
               <th>Amount</th>
-              <th>Start Date</th>
-              <th>Length</th>
+              <th>Lease Start</th>
+              <th>Lease End</th>
               <th>Payment</th>
               <th>Status</th>
               <th>Actions</th>
@@ -242,15 +287,17 @@ export default function Contracts() {
               contracts.map((contract) => (
                 <tr key={contract._id}>
                   <td>{contract.tenant?.tenantName || "Tenant"}</td>
-                  <td>{contract.amount}</td>
-                  <td>{contract.date}</td>
-                  <td>{contract.contractLength ? `${contract.contractLength} years` : "-"}</td>
+                  <td>Br {contract.amount}</td>
+                  <td>{contract.leaseStartDate || contract.date || "-"}</td>
+                  <td>{contract.leaseEndDate || "-"}</td>
                   <td>{contract.paymentFrequency || "-"}</td>
-                    <td> {contract.status === "paid" ? (
-                      <span style={{ color: "green" }}>Paid</span>
-                     ) : (
-                         <span style={{ color: "orange" }}>Pending</span> )}</td>
-                         
+                  <td>
+                    {contract.status === "paid" ? (
+                      <span className="paid-status">Paid</span>
+                    ) : (
+                      <span className="pending-status">Pending</span>
+                    )}
+                  </td>
                   <td>
                     <button onClick={() => editContract(contract)}>
                       Edit
@@ -259,14 +306,16 @@ export default function Contracts() {
                       Delete
                     </button>
                     {contract.status === "pending" && (
-                         <button onClick={() => markAsPaid(contract._id)}>
-                                     Mark as Paid </button> )}
+                      <button onClick={() => markAsPaid(contract._id)}>
+                        Mark as Paid
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="6">No contracts added yet</td>
+                <td colSpan="7">No contracts added yet</td>
               </tr>
             )}
           </tbody>

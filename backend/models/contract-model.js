@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const contractSchema = new mongoose.Schema({
+  building: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Building",
+    index: true
+  },
   tenant: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Tenant"
@@ -13,6 +18,14 @@ const contractSchema = new mongoose.Schema({
   },  
 
   date: {
+    type: String
+  },
+
+  leaseStartDate: {
+    type: String
+  },
+
+  leaseEndDate: {
     type: String
   },
 

@@ -2,12 +2,14 @@ import { Routes, Route } from "react-router-dom";
 
 import Login from "./components/Login";
 import Signup from "./components/Signup";
-import Dashboard from "./pages/dashboard";
-import Floors from "./pages/floors";
+import Dashboard from "./pages/Dashboard";
+import Buildings from "./pages/Buildings";
+import Floors from "./pages/Floors";
 import Unit from "./pages/Unit";
 import Tenants from "./pages/Tenants";
 import Contracts from "./pages/Contracts"; 
 import Employees from "./pages/Employees";
+import Utilities from "./pages/Utilities";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -25,6 +27,15 @@ function App() {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/buildings"
+        element={
+          <ProtectedRoute>
+            <Buildings />
           </ProtectedRoute>
         }
       />
@@ -70,6 +81,15 @@ function App() {
         element={ 
           <ProtectedRoute>
             <Employees />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/utilities"
+        element={
+          <ProtectedRoute>
+            <Utilities />
           </ProtectedRoute>
         }
       />
