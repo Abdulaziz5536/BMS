@@ -28,6 +28,11 @@ const utilitySchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    paymentFrequency: {
+      type: String,
+      enum: ["Monthly", "Quarterly", "Every 6 months", "Yearly"],
+      default: "Monthly"
+    },
     status: {
       type: String,
       enum: ["pending", "paid"],
@@ -36,6 +41,13 @@ const utilitySchema = new mongoose.Schema(
     notes: {
       type: String,
       default: ""
+    },
+
+    // attachment (photo or pdf)
+    utilityFile: {
+      name: String,
+      type: String,
+      data: String
     }
   },
   { timestamps: true }

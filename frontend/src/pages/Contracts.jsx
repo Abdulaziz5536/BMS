@@ -10,6 +10,42 @@ import {
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import "../style.css";
 
+const formatDate = (date) => {
+  if (!date) return "-";
+  const raw = String(date).slice(0, 10); // YYYY-MM-DD
+  const parts = raw.split("-");
+  if (parts.length !== 3) return raw;
+  const [year, month, day] = parts;
+  return `${day}/${month}/${year}`;
+};
+
+const MAX_UPLOAD_SIZE = 7 * 1024 * 1024; // 7MB
+
+const readUploadFile = (file) => {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve(undefined);
+      return;
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE) {
+      reject(new Error("File must be 7MB or smaller"));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve({
+        name: file.name,
+        type: file.type,
+        data: reader.result
+      });
+    };
+    reader.onerror = () => reject(new Error("Failed to read uploaded file"));
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function Contracts() {
   const selectedBuildingId = useSelectedBuilding();
   const [tenants, setTenants] = useState([]);
@@ -21,10 +57,17 @@ export default function Contracts() {
   const [leaseEndDate, setLeaseEndDate] = useState("");
   const [paymentFrequency, setPaymentFrequency] = useState("");
   const [contractStatus, setContractStatus] = useState("pending");
+
+  const [contractFile, setContractFile] = useState(undefined);
+
   const [editingId, setEditingId] = useState(null);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState("tenant");
+  const [sortDirection, setSortDirection] = useState("asc");
 
   const clearForm = () => {
     setTenantId("");
@@ -33,6 +76,7 @@ export default function Contracts() {
     setLeaseEndDate("");
     setPaymentFrequency("");
     setContractStatus("pending");
+    setContractFile(undefined);
     setEditingId(null);
   };
 
@@ -72,7 +116,47 @@ export default function Contracts() {
     setError("");
     fetchContract();
     fetchTenants();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBuildingId]);
+
+  const filteredAndSortedContracts = contracts
+    .filter(
+      (contract) =>
+        contract.tenant?.tenantName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        contract.tenant?.tenantId?.toString().includes(searchTerm) ||
+        contract.paymentFrequency?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        contract.status?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      let aValue = a[sortField];
+      let bValue = b[sortField];
+
+      if (sortField === "tenant") {
+        aValue = a.tenant?.tenantName || "";
+        bValue = b.tenant?.tenantName || "";
+      } else if (sortField === "amount") {
+        aValue = Number(a.amount) || 0;
+        bValue = Number(b.amount) || 0;
+      }
+
+      if (typeof aValue === "string") {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
 
   const saveContract = async () => {
     setMessage("");
@@ -93,9 +177,7 @@ export default function Contracts() {
         editingId ? `${API_BASE}/contract/${editingId}` : `${API_BASE}/contract`,
         {
           method: editingId ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             building: selectedBuildingId,
             tenant: tenantId,
@@ -104,7 +186,8 @@ export default function Contracts() {
             leaseStartDate,
             leaseEndDate,
             paymentFrequency,
-            status: contractStatus
+            status: contractStatus,
+            contractFile
           })
         }
       );
@@ -119,8 +202,8 @@ export default function Contracts() {
       } else {
         setError(data.error || data.err || "Failed to save contract");
       }
-    } catch (error) {
-      setError(error.message);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -131,6 +214,7 @@ export default function Contracts() {
     setLeaseEndDate(contract.leaseEndDate || "");
     setPaymentFrequency(contract.paymentFrequency || "");
     setContractStatus(contract.status || "pending");
+    setContractFile(contract.contractFile || undefined);
     setEditingId(contract._id);
     setMessage("");
     setError("");
@@ -154,38 +238,23 @@ export default function Contracts() {
       } else {
         setError(data.error || data.err || "Failed to delete contract");
       }
-    } catch (error) {
-      setError(error.message);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
-  const markAsPaid = async (id) => {
-    try {
-      setMessage("");
-      setError("");
-
-      const res = await fetch(`${API_BASE}/contract/${id}/pay`, {
-        method: "PATCH"
-      });
-
-      const data = await readResponse(res);
-
-      if (res.ok) {
-        setMessage(data.message || "Payment marked as paid");
-        invalidateCache(selectedBuildingId);
-        fetchContract(false);
-      } else {
-        setError(data.error || "Failed to mark payment as paid");
-      }
-    } catch (error) {
-      setError(error.message);
-    }
+  const renderFileLink = (file) => {
+    if (!file?.data) return "-";
+    return (
+      <a className="file-link" href={file.data} target="_blank" rel="noreferrer" download={file.name}>
+        {file.name}
+      </a>
+    );
   };
 
   return (
     <div className="app-layout">
       <Sidebar />
-
       <div className="main-content">
         <h1>Contracts</h1>
 
@@ -249,6 +318,44 @@ export default function Contracts() {
               <option value="Every 6 months">Every 6 months</option>
               <option value="Yearly">Yearly</option>
             </select>
+
+            <select
+              value={contractStatus}
+              onChange={(e) => setContractStatus(e.target.value)}
+              disabled={!selectedBuildingId}
+            >
+              <option value="pending">pending</option>
+              <option value="paid">paid</option>
+            </select>
+          </div>
+
+          <div style={{ marginTop: "1rem" }}>
+            <label className="field-label file-field">
+              Contract Photo/PDF
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={async (e) => {
+                  setError("");
+                  setMessage("");
+                  try {
+                    const file = e.target.files?.[0];
+                    const uploaded = await readUploadFile(file);
+                    setContractFile(uploaded);
+                  } catch (err) {
+                    setContractFile(undefined);
+                    setError(err.message);
+                    e.target.value = "";
+                  }
+                }}
+                disabled={!selectedBuildingId}
+              />
+              {contractFile?.name && <span>{contractFile.name}</span>}
+            </label>
+
+            <div style={{ marginTop: "0.5rem" }}>
+              {editingId ? renderFileLink(contracts.find((c) => c._id === editingId)?.contractFile) : "-"}
+            </div>
           </div>
 
           <div className="form-actions">
@@ -269,27 +376,48 @@ export default function Contracts() {
 
         <h2>Contracts List</h2>
 
+        <div className="table-controls">
+          <input
+            type="text"
+            placeholder="Search contracts..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="search-input"
+          />
+        </div>
+
         <table className="floors-table">
           <thead>
             <tr>
-              <th>Tenant</th>
-              <th>Amount</th>
-              <th>Lease Start</th>
-              <th>Lease End</th>
-              <th>Payment</th>
+              <th onClick={() => handleSort("tenant")} className="sortable-header">
+                Tenant {sortField === "tenant" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("amount")} className="sortable-header">
+                Amount {sortField === "amount" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("leaseStartDate")} className="sortable-header">
+                Lease Start {sortField === "leaseStartDate" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("leaseEndDate")} className="sortable-header">
+                Lease End {sortField === "leaseEndDate" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("paymentFrequency")} className="sortable-header">
+                Payment {sortField === "paymentFrequency" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th>Status</th>
+              <th>File</th>
               <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {contracts.length > 0 ? (
-              contracts.map((contract) => (
+            {filteredAndSortedContracts.length > 0 ? (
+              filteredAndSortedContracts.map((contract) => (
                 <tr key={contract._id}>
                   <td>{contract.tenant?.tenantName || "Tenant"}</td>
                   <td>Br {contract.amount}</td>
-                  <td>{contract.leaseStartDate || contract.date || "-"}</td>
-                  <td>{contract.leaseEndDate || "-"}</td>
+                  <td>{formatDate(contract.leaseStartDate || contract.date)}</td>
+                  <td>{formatDate(contract.leaseEndDate)}</td>
                   <td>{contract.paymentFrequency || "-"}</td>
                   <td>
                     {contract.status === "paid" ? (
@@ -298,24 +426,20 @@ export default function Contracts() {
                       <span className="pending-status">Pending</span>
                     )}
                   </td>
+                  <td>{renderFileLink(contract.contractFile)}</td>
                   <td>
-                    <button onClick={() => editContract(contract)}>
-                      Edit
-                    </button>
-                    <button className="danger-btn" onClick={() => deleteContract(contract._id)}>
-                      Delete
-                    </button>
-                    {contract.status === "pending" && (
-                      <button onClick={() => markAsPaid(contract._id)}>
-                        Mark as Paid
+                    <div className="action-buttons">
+                      <button onClick={() => editContract(contract)}>Edit</button>
+                      <button className="danger-btn" onClick={() => deleteContract(contract._id)}>
+                        Delete
                       </button>
-                    )}
+                    </div>
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="7">No contracts added yet</td>
+                <td colSpan="8">No contracts found</td>
               </tr>
             )}
           </tbody>

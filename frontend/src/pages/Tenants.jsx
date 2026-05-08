@@ -43,11 +43,12 @@ const readUploadFile = (file, expectedType) => {
 };
 
 const formatDate = (date) => {
-  if (!date) {
-    return "-";
-  }
-
-  return String(date).slice(0, 10);
+  if (!date) return "-";
+  const raw = String(date).slice(0, 10); // YYYY-MM-DD
+  const parts = raw.split("-");
+  if (parts.length !== 3) return raw;
+  const [year, month, day] = parts;
+  return `${day}/${month}/${year}`;
 };
 
 export default function Tenant() {
@@ -74,6 +75,10 @@ export default function Tenant() {
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [historyError, setHistoryError] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState("tenantName");
+  const [sortDirection, setSortDirection] = useState("asc");
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -134,6 +139,41 @@ export default function Tenant() {
     fetchUnits();
     fetchTenants();
   }, [selectedBuildingId]);
+
+  const filteredAndSortedTenants = tenants
+    .filter((tenant) =>
+      tenant.tenantName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tenant.phone?.includes(searchTerm) ||
+      tenant.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tenant.tenantId?.toString().includes(searchTerm)
+    )
+    .sort((a, b) => {
+      let aValue = a[sortField];
+      let bValue = b[sortField];
+
+      if (sortField === "unit") {
+        aValue = getTenantUnit(a)?.unitId || "";
+        bValue = getTenantUnit(b)?.unitId || "";
+      }
+
+      if (typeof aValue === "string") {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
 
   const handleUpload = async (event, setFile, expectedType) => {
     try {
@@ -442,14 +482,34 @@ export default function Tenant() {
 
         <h2>Tenants List</h2>
 
+        <div className="table-controls">
+          <input
+            type="text"
+            placeholder="Search tenants..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="search-input"
+          />
+        </div>
+
         <table className="floors-table">
           <thead>
             <tr>
-              <th>Tenant ID</th>
-              <th>Name</th>
-              <th>Phone</th>
-              <th>Email</th>
-              <th>Unit</th>
+              <th onClick={() => handleSort("tenantId")} className="sortable-header">
+                Tenant ID {sortField === "tenantId" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("tenantName")} className="sortable-header">
+                Name {sortField === "tenantName" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("phone")} className="sortable-header">
+                Phone {sortField === "phone" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("email")} className="sortable-header">
+                Email {sortField === "email" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("unit")} className="sortable-header">
+                Unit {sortField === "unit" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th>Floor</th>
               <th>Move In</th>
               <th>Move Out</th>
@@ -460,8 +520,8 @@ export default function Tenant() {
           </thead>
 
           <tbody>
-            {tenants.length > 0 ? (
-              tenants.map((tenant) => {
+            {filteredAndSortedTenants.length > 0 ? (
+              filteredAndSortedTenants.map((tenant) => {
                 const tenantUnit = getTenantUnit(tenant);
 
                 return (
@@ -489,9 +549,6 @@ export default function Tenant() {
                       <button onClick={() => editTenant(tenant)}>
                         Edit
                       </button>
-                      <button onClick={() => fetchPaymentHistory(tenant)}>
-                        Payment History
-                      </button>
                       <button className="danger-btn" onClick={() => deleteTenant(tenant._id)}>
                         Delete
                       </button>
@@ -501,11 +558,28 @@ export default function Tenant() {
               })
             ) : (
               <tr>
-                <td colSpan="11">No tenants added yet</td>
+                <td colSpan="11">No tenants found</td>
               </tr>
             )}
           </tbody>
         </table>
+
+        {filteredAndSortedTenants.length > 0 && (
+          <div className="table-actions">
+            <h3>Payment History</h3>
+            <div className="action-buttons">
+              {filteredAndSortedTenants.map((tenant) => (
+                <button
+                  key={tenant._id}
+                  onClick={() => fetchPaymentHistory(tenant)}
+                  className="payment-history-btn"
+                >
+                  {tenant.tenantName} (ID: {tenant.tenantId})
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {historyTenant && (
           <section className="panel history-panel">

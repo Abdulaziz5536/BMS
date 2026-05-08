@@ -16,6 +16,55 @@ const populateUtilityTenant = {
   }
 };
 
+const parseDueDate = (dueDate) => {
+  if (!dueDate) return null;
+  const d = new Date(dueDate);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const calculateNextDueDate = (dueDate, paymentFrequency) => {
+  const base = parseDueDate(dueDate);
+  if (!base) return null;
+
+  const next = new Date(base);
+
+  switch ((paymentFrequency || "").toLowerCase()) {
+    case "monthly":
+      next.setMonth(next.getMonth() + 1);
+      break;
+    case "quarterly":
+      next.setMonth(next.getMonth() + 3);
+      break;
+    case "every 6 months":
+      next.setMonth(next.getMonth() + 6);
+      break;
+    case "yearly":
+      next.setFullYear(next.getFullYear() + 1);
+      break;
+    default:
+      next.setMonth(next.getMonth() + 1);
+  }
+
+  return next.toISOString().slice(0, 10); // YYYY-MM-DD
+};
+
+const MAX_FILE_DATA_LENGTH = 7000000;
+
+const normalizeUtilityFile = (file) => {
+  if (!file) return undefined;
+
+  if (file && file.name && file.type && file.data && typeof file.data === "string") {
+    if (file.data.length > MAX_FILE_DATA_LENGTH) return null;
+    return {
+      name: file.name,
+      type: file.type,
+      data: file.data
+    };
+  }
+
+  return null;
+};
+
 router.get("/utilities", async (req, res) => {
   try {
     const utilities = await Utility.find(getBuildingFilter(req.query.building))
@@ -37,8 +86,10 @@ router.post("/utilities", async (req, res) => {
       lightAmount,
       generatorGasAmount,
       dueDate,
+      paymentFrequency,
       status,
-      notes
+      notes,
+      utilityFile
     } = req.body;
 
     if (!building || !tenant) {
@@ -46,9 +97,13 @@ router.post("/utilities", async (req, res) => {
     }
 
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
-
     if (!tenantRecord) {
       return res.status(400).json({ error: "Tenant does not belong to this building" });
+    }
+
+    const normalizedUtilityFile = normalizeUtilityFile(utilityFile);
+    if (normalizedUtilityFile === null) {
+      return res.status(400).json({ error: "Uploaded file is invalid or too large" });
     }
 
     const utility = await Utility.create({
@@ -58,8 +113,10 @@ router.post("/utilities", async (req, res) => {
       lightAmount: Number(lightAmount) || 0,
       generatorGasAmount: Number(generatorGasAmount) || 0,
       dueDate,
+      paymentFrequency: paymentFrequency || undefined,
       status: status || "pending",
-      notes
+      notes,
+      utilityFile: normalizedUtilityFile
     });
 
     res.status(201).json({ message: "Utility payment added", utility });
@@ -77,8 +134,10 @@ router.put("/utilities/:id", async (req, res) => {
       lightAmount,
       generatorGasAmount,
       dueDate,
+      paymentFrequency,
       status,
-      notes
+      notes,
+      utilityFile
     } = req.body;
 
     if (!building || !tenant) {
@@ -86,9 +145,13 @@ router.put("/utilities/:id", async (req, res) => {
     }
 
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
-
     if (!tenantRecord) {
       return res.status(400).json({ error: "Tenant does not belong to this building" });
+    }
+
+    const normalizedUtilityFile = normalizeUtilityFile(utilityFile);
+    if (normalizedUtilityFile === null) {
+      return res.status(400).json({ error: "Uploaded file is invalid or too large" });
     }
 
     const utility = await Utility.findByIdAndUpdate(
@@ -100,8 +163,10 @@ router.put("/utilities/:id", async (req, res) => {
         lightAmount: Number(lightAmount) || 0,
         generatorGasAmount: Number(generatorGasAmount) || 0,
         dueDate,
+        paymentFrequency: paymentFrequency || undefined,
         status: status || "pending",
-        notes
+        notes,
+        utilityFile: normalizedUtilityFile
       },
       { new: true }
     );
@@ -116,11 +181,17 @@ router.put("/utilities/:id", async (req, res) => {
   }
 });
 
-router.patch("/utilities/:id/pay", async (req, res) => {
+router.patch("/utilities/:id/status", async (req, res) => {
   try {
+    const { status } = req.body;
+
+    if (!status || !["pending", "paid"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
     const utility = await Utility.findByIdAndUpdate(
       req.params.id,
-      { status: "paid" },
+      { status },
       { new: true }
     );
 
@@ -128,16 +199,60 @@ router.patch("/utilities/:id/pay", async (req, res) => {
       return res.status(404).json({ error: "Utility payment not found" });
     }
 
-    res.json({ message: "Utility payment marked as paid", utility });
+    return res.json({
+      message: "Utility status updated",
+      utility
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch("/utilities/:id/pay", async (req, res) => {
+  try {
+    const utility = await Utility.findById(req.params.id);
+    if (!utility) {
+      return res.status(404).json({ error: "Utility payment not found" });
+    }
+
+    if (utility.status === "paid") {
+      return res.status(400).json({ error: "Utility payment is already paid" });
+    }
+
+    // 1) mark current as paid
+    utility.status = "paid";
+    await utility.save();
+
+    // 2) create next pending utility
+    const nextDueDate = calculateNextDueDate(utility.dueDate, utility.paymentFrequency);
+
+    const nextUtility = await Utility.create({
+      building: utility.building,
+      tenant: utility.tenant,
+      waterAmount: utility.waterAmount,
+      lightAmount: utility.lightAmount,
+      generatorGasAmount: utility.generatorGasAmount,
+      dueDate: nextDueDate || "",
+      paymentFrequency: utility.paymentFrequency || "Monthly",
+      status: "pending",
+      notes: utility.notes,
+      // copy attachment into next record
+      utilityFile: utility.utilityFile
+    });
+
+    return res.json({
+      message: "Utility payment marked as paid and next utility created",
+      utility,
+      nextUtility
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 });
 
 router.delete("/utilities/:id", async (req, res) => {
   try {
     const utility = await Utility.findByIdAndDelete(req.params.id);
-
     if (!utility) {
       return res.status(404).json({ error: "Utility payment not found" });
     }

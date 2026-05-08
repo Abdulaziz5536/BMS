@@ -10,6 +10,7 @@ import Tenants from "./pages/Tenants";
 import Contracts from "./pages/Contracts"; 
 import Employees from "./pages/Employees";
 import Utilities from "./pages/Utilities";
+import Rent from "./pages/Rent";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -90,6 +91,15 @@ function App() {
         element={
           <ProtectedRoute>
             <Utilities />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/rent"
+        element={
+          <ProtectedRoute>
+            <Rent />
           </ProtectedRoute>
         }
       />

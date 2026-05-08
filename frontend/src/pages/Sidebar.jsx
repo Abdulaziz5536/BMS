@@ -9,8 +9,6 @@ import {
   setSelectedBuildingId
 } from "../buildingSelection";
 
-
-
 export default function Sidebar() {
   const [buildings, setBuildings] = useState([]);
   const [selectedBuilding, setSelectedBuilding] = useState(getSelectedBuildingId());
@@ -64,10 +62,7 @@ export default function Sidebar() {
 
       <div className="building-switcher">
         <label>Active Building</label>
-        <select
-          value={selectedBuilding}
-          onChange={(e) => changeBuilding(e.target.value)}
-        >
+        <select value={selectedBuilding} onChange={(e) => changeBuilding(e.target.value)}>
           <option value="">Select Building</option>
           {buildings.map((building) => (
             <option key={building._id} value={building._id}>
@@ -79,48 +74,59 @@ export default function Sidebar() {
 
       <ul>
         <li>
-          <NavLink to="/buildings" className={({ isActive }) => isActive ? "active" : ""}>
+          <NavLink to="/buildings" className={({ isActive }) => (isActive ? "active" : "")}>
             Buildings
           </NavLink>
         </li>
+
         <li>
-          <NavLink to="/dashboard" className={({ isActive }) => isActive ? "active" : ""}>
+          <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>
             Dashboard
           </NavLink>
         </li>
+
         <li>
-          <NavLink to="/floors" className={({ isActive }) => isActive ? "active" : ""}>
+          <NavLink to="/rent" className={({ isActive }) => (isActive ? "active" : "")}>
+            Invoice
+          </NavLink>
+        </li>
+
+        <li>
+          <NavLink to="/floors" className={({ isActive }) => (isActive ? "active" : "")}>
             Floors
           </NavLink>
         </li>
+
         <li>
-          <NavLink to="/units" className={({ isActive }) => isActive ? "active" : ""}>
+          <NavLink to="/units" className={({ isActive }) => (isActive ? "active" : "")}>
             Units
           </NavLink>
         </li>
+
         <li>
-          <NavLink to="/tenants" className={({ isActive }) => isActive ? "active" : ""}>
+          <NavLink to="/tenants" className={({ isActive }) => (isActive ? "active" : "")}>
             Tenants
           </NavLink>
         </li>
 
-       
         <li>
-          <NavLink to="/contracts" className={({ isActive }) => isActive ? "active" : ""}>
+          <NavLink to="/contracts" className={({ isActive }) => (isActive ? "active" : "")}>
             Contracts
           </NavLink>
         </li>
+
         <li>
-          <NavLink to="/employees" className={({ isActive }) => isActive ? "active" : ""}>
+          <NavLink to="/employees" className={({ isActive }) => (isActive ? "active" : "")}>
             Employees
           </NavLink>
         </li>
+
         <li>
-          <NavLink to="/utilities" className={({ isActive }) => isActive ? "active" : ""}>
+          <NavLink to="/utilities" className={({ isActive }) => (isActive ? "active" : "")}>
             Utilities
           </NavLink>
         </li>
-
       </ul>
-  </div> );
+    </div>
+  );
 }

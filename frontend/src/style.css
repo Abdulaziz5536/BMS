@@ -178,7 +178,7 @@ button:disabled {
   position: sticky;
   top: 0;
   flex-shrink: 0;
-  overflow-y: auto;
+  overflow-y: hidden;
   background-color: #1f2937;
   color: white;
   padding: 1.5rem 1rem;
@@ -417,9 +417,18 @@ button:disabled {
   border-spacing: 0;
   background: white;
   border-radius: 10px;
-  overflow: hidden;
+  overflow: auto;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   margin-top: 1.5rem;
+  display: block;
+}
+
+.floors-table thead,
+.floors-table tbody,
+.floors-table tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
 }
 
 .floors-table th,
@@ -464,16 +473,24 @@ button:disabled {
   text-decoration: underline;
 }
 
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-start;
+}
+
 .floors-table button {
-  margin: 0 0.35rem;
-  min-width: 76px;
-  padding: 0.45rem 0.75rem;
+  margin: 0;
+  min-width: 70px;
+  padding: 0.4rem 0.6rem;
   border: none;
-  border-radius: 6px;
+  border-radius: 5px;
   background-color: #374151;
   color: white;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
+  transition: background-color 0.2s ease;
 }
 
 .floors-table button:hover {
@@ -498,6 +515,178 @@ button:disabled {
   background-color: #475569;
 }
 
+.table-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.search-input {
+  padding: 0.5rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  width: 300px;
+  background-color: white;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #9ca3af;
+  box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.15);
+}
+
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.sortable-header:hover {
+  background-color: #e5e7eb;
+}
+
+.table-actions {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.table-actions h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  color: #374151;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.payment-history-btn {
+  background-color: #64748b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.payment-history-btn:hover {
+  background-color: #64748b;
+}
+/* Rent Management Styles */
+.rent-tabs {
+  display: flex;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.rent-tabs button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.rent-tabs button.active {
+  color: #374151;
+  border-bottom-color: #374151;
+}
+
+.rent-tabs button:hover {
+  color: #374151;
+  background-color: #f9fafb;
+}
+
+.reminders-list, .overdue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reminder-item, .overdue-item {
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+}
+
+.reminder-header, .overdue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.reminder-amount, .overdue-amount {
+  font-weight: 700;
+  color: #059669;
+}
+
+.overdue-amount {
+  color: #dc2626;
+}
+
+.reminder-details, .overdue-details {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.overdue-days {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.late-penalty {
+  color: #ea580c;
+  font-weight: 600;
+}
+
+.reminder-contact, .overdue-contact {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.urgent {
+  color: #dc2626 !important;
+  font-weight: 700;
+}
+
+.warning {
+  color: #d97706;
+  font-weight: 600;
+}
+
+.payment-form {
+  margin-top: 2rem;
+}
+
+.payment-form textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-family: inherit;
+  margin-bottom: 1rem;
+  resize: vertical;
+}
 .paid-status {
   color: #15803d;
   font-weight: 700;
@@ -586,4 +775,102 @@ button:disabled {
 
 .logout-btn:hover {
   background-color: #1f2937;
+}
+
+/* Responsive: phone/tablet */
+@media (max-width: 900px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    min-height: auto;
+    height: auto;
+    position: relative;
+    padding: 1.25rem 0.75rem;
+  }
+
+  .main-content {
+    padding: 1.25rem 1.25rem;
+  }
+
+  .panel {
+    padding: 1rem;
+  }
+
+  .rent-tabs {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .table-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .search-input {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .floors-table th,
+  .floors-table td {
+    padding: 0.65rem 0.7rem;
+    font-size: 0.9rem;
+  }
+
+  .card {
+    min-height: 110px;
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .app-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sidebar {
+    width: 100%;
+    min-height: auto;
+    height: auto;
+    position: relative;
+    padding: 1rem 0.75rem;
+  }
+
+  .sidebar a {
+    font-size: 0.95rem;
+    padding: 0.75rem 0.9rem;
+  }
+
+  .main-content {
+    padding: 1rem 0.85rem;
+  }
+
+  .table-controls {
+    width: 100%;
+  }
+
+  .table-controls .search-input {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .rent-tabs button {
+    flex: 1 1 100%;
+  }
+
+  .floors-table th,
+  .floors-table td {
+    padding: 0.55rem 0.55rem;
+    font-size: 0.85rem;
+  }
 }
