@@ -1,0 +1,26 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "true": true,
+        "/^cd /c/Users/dell/Desktop/BMS/BMS-2 && python - <<'PY'\nimport re\nfrom pathlib import Path\ntext = Path\\('frontend/src/pages/Announcements\\.jsx'\\)\\.read_text\\(encoding='utf-8'\\)\nstart = text\\.find\\('return \\('\\)\nend = text\\.find\\('\\);', start\\)\nblock = text\\[start:end\\]\nopens = len\\(re\\.findall\\(r'<div\\\\b', block\\)\\)\ncloses = len\\(re\\.findall\\(r'</div>', block\\)\\)\nprint\\('opens', opens, 'closes', closes\\)\nprint\\('start line', text\\[:start\\]\\.count\\('\\\\n'\\)\\+1, 'end line', text\\[:end\\]\\.count\\('\\\\n'\\)\\+1\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd /c/Users/dell/Desktop/BMS/BMS-2 && python - <<'PY'\nimport re\nfrom pathlib import Path\ntext = Path\\('frontend/src/pages/Announcements\\.jsx'\\)\\.read_text\\(encoding='utf-8'\\)\nstart = text\\.find\\('return \\('\\)\nend = text\\.find\\('\\);', start\\)\nblock = text\\[start:end\\]\nlines = block\\.splitlines\\(\\)\ncount = 0\nfor i, line in enumerate\\(lines, start=text\\[:start\\]\\.count\\('\\\\n'\\)\\+1\\):\n    count \\+= line\\.count\\('<div'\\)\n    count -= line\\.count\\('</div>'\\)\n    if count < 0:\n        print\\('negative at', i, repr\\(line\\)\\)\n        break\nprint\\('final count', count\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd /c/Users/dell/Desktop/BMS/BMS-2 && python - <<'PY'\nimport re\nfrom pathlib import Path\ntext = Path\\('frontend/src/pages/Announcements\\.jsx'\\)\\.read_text\\(encoding='utf-8'\\)\nstart = text\\.find\\('return \\('\\)\nend = text\\.find\\('\\);', start\\)\nblock = text\\[start:end\\]\nlines = block\\.splitlines\\(\\)\ncount = 0\nfor j, line in enumerate\\(lines, start=1\\):\n    opens = line\\.count\\('<div'\\)\n    closes = line\\.count\\('</div>'\\)\n    count \\+= opens - closes\n    if opens or closes:\n        print\\(j, opens, closes, count, line\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd /c/Users/dell/Desktop/BMS/BMS-2 && python - <<'PY'\nimport re\nfrom pathlib import Path\ntext = Path\\('frontend/src/pages/Announcements\\.jsx'\\)\\.read_text\\(encoding='utf-8'\\)\nstart = text\\.find\\('return \\('\\)\nend = text\\.find\\('\\);', start\\)\nblock = text\\[start:end\\]\nopens = len\\(re\\.findall\\(r'<div\\\\b', block\\)\\)\ncloses = len\\(re\\.findall\\(r'</div>', block\\)\\)\nprint\\('opens', opens, 'closes', closes\\)\n# Also try to parse with babel parser if available\ntry:\n    from babel import parse as bparse\n    print\\('babel available'\\)\nexcept Exception as e:\n    pass\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "npm --prefix frontend": true,
+        "/^cd /c/Users/dell/Desktop/BMS/BMS-2 && python3 << 'PYSCRIPT'\nimport re\n\nwith open\\('frontend/src/pages/Announcements\\.jsx', 'r'\\) as f:\n    content = f\\.read\\(\\)\n\n# Remove the first set of duplicate floor/unit sections \\(with parentheses in condition\\)\n# Pattern: \\{\\(formData\\.targetType === 'selected_floors' && selectedBuilding\\) && \\(\npattern1 = r\"\\\\n              \\\\\\{\\\\\\(formData\\\\\\.targetType === 'selected_floors' && selectedBuilding\\\\\\) && \\\\\\(\\[\\\\s\\\\S\\]\\*\\?                \\\\</div>\\\\n              \\\\\\)\\\\\\}\\\\n\\\\n              \\\\\\{\\\\\\(formData\\\\\\.targetType === 'selected_units' && selectedBuilding\\\\\\) && \\\\\\(\\[\\\\s\\\\S\\]\\*\\?                \\\\</div>\\\\n              \\\\\\)\\\\\\}\\\\n\"\n\ncontent = re\\.sub\\(pattern1, '\\\\n', content\\)\n\n# Add SMS/Email checkboxes before submit button\nsms_email_section = '''              <div className=\"grid grid-cols-2 gap-4\">\n                <div className=\"flex items-center\">\n                  <input\n                    type=\"checkbox\"\n                    checked=\\{sendEmail\\}\n                    onChange=\\{\\(e\\) => setSendEmail\\(e\\.target\\.checked\\)\\}\n                    className=\"mr-2\"\n                  />\n                  <label className=\"text-sm font-medium\">Send via Email</label>\n                </div>\n                <div className=\"flex items-center\">\n                  <input\n                    type=\"checkbox\"\n                    checked=\\{sendSMS\\}\n                    onChange=\\{\\(e\\) => setSendSMS\\(e\\.target\\.checked\\)\\}\n                    className=\"mr-2\"\n                  />\n                  <label className=\"text-sm font-medium\">Send via SMS</label>\n                </div>\n              </div>\n\n'''\n\n# Find the location to insert \\(before the submit button, after Emergency Alert checkbox\\)\npattern2 = r'\\(                  <label className=\"text-sm font-medium\">Emergency Alert</label>\\\\n                </div>\\\\n              </div>\\\\n\\\\n              <button\\)'\n\ncontent = re\\.sub\\(pattern2, r'\\\\1'\\.replace\\('<button', sms_email_section \\+ '              <button'\\), content\\)\n\nwith open\\('frontend/src/pages/Announcements\\.jsx', 'w'\\) as f:\n    f\\.write\\(content\\)\n\nprint\\(\"Fixed!\"\\)\nPYSCRIPT\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

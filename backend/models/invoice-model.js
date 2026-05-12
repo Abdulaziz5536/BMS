@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const rentInvoiceSchema = new mongoose.Schema({
+const invoiceSchema = new mongoose.Schema({
   building: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Building",
@@ -93,7 +93,7 @@ const rentInvoiceSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Compound index for efficient queries
-rentInvoiceSchema.index({ tenant: 1, periodStart: 1, periodEnd: 1 });
-rentInvoiceSchema.index({ dueDate: 1, status: 1 });
+invoiceSchema.index({ tenant: 1, periodStart: 1, periodEnd: 1 });
+invoiceSchema.index({ dueDate: 1, status: 1 });
 
-module.exports = mongoose.model("RentInvoice", rentInvoiceSchema);
+module.exports = mongoose.model("Invoice", invoiceSchema);

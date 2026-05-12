@@ -10,7 +10,9 @@ import Tenants from "./pages/Tenants";
 import Contracts from "./pages/Contracts"; 
 import Employees from "./pages/Employees";
 import Utilities from "./pages/Utilities";
+import Invoice from "./pages/Invoice";
 import Rent from "./pages/Rent";
+import Announcements from "./pages/Announcements";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -37,6 +39,15 @@ function App() {
         element={
           <ProtectedRoute>
             <Buildings />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/rent"
+        element={
+          <ProtectedRoute>
+            <Rent />
           </ProtectedRoute>
         }
       />
@@ -96,10 +107,19 @@ function App() {
       />
 
       <Route
-        path="/rent"
+        path="/invoice"
         element={
           <ProtectedRoute>
-            <Rent />
+            <Invoice />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/announcements"
+        element={
+          <ProtectedRoute>
+            <Announcements />
           </ProtectedRoute>
         }
       />

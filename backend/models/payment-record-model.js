@@ -13,7 +13,7 @@ const paymentRecordSchema = new mongoose.Schema({
   },
   invoice: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "RentInvoice"
+    ref: "Invoice"
   },
 
   paymentDate: {
@@ -40,6 +40,12 @@ const paymentRecordSchema = new mongoose.Schema({
   notes: {
     type: String,
     default: ''
+  },
+
+  receipt: {
+    name: String,
+    type: String,
+    data: String
   },
 
   recordedBy: {

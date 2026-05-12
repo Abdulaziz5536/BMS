@@ -86,8 +86,8 @@ export default function Sidebar() {
         </li>
 
         <li>
-          <NavLink to="/rent" className={({ isActive }) => (isActive ? "active" : "")}>
-            Invoice
+          <NavLink to="/invoice" className={({ isActive }) => (isActive ? "active" : "")}> 
+          Invoice
           </NavLink>
         </li>
 
@@ -124,6 +124,12 @@ export default function Sidebar() {
         <li>
           <NavLink to="/utilities" className={({ isActive }) => (isActive ? "active" : "")}>
             Utilities
+          </NavLink>
+        </li>
+
+        <li>
+          <NavLink to="/announcements" className={({ isActive }) => (isActive ? "active" : "")}>
+            Announcements
           </NavLink>
         </li>
       </ul>

@@ -1,6 +1,7 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
-const RentInvoice = require('../models/rent-invoice-model');
+const Invoice = require('../models/invoice-model');
 const PaymentRecord = require('../models/payment-record-model');
 const Contract = require('../models/contract-model');
 const Tenant = require('../models/tenant-model');
@@ -83,14 +84,25 @@ const calculateLatePenalty = (dueDate, paymentDate, rentAmount) => {
   return Math.round(daysLate * dailyPenaltyRate);
 };
 
-// Get all rent invoices
-router.get('/rent-invoices', async (req, res) => {
+// Get all invoices
+router.get('/invoices', async (req, res) => {
   try {
-    const filter = req.query.building ? { building: req.query.building } : {};
-    if (req.query.tenant) filter.tenant = req.query.tenant;
+    const filter = {};
+    if (req.query.building) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
+        return res.status(400).json({ error: 'Invalid building id' });
+      }
+      filter.building = new mongoose.Types.ObjectId(req.query.building);
+    }
+    if (req.query.tenant) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.tenant)) {
+        return res.status(400).json({ error: 'Invalid tenant id' });
+      }
+      filter.tenant = new mongoose.Types.ObjectId(req.query.tenant);
+    }
     if (req.query.status) filter.status = req.query.status;
 
-    const invoices = await RentInvoice.find(filter)
+    const invoices = await Invoice.find(filter)
       .populate('tenant')
       .populate('contract')
       .sort({ dueDate: -1 });
@@ -101,8 +113,8 @@ router.get('/rent-invoices', async (req, res) => {
   }
 });
 
-// Generate rent invoice for a tenant
-router.post('/rent-invoices/generate', async (req, res) => {
+// Generate invoice for a tenant
+router.post('/invoices/generate', async (req, res) => {
   try {
     const { tenantId, contractId, invoiceDate } = req.body;
 
@@ -129,7 +141,7 @@ router.post('/rent-invoices/generate', async (req, res) => {
     const dueDate = calculateDueDate(periodEnd);
 
     // Check if invoice already exists for this period
-    const existingInvoice = await RentInvoice.findOne({
+    const existingInvoice = await Invoice.findOne({
       tenant: tenantId,
       contract: contractId,
       periodStart: periodStart,
@@ -140,7 +152,7 @@ router.post('/rent-invoices/generate', async (req, res) => {
       return res.status(400).json({ error: "Invoice already exists for this period" });
     }
 
-    const invoice = await RentInvoice.create({
+    const invoice = await Invoice.create({
       building: contract.building,
       tenant: tenantId,
       contract: contractId,
@@ -155,14 +167,14 @@ router.post('/rent-invoices/generate', async (req, res) => {
       status: 'pending'
     });
 
-    res.json({ message: "Rent invoice generated successfully", invoice });
+    res.json({ message: "Invoice generated successfully", invoice });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Auto-generate invoices for all active contracts
-router.post('/rent-invoices/auto-generate', async (req, res) => {
+router.post('/invoices/auto-generate', async (req, res) => {
   try {
     const { buildingId, targetDate } = req.body;
     const targetDateObj = targetDate ? new Date(targetDate) : new Date();
@@ -178,7 +190,7 @@ router.post('/rent-invoices/auto-generate', async (req, res) => {
         const { periodStart, periodEnd } = calculatePeriodDates(contract, targetDateObj);
 
         // Check if invoice already exists
-        const existingInvoice = await RentInvoice.findOne({
+        const existingInvoice = await Invoice.findOne({
           tenant: contract.tenant._id,
           contract: contract._id,
           periodStart: periodStart,
@@ -188,7 +200,7 @@ router.post('/rent-invoices/auto-generate', async (req, res) => {
         if (!existingInvoice) {
           const dueDate = calculateDueDate(periodEnd);
 
-          const invoice = await RentInvoice.create({
+          const invoice = await Invoice.create({
             building: contract.building,
             tenant: contract.tenant._id,
             contract: contract._id,
@@ -220,11 +232,11 @@ router.post('/rent-invoices/auto-generate', async (req, res) => {
 });
 
 // Record payment for invoice
-router.post('/rent-invoices/:id/pay', async (req, res) => {
+router.post('/invoices/:id/pay', async (req, res) => {
   try {
     const { paymentDate, amount, paymentMethod, reference, notes, receipt } = req.body;
 
-    const invoice = await RentInvoice.findById(req.params.id);
+    const invoice = await Invoice.findById(req.params.id);
     if (!invoice) {
       return res.status(404).json({ error: "Invoice not found" });
     }
@@ -281,17 +293,23 @@ router.post('/rent-invoices/:id/pay', async (req, res) => {
 });
 
 // Get due date reminders
-router.get('/rent-invoices/reminders', async (req, res) => {
+router.get('/invoices/reminders', async (req, res) => {
   try {
     const { daysAhead = 7 } = req.query;
     const reminderDate = new Date();
     reminderDate.setDate(reminderDate.getDate() + parseInt(daysAhead));
 
-    const filter = req.query.building ? { building: req.query.building } : {};
+    const filter = {};
+    if (req.query.building) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
+        return res.status(400).json({ error: 'Invalid building id' });
+      }
+      filter.building = new mongoose.Types.ObjectId(req.query.building);
+    }
     filter.status = 'pending';
     filter.dueDate = { $lte: reminderDate };
 
-    const invoices = await RentInvoice.find(filter)
+    const invoices = await Invoice.find(filter)
       .populate('tenant')
       .populate('contract')
       .sort({ dueDate: 1 });
@@ -314,13 +332,19 @@ router.get('/rent-invoices/reminders', async (req, res) => {
 });
 
 // Get overdue invoices
-router.get('/rent-invoices/overdue', async (req, res) => {
+router.get('/invoices/overdue', async (req, res) => {
   try {
-    const filter = req.query.building ? { building: req.query.building } : {};
+    const filter = {};
+    if (req.query.building) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
+        return res.status(400).json({ error: 'Invalid building id' });
+      }
+      filter.building = new mongoose.Types.ObjectId(req.query.building);
+    }
     filter.status = 'pending';
     filter.dueDate = { $lt: new Date() };
 
-    const invoices = await RentInvoice.find(filter)
+    const invoices = await Invoice.find(filter)
       .populate('tenant')
       .populate('contract')
       .sort({ dueDate: 1 });
@@ -349,12 +373,141 @@ router.get('/rent-invoices/overdue', async (req, res) => {
   }
 });
 
+// Monthly income report
+router.get('/reports/monthly-income', async (req, res) => {
+  try {
+    const year = parseInt(req.query.year, 10);
+    const month = parseInt(req.query.month, 10);
+    const buildingId = req.query.building;
+
+    if (!year || !month || month < 1 || month > 12) {
+      return res.status(400).json({ error: 'Query parameters year and month are required' });
+    }
+
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 1);
+    const match = { paymentDate: { $gte: startDate, $lt: endDate } };
+
+    if (buildingId) {
+      if (!mongoose.Types.ObjectId.isValid(buildingId)) {
+        return res.status(400).json({ error: 'Invalid building id' });
+      }
+      match.building = new mongoose.Types.ObjectId(buildingId);
+    }
+
+    const result = await PaymentRecord.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          totalIncome: { $sum: '$amount' },
+          paymentCount: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const summary = result[0] || { totalIncome: 0, paymentCount: 0 };
+    res.json({ year, month, buildingId: buildingId || null, totalIncome: summary.totalIncome, paymentCount: summary.paymentCount });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Building income report
+router.get('/reports/building-income', async (req, res) => {
+  try {
+    const buildingId = req.query.building;
+    const year = req.query.year ? parseInt(req.query.year, 10) : null;
+
+    if (!buildingId) {
+      return res.status(400).json({ error: 'Building ID is required' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(buildingId)) {
+      return res.status(400).json({ error: 'Invalid building id' });
+    }
+
+    const startDate = year ? new Date(year, 0, 1) : new Date(1900, 0, 1);
+    const endDate = year ? new Date(year + 1, 0, 1) : new Date(9999, 0, 1);
+
+    const breakdown = await PaymentRecord.aggregate([
+      {
+        $match: {
+          building: new mongoose.Types.ObjectId(buildingId),
+          paymentDate: { $gte: startDate, $lt: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$paymentDate' },
+            month: { $month: '$paymentDate' }
+          },
+          totalIncome: { $sum: '$amount' },
+          paymentCount: { $sum: 1 }
+        }
+      },
+      {
+        $sort: {
+          '_id.year': 1,
+          '_id.month': 1
+        }
+      }
+    ]);
+
+    const results = breakdown.map(item => ({
+      year: item._id.year,
+      month: item._id.month,
+      totalIncome: item.totalIncome,
+      paymentCount: item.paymentCount
+    }));
+
+    const totalIncome = results.reduce((sum, item) => sum + item.totalIncome, 0);
+    res.json({ buildingId, year: year || 'all', totalIncome, breakdown: results });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Outstanding rent report
+router.get('/reports/outstanding-rent', async (req, res) => {
+  try {
+    const filter = { outstandingBalance: { $gt: 0 } };
+    if (req.query.building) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
+        return res.status(400).json({ error: 'Invalid building id' });
+      }
+      filter.building = new mongoose.Types.ObjectId(req.query.building);
+    }
+
+    const invoices = await Invoice.find(filter)
+      .populate('tenant')
+      .populate('contract')
+      .sort({ dueDate: 1 });
+
+    const totalOutstanding = invoices.reduce((sum, invoice) => sum + (invoice.outstandingBalance || 0), 0);
+    const reportItems = invoices.map(invoice => ({
+      invoiceId: invoice._id,
+      invoiceNumber: invoice.invoiceNumber,
+      tenantName: invoice.tenant?.tenantName || '',
+      building: invoice.building,
+      contract: invoice.contract,
+      outstandingBalance: invoice.outstandingBalance || 0,
+      dueDate: invoice.dueDate,
+      status: invoice.status
+    }));
+
+    res.json({ buildingId: req.query.building || null, totalOutstanding, count: reportItems.length, invoices: reportItems });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update invoice status
-router.patch('/rent-invoices/:id', async (req, res) => {
+router.patch('/invoices/:id', async (req, res) => {
   try {
     const { status, notes } = req.body;
 
-    const invoice = await RentInvoice.findByIdAndUpdate(
+    const invoice = await Invoice.findByIdAndUpdate(
       req.params.id,
       { status, notes },
       { new: true }
@@ -371,9 +524,9 @@ router.patch('/rent-invoices/:id', async (req, res) => {
 });
 
 // Delete invoice
-router.delete('/rent-invoices/:id', async (req, res) => {
+router.delete('/invoices/:id', async (req, res) => {
   try {
-    const invoice = await RentInvoice.findByIdAndDelete(req.params.id);
+    const invoice = await Invoice.findByIdAndDelete(req.params.id);
 
     if (!invoice) {
       return res.status(404).json({ error: "Invoice not found" });
@@ -391,9 +544,25 @@ router.delete('/rent-invoices/:id', async (req, res) => {
 // Get payment records
 router.get('/payment-records', async (req, res) => {
   try {
-    const filter = req.query.building ? { building: req.query.building } : {};
-    if (req.query.tenant) filter.tenant = req.query.tenant;
-    if (req.query.invoice) filter.invoice = req.query.invoice;
+    const filter = {};
+    if (req.query.building) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
+        return res.status(400).json({ error: 'Invalid building id' });
+      }
+      filter.building = new mongoose.Types.ObjectId(req.query.building);
+    }
+    if (req.query.tenant) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.tenant)) {
+        return res.status(400).json({ error: 'Invalid tenant id' });
+      }
+      filter.tenant = new mongoose.Types.ObjectId(req.query.tenant);
+    }
+    if (req.query.invoice) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.invoice)) {
+        return res.status(400).json({ error: 'Invalid invoice id' });
+      }
+      filter.invoice = new mongoose.Types.ObjectId(req.query.invoice);
+    }
 
     const payments = await PaymentRecord.find(filter)
       .populate('tenant')

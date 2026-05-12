@@ -14,7 +14,8 @@ const employeeRouter = require("./routes/employees-route");
 const contractRouter = require("./routes/contract-route");
 const dashboardRouter = require("./routes/dashboard-route");
 const utilityRouter = require("./routes/utility-route");
-const rentRouter = require("./routes/rent-route");
+const invoiceRouter = require("./routes/invoice-route");
+const announcementRouter = require("./routes/announcement-route");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,7 +31,8 @@ app.use(employeeRouter);
 app.use(contractRouter);
 app.use(dashboardRouter);
 app.use(utilityRouter);
-app.use(rentRouter);
+app.use(invoiceRouter);
+app.use('/announcements', announcementRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });

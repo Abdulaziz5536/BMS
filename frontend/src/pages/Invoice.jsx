@@ -19,7 +19,7 @@ const formatCurrency = (amount) => {
   return `Br ${Number(amount || 0).toLocaleString()}`;
 };
 
-export default function Rent() {
+export default function Invoice() {
   const selectedBuildingId = useSelectedBuilding();
   const [invoices, setInvoices] = useState([]);
   const [contracts, setContracts] = useState([]);
@@ -55,10 +55,10 @@ export default function Rent() {
     }
 
     await loadCachedJson(
-      withBuilding("/rent-invoices", selectedBuildingId),
+      withBuilding("/invoices", selectedBuildingId),
       setInvoices,
       setError,
-      "Failed to load rent invoices",
+      "Failed to load invoices",
       { useCache }
     );
   };
@@ -97,7 +97,7 @@ export default function Rent() {
     if (!selectedBuildingId) return;
 
     try {
-      const res = await fetch(`${API_BASE}/rent-invoices/reminders?building=${selectedBuildingId}`);
+      const res = await fetch(`${API_BASE}/invoices/reminders?building=${selectedBuildingId}`);
       const data = await readResponse(res);
       setReminders(data);
     } catch (error) {
@@ -109,7 +109,7 @@ export default function Rent() {
     if (!selectedBuildingId) return;
 
     try {
-      const res = await fetch(`${API_BASE}/rent-invoices/overdue?building=${selectedBuildingId}`);
+      const res = await fetch(`${API_BASE}/invoices/overdue?building=${selectedBuildingId}`);
       const data = await readResponse(res);
       setOverdue(data);
     } catch (error) {
@@ -174,7 +174,7 @@ export default function Rent() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/rent-invoices/generate`, {
+      const res = await fetch(`${API_BASE}/invoices/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -204,7 +204,7 @@ export default function Rent() {
   const autoGenerateInvoices = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/rent-invoices/auto-generate`, {
+      const res = await fetch(`${API_BASE}/invoices/auto-generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -268,7 +268,7 @@ export default function Rent() {
         };
       }
 
-      const res = await fetch(`${API_BASE}/rent-invoices/${invoiceId}/pay`, {
+      const res = await fetch(`${API_BASE}/invoices/${invoiceId}/pay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -318,14 +318,14 @@ export default function Rent() {
       <Sidebar />
 
       <div className="main-content">
-        <h1>Rent Management</h1>
+        <h1>Invoice Management</h1>
 
         {!selectedBuildingId && (
-          <p className="error">Add or select a building before managing rent.</p>
+          <p className="error">Add or select a building before managing invoices.</p>
         )}
 
         {/* Tab Navigation */}
-        <div className="rent-tabs">
+        <div className="invoice-tabs">
           <button
             className={activeTab === "invoices" ? "active" : ""}
             onClick={() => setActiveTab("invoices")}
@@ -352,7 +352,7 @@ export default function Rent() {
         {/* Invoice Generation Section */}
         {activeTab === "invoices" && (
           <section className="panel">
-            <h2>Generate Rent Invoice</h2>
+            <h2>Generate Invoice</h2>
             <div className="form-grid">
               <select
                 value={selectedTenant}

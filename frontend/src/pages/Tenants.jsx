@@ -492,10 +492,11 @@ export default function Tenant() {
           />
         </div>
 
-        <table className="floors-table">
-          <thead>
-            <tr>
-              <th onClick={() => handleSort("tenantId")} className="sortable-header">
+        <div className="floors-table-wrapper">
+          <table className="floors-table">
+            <thead>
+              <tr>
+                <th onClick={() => handleSort("tenantId")} className="sortable-header">
                 Tenant ID {sortField === "tenantId" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
               <th onClick={() => handleSort("tenantName")} className="sortable-header">
@@ -563,6 +564,7 @@ export default function Tenant() {
             )}
           </tbody>
         </table>
+        </div>
 
         {filteredAndSortedTenants.length > 0 && (
           <div className="table-actions">
