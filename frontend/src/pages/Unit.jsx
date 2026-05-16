@@ -1,4 +1,8 @@
 import { useState, useEffect } from "react";
+import {
+  PencilSquareIcon,
+  TrashIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
@@ -215,6 +219,7 @@ function Unit() {
 
         <h2>Units List</h2>
 
+        <div className="floors-table-wrapper">
         <table className="floors-table">
           <thead>
             <tr>
@@ -241,12 +246,16 @@ function Unit() {
                     </span>
                   </td>
                   <td>
-                    <button onClick={() => editUnit(unit)}>
-                      Edit
-                    </button>
-                    <button className="danger-btn" onClick={() => removeUnit(unit._id)}>
-                      Delete
-                    </button>
+                    <div className="table-action-stack">
+                      <div className="table-action-row">
+                        <button className="table-action-btn" onClick={() => editUnit(unit)} title="Edit">
+                          <PencilSquareIcon />
+                        </button>
+                        <button className="table-action-btn danger-btn" onClick={() => removeUnit(unit._id)} title="Delete">
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -257,6 +266,7 @@ function Unit() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

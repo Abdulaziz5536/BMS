@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  PencilSquareIcon,
+  TrashIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
@@ -8,16 +12,12 @@ import {
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import {
+  dateInputProps,
+  formatEthiopianDate,
+  toEthiopianDateInputValue
+} from "../utils/dateUtils";
 import "../style.css";
-
-const formatDate = (date) => {
-  if (!date) return "-";
-  const raw = String(date).slice(0, 10); // YYYY-MM-DD
-  const parts = raw.split("-");
-  if (parts.length !== 3) return raw;
-  const [year, month, day] = parts;
-  return `${day}/${month}/${year}`;
-};
 
 const MAX_UPLOAD_SIZE = 7 * 1024 * 1024; // 7MB
 
@@ -210,8 +210,8 @@ export default function Contracts() {
   const editContract = (contract) => {
     setTenantId(contract.tenant?._id || contract.tenant || "");
     setAmount(contract.amount || "");
-    setLeaseStartDate(contract.leaseStartDate || contract.date || "");
-    setLeaseEndDate(contract.leaseEndDate || "");
+    setLeaseStartDate(toEthiopianDateInputValue(contract.leaseStartDate || contract.date));
+    setLeaseEndDate(toEthiopianDateInputValue(contract.leaseEndDate));
     setPaymentFrequency(contract.paymentFrequency || "");
     setContractStatus(contract.status || "pending");
     setContractFile(contract.contractFile || undefined);
@@ -290,7 +290,7 @@ export default function Contracts() {
             <label className="field-label">
               Lease Start Date
               <input
-                type="date"
+                {...dateInputProps}
                 value={leaseStartDate}
                 onChange={(e) => setLeaseStartDate(e.target.value)}
                 disabled={!selectedBuildingId}
@@ -300,7 +300,7 @@ export default function Contracts() {
             <label className="field-label">
               Lease End Date
               <input
-                type="date"
+                {...dateInputProps}
                 value={leaseEndDate}
                 onChange={(e) => setLeaseEndDate(e.target.value)}
                 disabled={!selectedBuildingId}
@@ -386,6 +386,7 @@ export default function Contracts() {
           />
         </div>
 
+        <div className="floors-table-wrapper">
         <table className="floors-table">
           <thead>
             <tr>
@@ -416,8 +417,8 @@ export default function Contracts() {
                 <tr key={contract._id}>
                   <td>{contract.tenant?.tenantName || "Tenant"}</td>
                   <td>Br {contract.amount}</td>
-                  <td>{formatDate(contract.leaseStartDate || contract.date)}</td>
-                  <td>{formatDate(contract.leaseEndDate)}</td>
+                  <td>{formatEthiopianDate(contract.leaseStartDate || contract.date)}</td>
+                  <td>{formatEthiopianDate(contract.leaseEndDate)}</td>
                   <td>{contract.paymentFrequency || "-"}</td>
                   <td>
                     {contract.status === "paid" ? (
@@ -428,11 +429,15 @@ export default function Contracts() {
                   </td>
                   <td>{renderFileLink(contract.contractFile)}</td>
                   <td>
-                    <div className="action-buttons">
-                      <button onClick={() => editContract(contract)}>Edit</button>
-                      <button className="danger-btn" onClick={() => deleteContract(contract._id)}>
-                        Delete
-                      </button>
+                    <div className="table-action-stack">
+                      <div className="table-action-row">
+                        <button className="table-action-btn" onClick={() => editContract(contract)} title="Edit">
+                          <PencilSquareIcon />
+                        </button>
+                        <button className="table-action-btn danger-btn" onClick={() => deleteContract(contract._id)} title="Delete">
+                          <TrashIcon />
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -444,6 +449,7 @@ export default function Contracts() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

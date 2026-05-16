@@ -3,6 +3,11 @@ const router = express.Router();
 
 const Utility = require("../models/utility-model");
 const Tenant = require("../models/tenant-model");
+const {
+  normalizeDateOnlyString,
+  parseFlexibleDateInput,
+  toIsoDate
+} = require("../utils/date-utils");
 
 const getBuildingFilter = (building) => (building ? { building } : {});
 
@@ -18,8 +23,7 @@ const populateUtilityTenant = {
 
 const parseDueDate = (dueDate) => {
   if (!dueDate) return null;
-  const d = new Date(dueDate);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return parseFlexibleDateInput(dueDate);
 };
 
 const calculateNextDueDate = (dueDate, paymentFrequency) => {
@@ -45,7 +49,7 @@ const calculateNextDueDate = (dueDate, paymentFrequency) => {
       next.setMonth(next.getMonth() + 1);
   }
 
-  return next.toISOString().slice(0, 10); // YYYY-MM-DD
+  return toIsoDate(next);
 };
 
 const MAX_FILE_DATA_LENGTH = 7000000;
@@ -106,13 +110,19 @@ router.post("/utilities", async (req, res) => {
       return res.status(400).json({ error: "Uploaded file is invalid or too large" });
     }
 
+    if (dueDate && !parseFlexibleDateInput(dueDate)) {
+      return res.status(400).json({ error: "Invalid due date" });
+    }
+
+    const normalizedDueDate = normalizeDateOnlyString(dueDate);
+
     const utility = await Utility.create({
       building,
       tenant,
       waterAmount: Number(waterAmount) || 0,
       lightAmount: Number(lightAmount) || 0,
       generatorGasAmount: Number(generatorGasAmount) || 0,
-      dueDate,
+      dueDate: normalizedDueDate,
       paymentFrequency: paymentFrequency || undefined,
       status: status || "pending",
       notes,
@@ -154,6 +164,12 @@ router.put("/utilities/:id", async (req, res) => {
       return res.status(400).json({ error: "Uploaded file is invalid or too large" });
     }
 
+    if (dueDate && !parseFlexibleDateInput(dueDate)) {
+      return res.status(400).json({ error: "Invalid due date" });
+    }
+
+    const normalizedDueDate = normalizeDateOnlyString(dueDate);
+
     const utility = await Utility.findByIdAndUpdate(
       req.params.id,
       {
@@ -162,7 +178,7 @@ router.put("/utilities/:id", async (req, res) => {
         waterAmount: Number(waterAmount) || 0,
         lightAmount: Number(lightAmount) || 0,
         generatorGasAmount: Number(generatorGasAmount) || 0,
-        dueDate,
+        dueDate: normalizedDueDate,
         paymentFrequency: paymentFrequency || undefined,
         status: status || "pending",
         notes,

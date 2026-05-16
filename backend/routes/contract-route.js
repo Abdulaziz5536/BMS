@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const Contract = require('../models/contract-model');
 const Tenant = require('../models/tenant-model');
+const {
+  normalizeDateOnlyString,
+  parseFlexibleDateInput,
+  toIsoDate
+} = require('../utils/date-utils');
 
 const tenantFileSchemaShape = {
   name: String,
@@ -69,9 +74,19 @@ router.post('/contract', async (req, res) => {
       return res.status(400).json({ error: "Please fill in all fields" });
     }
 
-    if (Date.parse(leaseEndDate) < Date.parse(startDate)) {
+    const startDateObj = parseFlexibleDateInput(startDate);
+    const leaseEndDateObj = parseFlexibleDateInput(leaseEndDate);
+
+    if (!startDateObj || !leaseEndDateObj) {
+      return res.status(400).json({ error: "Invalid lease date" });
+    }
+
+    if (leaseEndDateObj < startDateObj) {
       return res.status(400).json({ error: "Lease end date cannot be before lease start date" });
     }
+
+    const normalizedStartDate = normalizeDateOnlyString(startDate);
+    const normalizedLeaseEndDate = normalizeDateOnlyString(leaseEndDate);
 
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
 
@@ -88,9 +103,9 @@ router.post('/contract', async (req, res) => {
       building,
       tenant,
       amount: Number(amount),
-      date: startDate,
-      leaseStartDate: startDate,
-      leaseEndDate,
+      date: normalizedStartDate,
+      leaseStartDate: normalizedStartDate,
+      leaseEndDate: normalizedLeaseEndDate,
       contractLength,
       paymentFrequency,
       status: status || "pending",
@@ -125,9 +140,19 @@ router.put('/contract/:id', async (req, res) => {
         return res.status(400).json({ error: "Please fill in all fields" });
       }
 
-      if (Date.parse(leaseEndDate) < Date.parse(startDate)) {
+      const startDateObj = parseFlexibleDateInput(startDate);
+      const leaseEndDateObj = parseFlexibleDateInput(leaseEndDate);
+
+      if (!startDateObj || !leaseEndDateObj) {
+        return res.status(400).json({ error: "Invalid lease date" });
+      }
+
+      if (leaseEndDateObj < startDateObj) {
         return res.status(400).json({ error: "Lease end date cannot be before lease start date" });
       }
+
+      const normalizedStartDate = normalizeDateOnlyString(startDate);
+      const normalizedLeaseEndDate = normalizeDateOnlyString(leaseEndDate);
 
       const tenantRecord = await Tenant.findOne({ _id: tenant, building });
 
@@ -146,9 +171,9 @@ router.put('/contract/:id', async (req, res) => {
           building,
           tenant,
           amount: Number(amount),
-          date: startDate,
-          leaseStartDate: startDate,
-          leaseEndDate,
+          date: normalizedStartDate,
+          leaseStartDate: normalizedStartDate,
+          leaseEndDate: normalizedLeaseEndDate,
           contractLength,
           paymentFrequency,
           status: status || "pending",
@@ -188,8 +213,7 @@ router.put('/contract/:id', async (req, res) => {
 
 const parseDateOrNull = (value) => {
   if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return parseFlexibleDateInput(value);
 };
 
 const addFrequency = (date, paymentFrequency) => {
@@ -271,9 +295,9 @@ router.patch('/contract/:id/pay', async (req, res) => {
       building: contract.building,
       tenant: contract.tenant,
       amount: contract.amount,
-      date: nextStart ? nextStart.toISOString().slice(0, 10) : "",
-      leaseStartDate: nextStart ? nextStart.toISOString().slice(0, 10) : "",
-      leaseEndDate: nextEnd ? nextEnd.toISOString().slice(0, 10) : "",
+      date: nextStart ? toIsoDate(nextStart) : "",
+      leaseStartDate: nextStart ? toIsoDate(nextStart) : "",
+      leaseEndDate: nextEnd ? toIsoDate(nextEnd) : "",
       contractLength: contract.contractLength,
       paymentFrequency: contract.paymentFrequency,
       status: "pending",

@@ -1,19 +1,23 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
+import {
+  BanknotesIcon,
+  PencilSquareIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
-  invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import {
+  dateInputProps,
+  formatEthiopianDate,
+  toEthiopianDateInputValue,
+  todayEthiopianDateInputValue
+} from "../utils/dateUtils";
 import "../style.css";
-
-const formatDate = (date) => {
-  if (!date) return "-";
-  return new Date(date).toLocaleDateString('en-GB'); // DD/MM/YYYY format
-};
 
 const formatCurrency = (amount) => {
   return `Br ${Number(amount || 0).toLocaleString()}`;
@@ -37,6 +41,15 @@ export default function Invoice() {
   const [notes, setNotes] = useState("");
   const [receiptFile, setReceiptFile] = useState(null);
   const [currentInvoiceId, setCurrentInvoiceId] = useState(null);
+  const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+  const [editInvoiceForm, setEditInvoiceForm] = useState({
+    dueDate: "",
+    periodStart: "",
+    periodEnd: "",
+    totalAmount: "",
+    status: "pending",
+    notes: ""
+  });
 
   // UI states
   const [activeTab, setActiveTab] = useState("invoices");
@@ -48,7 +61,7 @@ export default function Invoice() {
   const [loading, setLoading] = useState(false);
 
   // Fetch data
-  const fetchInvoices = async (useCache = true) => {
+  const fetchInvoices = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setInvoices([]);
       return;
@@ -61,9 +74,9 @@ export default function Invoice() {
       "Failed to load invoices",
       { useCache }
     );
-  };
+  }, [selectedBuildingId]);
 
-  const fetchContracts = async (useCache = true) => {
+  const fetchContracts = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setContracts([]);
       return;
@@ -76,9 +89,9 @@ export default function Invoice() {
       "Failed to load contracts",
       { useCache }
     );
-  };
+  }, [selectedBuildingId]);
 
-  const fetchTenants = async (useCache = true) => {
+  const fetchTenants = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setTenants([]);
       return;
@@ -91,31 +104,43 @@ export default function Invoice() {
       "Failed to load tenants",
       { useCache }
     );
-  };
+  }, [selectedBuildingId]);
 
-  const fetchReminders = async () => {
-    if (!selectedBuildingId) return;
+  const fetchReminders = useCallback(async () => {
+    if (!selectedBuildingId) {
+      setReminders([]);
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/invoices/reminders?building=${selectedBuildingId}`);
       const data = await readResponse(res);
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load reminders");
+      }
       setReminders(data);
     } catch (error) {
       console.error("Failed to load reminders:", error);
     }
-  };
+  }, [selectedBuildingId]);
 
-  const fetchOverdue = async () => {
-    if (!selectedBuildingId) return;
+  const fetchOverdue = useCallback(async () => {
+    if (!selectedBuildingId) {
+      setOverdue([]);
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/invoices/overdue?building=${selectedBuildingId}`);
       const data = await readResponse(res);
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load overdue invoices");
+      }
       setOverdue(data);
     } catch (error) {
       console.error("Failed to load overdue invoices:", error);
     }
-  };
+  }, [selectedBuildingId]);
 
   useEffect(() => {
     setMessage("");
@@ -125,7 +150,7 @@ export default function Invoice() {
     fetchTenants();
     fetchReminders();
     fetchOverdue();
-  }, [selectedBuildingId]);
+  }, [fetchContracts, fetchInvoices, fetchOverdue, fetchReminders, fetchTenants, selectedBuildingId]);
 
   // Filter and sort invoices
   const filteredAndSortedInvoices = invoices
@@ -303,6 +328,79 @@ export default function Invoice() {
     }
   };
 
+  const startEditingInvoice = (invoice) => {
+    setMessage("");
+    setError("");
+    setCurrentInvoiceId(null);
+    setEditingInvoiceId(invoice._id);
+    setEditInvoiceForm({
+      dueDate: toEthiopianDateInputValue(invoice.dueDate),
+      periodStart: toEthiopianDateInputValue(invoice.periodStart),
+      periodEnd: toEthiopianDateInputValue(invoice.periodEnd),
+      totalAmount: String(invoice.rentAmount || invoice.totalAmount || ""),
+      status: invoice.status || "pending",
+      notes: invoice.notes || ""
+    });
+  };
+
+  const cancelEditingInvoice = () => {
+    setEditingInvoiceId(null);
+    setEditInvoiceForm({
+      dueDate: "",
+      periodStart: "",
+      periodEnd: "",
+      totalAmount: "",
+      status: "pending",
+      notes: ""
+    });
+  };
+
+  const updateInvoice = async () => {
+    setMessage("");
+    setError("");
+
+    if (!editingInvoiceId) {
+      setError("Invoice ID is missing");
+      return;
+    }
+
+    if (!editInvoiceForm.dueDate || !editInvoiceForm.totalAmount) {
+      setError("Due date and total amount are required");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/invoices/${editingInvoiceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dueDate: editInvoiceForm.dueDate,
+          periodStart: editInvoiceForm.periodStart,
+          periodEnd: editInvoiceForm.periodEnd,
+          totalAmount: Number(editInvoiceForm.totalAmount),
+          status: editInvoiceForm.status,
+          notes: editInvoiceForm.notes
+        })
+      });
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        setMessage(data.message || "Invoice updated");
+        cancelEditingInvoice();
+        fetchInvoices(false);
+        fetchReminders();
+        fetchOverdue();
+      } else {
+        setError(data.error || "Failed to update invoice");
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const classes = {
       pending: "pending-status",
@@ -410,7 +508,8 @@ export default function Invoice() {
               />
             </div>
 
-            <table className="floors-table">
+            <div className="floors-table-wrapper invoice-table-wrapper">
+            <table className="floors-table invoice-table">
               <thead>
                 <tr>
                   <th onClick={() => handleSort("invoiceNumber")} className="sortable-header">
@@ -441,27 +540,35 @@ export default function Invoice() {
                       <td>{invoice.invoiceNumber}</td>
                       <td>{invoice.tenant?.tenantName || "Tenant"}</td>
                       <td>
-                        {formatDate(invoice.periodStart)} - {formatDate(invoice.periodEnd)}
+                        {formatEthiopianDate(invoice.periodStart)} - {formatEthiopianDate(invoice.periodEnd)}
                       </td>
-                      <td>{formatDate(invoice.dueDate)}</td>
+                      <td>{formatEthiopianDate(invoice.dueDate)}</td>
                       <td>{formatCurrency(invoice.totalAmount)}</td>
                       <td>{formatCurrency(invoice.amountPaid || 0)}</td>
                       <td>{formatCurrency(invoice.outstandingBalance ?? (invoice.totalAmount - (invoice.amountPaid || 0)))}</td>
                       <td>{getStatusBadge(invoice.status)}</td>
                       <td>
-                        {invoice.status === "pending" && (
-                          <div className="action-buttons">
-                            <button onClick={() => {
+                        <div className="table-action-stack invoice-row-actions">
+                          <button className="table-action-btn" onClick={() => startEditingInvoice(invoice)}>
+                            <PencilSquareIcon />
+                            <span>Edit</span>
+                          </button>
+                          {invoice.status === "pending" && (
+                            <button className="table-action-btn payment-action-btn" onClick={() => {
+                              setMessage("");
+                              setError("");
+                              setEditingInvoiceId(null);
                               setCurrentInvoiceId(invoice._id);
                               const outstanding = invoice.outstandingBalance ?? (invoice.totalAmount - (invoice.amountPaid || 0));
                               setPaymentAmount(outstanding.toString());
-                              setPaymentDate(new Date().toISOString().split('T')[0]);
+                              setPaymentDate(todayEthiopianDateInputValue());
                               setReceiptFile(null);
                             }}>
-                              Record Payment
+                              <BanknotesIcon />
+                              <span>Record Payment</span>
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -472,6 +579,7 @@ export default function Invoice() {
                 )}
               </tbody>
             </table>
+            </div>
           </>
         )}
 
@@ -488,7 +596,7 @@ export default function Invoice() {
                       <span className="reminder-amount">{formatCurrency(reminder.amount)}</span>
                     </div>
                     <div className="reminder-details">
-                      <span>Due: {formatDate(reminder.dueDate)}</span>
+                      <span>Due: {formatEthiopianDate(reminder.dueDate)}</span>
                       <span className={reminder.daysUntilDue <= 3 ? "urgent" : "warning"}>
                         {reminder.daysUntilDue <= 0 ? "Overdue" : `${reminder.daysUntilDue} days left`}
                       </span>
@@ -518,7 +626,7 @@ export default function Invoice() {
                       <span className="overdue-amount">{formatCurrency(item.totalAmount)}</span>
                     </div>
                     <div className="overdue-details">
-                      <span>Due: {formatDate(item.dueDate)}</span>
+                      <span>Due: {formatEthiopianDate(item.dueDate)}</span>
                       <span className="overdue-days">{item.daysOverdue} days overdue</span>
                       <span className="late-penalty">Late Penalty: {formatCurrency(item.latePenalty)}</span>
                     </div>
@@ -546,7 +654,7 @@ export default function Invoice() {
                 onChange={(e) => setPaymentAmount(e.target.value)}
               />
               <input
-                type="date"
+                {...dateInputProps}
                 value={paymentDate}
                 onChange={(e) => setPaymentDate(e.target.value)}
               />
@@ -595,6 +703,97 @@ export default function Invoice() {
                   setNotes("");
                 }}
               >
+                Cancel
+              </button>
+            </div>
+          </section>
+        )}
+
+        {editingInvoiceId && (
+          <section className="panel payment-form">
+            <h2>Edit Invoice</h2>
+            <div className="form-grid">
+              <label className="field-label">
+                Period Start
+                <input
+                  {...dateInputProps}
+                  value={editInvoiceForm.periodStart}
+                  onChange={(e) => setEditInvoiceForm((current) => ({
+                    ...current,
+                    periodStart: e.target.value
+                  }))}
+                />
+              </label>
+
+              <label className="field-label">
+                Period End
+                <input
+                  {...dateInputProps}
+                  value={editInvoiceForm.periodEnd}
+                  onChange={(e) => setEditInvoiceForm((current) => ({
+                    ...current,
+                    periodEnd: e.target.value
+                  }))}
+                />
+              </label>
+
+              <label className="field-label">
+                Due Date
+                <input
+                  {...dateInputProps}
+                  value={editInvoiceForm.dueDate}
+                  onChange={(e) => setEditInvoiceForm((current) => ({
+                    ...current,
+                    dueDate: e.target.value
+                  }))}
+                />
+              </label>
+
+              <label className="field-label">
+                Total Amount
+                <input
+                  type="number"
+                  min="1"
+                  value={editInvoiceForm.totalAmount}
+                  onChange={(e) => setEditInvoiceForm((current) => ({
+                    ...current,
+                    totalAmount: e.target.value
+                  }))}
+                />
+              </label>
+
+              <label className="field-label">
+                Status
+                <select
+                  value={editInvoiceForm.status}
+                  onChange={(e) => setEditInvoiceForm((current) => ({
+                    ...current,
+                    status: e.target.value
+                  }))}
+                >
+                  <option value="pending">Pending</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </label>
+            </div>
+
+            <textarea
+              placeholder="Invoice notes"
+              value={editInvoiceForm.notes}
+              onChange={(e) => setEditInvoiceForm((current) => ({
+                ...current,
+                notes: e.target.value
+              }))}
+              rows="3"
+            />
+
+            <div className="form-actions">
+              <button onClick={updateInvoice} disabled={loading}>
+                Save Invoice
+              </button>
+              <button className="secondary-btn" onClick={cancelEditingInvoice} disabled={loading}>
                 Cancel
               </button>
             </div>

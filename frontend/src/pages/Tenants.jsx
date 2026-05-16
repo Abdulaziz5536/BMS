@@ -1,4 +1,13 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
+import {
+  BanknotesIcon,
+  ClockIcon,
+  CreditCardIcon,
+  DocumentTextIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  XMarkIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
@@ -8,6 +17,11 @@ import {
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import {
+  dateInputProps,
+  formatEthiopianDate,
+  toEthiopianDateInputValue
+} from "../utils/dateUtils";
 import "../style.css";
 
 const MAX_UPLOAD_SIZE = 5 * 1024 * 1024;
@@ -42,14 +56,7 @@ const readUploadFile = (file, expectedType) => {
   });
 };
 
-const formatDate = (date) => {
-  if (!date) return "-";
-  const raw = String(date).slice(0, 10); // YYYY-MM-DD
-  const parts = raw.split("-");
-  if (parts.length !== 3) return raw;
-  const [year, month, day] = parts;
-  return `${day}/${month}/${year}`;
-};
+const formatCurrency = (amount) => `Br ${Number(amount || 0).toLocaleString()}`;
 
 export default function Tenant() {
   const selectedBuildingId = useSelectedBuilding();
@@ -83,7 +90,7 @@ export default function Tenant() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const clearForm = () => {
+  const clearForm = useCallback(() => {
     setTenantId("");
     setTenantName("");
     setPhone("");
@@ -98,9 +105,9 @@ export default function Tenant() {
     setMoveOutDate("");
     setEditingId(null);
     setFileInputKey((value) => value + 1);
-  };
+  }, []);
 
-  const fetchUnits = async (useCache = true) => {
+  const fetchUnits = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setUnits([]);
       return;
@@ -113,9 +120,9 @@ export default function Tenant() {
       "Failed to load units",
       { useCache }
     );
-  };
+  }, [selectedBuildingId]);
 
-  const fetchTenants = async (useCache = true) => {
+  const fetchTenants = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setTenants([]);
       return;
@@ -128,7 +135,7 @@ export default function Tenant() {
       "Failed to load tenants",
       { useCache }
     );
-  };
+  }, [selectedBuildingId]);
 
   useEffect(() => {
     clearForm();
@@ -138,12 +145,12 @@ export default function Tenant() {
     setPaymentHistory([]);
     fetchUnits();
     fetchTenants();
-  }, [selectedBuildingId]);
+  }, [clearForm, fetchTenants, fetchUnits, selectedBuildingId]);
 
   const filteredAndSortedTenants = tenants
     .filter((tenant) =>
       tenant.tenantName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tenant.phone?.includes(searchTerm) ||
+      String(tenant.phone || "").includes(searchTerm) ||
       tenant.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tenant.tenantId?.toString().includes(searchTerm)
     )
@@ -256,8 +263,8 @@ export default function Tenant() {
     setEmergencyContactName(tenant.emergencyContactName || "");
     setEmergencyContactPhone(tenant.emergencyContactPhone || "");
     setEmergencyContactRelation(tenant.emergencyContactRelation || "");
-    setMoveInDate(tenant.moveInDate || "");
-    setMoveOutDate(tenant.moveOutDate || "");
+    setMoveInDate(toEthiopianDateInputValue(tenant.moveInDate));
+    setMoveOutDate(toEthiopianDateInputValue(tenant.moveOutDate));
     setEditingId(tenant._id);
     setFileInputKey((value) => value + 1);
     setMessage("");
@@ -298,6 +305,7 @@ export default function Tenant() {
       setHistoryLoading(true);
       setHistoryError("");
       setHistoryTenant(tenant);
+      setPaymentHistory([]);
 
       const res = await fetch(`${API_BASE}/tenants/${tenant._id}/payment-history`);
       const data = await readResponse(res);
@@ -337,6 +345,23 @@ export default function Tenant() {
   const selectableUnits = units.filter(
     (item) => item.status !== "Occupied" || item._id === unit
   );
+  const historySummary = paymentHistory.reduce(
+    (summary, item) => {
+      const amount = Number(item.amount || 0);
+
+      if (item.status === "paid") {
+        summary.totalPaid += amount;
+        summary.paidCount += 1;
+      } else {
+        summary.pendingTotal += amount;
+        summary.pendingCount += 1;
+      }
+
+      return summary;
+    },
+    { totalPaid: 0, paidCount: 0, pendingTotal: 0, pendingCount: 0 }
+  );
+  const latestHistoryItem = paymentHistory[0];
 
   return (
     <div className="app-layout">
@@ -422,7 +447,7 @@ export default function Tenant() {
             <label className="field-label">
               Move-in Date
               <input
-                type="date"
+                {...dateInputProps}
                 value={moveInDate}
                 onChange={(e) => setMoveInDate(e.target.value)}
                 disabled={!selectedBuildingId}
@@ -432,7 +457,7 @@ export default function Tenant() {
             <label className="field-label">
               Move-out Date
               <input
-                type="date"
+                {...dateInputProps}
                 value={moveOutDate}
                 onChange={(e) => setMoveOutDate(e.target.value)}
                 disabled={!selectedBuildingId}
@@ -492,8 +517,8 @@ export default function Tenant() {
           />
         </div>
 
-        <div className="floors-table-wrapper">
-          <table className="floors-table">
+        <div className="floors-table-wrapper tenant-table-wrapper">
+          <table className="floors-table tenant-table">
             <thead>
               <tr>
                 <th onClick={() => handleSort("tenantId")} className="sortable-header">
@@ -533,8 +558,8 @@ export default function Tenant() {
                     <td>{tenant.email || "-"}</td>
                     <td>{tenantUnit?.unitId || "Unassigned"}</td>
                     <td>{tenantUnit?.floor?.floor || "-"}</td>
-                    <td>{formatDate(tenant.moveInDate)}</td>
-                    <td>{formatDate(tenant.moveOutDate)}</td>
+                    <td>{formatEthiopianDate(tenant.moveInDate)}</td>
+                    <td>{formatEthiopianDate(tenant.moveOutDate)}</td>
                     <td>
                       {tenant.emergencyContactName || "-"}
                       {tenant.emergencyContactPhone && <><br />{tenant.emergencyContactPhone}</>}
@@ -547,12 +572,20 @@ export default function Tenant() {
                       </div>
                     </td>
                     <td>
-                      <button onClick={() => editTenant(tenant)}>
-                        Edit
-                      </button>
-                      <button className="danger-btn" onClick={() => deleteTenant(tenant._id)}>
-                        Delete
-                      </button>
+                      <div className="table-action-stack tenant-row-actions">
+                        <button className="table-action-btn payment-history-btn" onClick={() => fetchPaymentHistory(tenant)}>
+                          <BanknotesIcon />
+                          <span>History</span>
+                        </button>
+                        <div className="table-action-row">
+                          <button className="table-action-btn" onClick={() => editTenant(tenant)} title="Edit">
+                            <PencilSquareIcon />
+                          </button>
+                          <button className="table-action-btn danger-btn" onClick={() => deleteTenant(tenant._id)} title="Delete">
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -566,61 +599,84 @@ export default function Tenant() {
         </table>
         </div>
 
-        {filteredAndSortedTenants.length > 0 && (
-          <div className="table-actions">
-            <h3>Payment History</h3>
-            <div className="action-buttons">
-              {filteredAndSortedTenants.map((tenant) => (
-                <button
-                  key={tenant._id}
-                  onClick={() => fetchPaymentHistory(tenant)}
-                  className="payment-history-btn"
-                >
-                  {tenant.tenantName} (ID: {tenant.tenantId})
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {historyTenant && (
           <section className="panel history-panel">
-            <h2>Payment History - {historyTenant.tenantName}</h2>
+            <div className="history-header">
+              <div>
+                <p className="history-eyebrow">Payment History</p>
+                <h2>{historyTenant.tenantName}</h2>
+                <p>
+                  Tenant ID {historyTenant.tenantId}
+                  {getTenantUnit(historyTenant)?.unitId && ` / Unit ${getTenantUnit(historyTenant).unitId}`}
+                </p>
+              </div>
+              <button
+                className="secondary-btn icon-only-btn"
+                onClick={() => {
+                  setHistoryTenant(null);
+                  setPaymentHistory([]);
+                  setHistoryError("");
+                }}
+                title="Close payment history"
+              >
+                <XMarkIcon />
+              </button>
+            </div>
+
             {historyLoading && <p className="message">Loading payment history...</p>}
             {historyError && <p className="error">{historyError}</p>}
 
-            <table className="floors-table">
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Date</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paymentHistory.length > 0 ? (
-                  paymentHistory.map((item) => (
-                    <tr key={`${item.type}-${item._id}`}>
-                      <td>{item.type}</td>
-                      <td>{formatDate(item.date)}</td>
-                      <td>Br {item.amount}</td>
-                      <td>
-                        <span className={item.status === "paid" ? "paid-status" : "pending-status"}>
+            <div className="history-summary-grid">
+              <div>
+                <BanknotesIcon />
+                <span>Total Paid</span>
+                <strong>{formatCurrency(historySummary.totalPaid)}</strong>
+              </div>
+              <div>
+                <ClockIcon />
+                <span>Pending</span>
+                <strong>{formatCurrency(historySummary.pendingTotal)}</strong>
+              </div>
+              <div>
+                <CreditCardIcon />
+                <span>Paid Items</span>
+                <strong>{historySummary.paidCount}</strong>
+              </div>
+              <div>
+                <DocumentTextIcon />
+                <span>Latest</span>
+                <strong>{latestHistoryItem ? formatEthiopianDate(latestHistoryItem.date) : "-"}</strong>
+              </div>
+            </div>
+
+            {paymentHistory.length > 0 ? (
+              <div className="history-timeline">
+                {paymentHistory.map((item) => (
+                  <article key={`${item.type}-${item._id}`} className="history-entry">
+                    <div className="history-entry-icon">
+                      {item.type === "Rent" ? <BanknotesIcon /> : <DocumentTextIcon />}
+                    </div>
+                    <div className="history-entry-main">
+                      <div className="history-entry-topline">
+                        <div>
+                          <h3>{item.type}</h3>
+                          <p>{item.details || "Payment record"}</p>
+                        </div>
+                        <strong>{formatCurrency(item.amount)}</strong>
+                      </div>
+                      <div className="history-entry-meta">
+                        <span>{formatEthiopianDate(item.date)}</span>
+                        <span className={`status-pill ${item.status === "paid" ? "status-paid" : "status-pending"}`}>
                           {item.status === "paid" ? "Paid" : "Pending"}
                         </span>
-                      </td>
-                      <td>{item.details || "-"}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="5">No payment history yet</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              !historyLoading && <p className="empty-state">No payment history yet.</p>
+            )}
           </section>
         )}
       </div>

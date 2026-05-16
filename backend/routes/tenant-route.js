@@ -4,6 +4,10 @@ const Tenant = require('../models/tenant-model');
 const Unit = require('../models/unit-model');
 const Contract = require('../models/contract-model');
 const Utility = require('../models/utility-model');
+const {
+  normalizeDateOnlyString,
+  parseFlexibleDateInput
+} = require('../utils/date-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -12,8 +16,8 @@ const normalizeTenantPayload = (body) => ({
   emergencyContactName: String(body.emergencyContactName || "").trim(),
   emergencyContactPhone: String(body.emergencyContactPhone || "").trim(),
   emergencyContactRelation: String(body.emergencyContactRelation || "").trim(),
-  moveInDate: body.moveInDate || "",
-  moveOutDate: body.moveOutDate || "",
+  moveInDate: normalizeDateOnlyString(body.moveInDate),
+  moveOutDate: normalizeDateOnlyString(body.moveOutDate),
   idLicenseFile: body.idLicenseFile || undefined,
   leaseAgreementFile: body.leaseAgreementFile || undefined
 });
@@ -86,7 +90,18 @@ router.post('/tenants', async (req,res) => {
       return res.status(400).json({error:"Lease agreement must be a PDF"});
     }
 
-    if(extraTenantData.moveInDate && extraTenantData.moveOutDate && Date.parse(extraTenantData.moveOutDate) < Date.parse(extraTenantData.moveInDate)){
+    const moveInDateObj = parseFlexibleDateInput(req.body.moveInDate);
+    const moveOutDateObj = parseFlexibleDateInput(req.body.moveOutDate);
+
+    if(req.body.moveInDate && !moveInDateObj){
+      return res.status(400).json({error:"Invalid move-in date"});
+    }
+
+    if(req.body.moveOutDate && !moveOutDateObj){
+      return res.status(400).json({error:"Invalid move-out date"});
+    }
+
+    if(moveInDateObj && moveOutDateObj && moveOutDateObj < moveInDateObj){
       return res.status(400).json({error:"Move-out date cannot be before move-in date"});
     }
 
@@ -154,7 +169,18 @@ router.put('/tenants/:id', async (req,res) => {
       return res.status(400).json({error:"Lease agreement must be a PDF"});
     }
 
-    if(extraTenantData.moveInDate && extraTenantData.moveOutDate && Date.parse(extraTenantData.moveOutDate) < Date.parse(extraTenantData.moveInDate)){
+    const moveInDateObj = parseFlexibleDateInput(req.body.moveInDate);
+    const moveOutDateObj = parseFlexibleDateInput(req.body.moveOutDate);
+
+    if(req.body.moveInDate && !moveInDateObj){
+      return res.status(400).json({error:"Invalid move-in date"});
+    }
+
+    if(req.body.moveOutDate && !moveOutDateObj){
+      return res.status(400).json({error:"Invalid move-out date"});
+    }
+
+    if(moveInDateObj && moveOutDateObj && moveOutDateObj < moveInDateObj){
       return res.status(400).json({error:"Move-out date cannot be before move-in date"});
     }
 

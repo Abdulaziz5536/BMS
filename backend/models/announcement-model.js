@@ -59,7 +59,6 @@ const announcementSchema = new mongoose.Schema({
   sentBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-    // required: true - temporarily removed for testing
   },
 
   // Communication methods

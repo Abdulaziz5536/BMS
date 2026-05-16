@@ -4,7 +4,8 @@ const RentInvoice = require('../models/rent-invoice-model');
 const PaymentRecord = require('../models/payment-record-model');
 const Contract = require('../models/contract-model');
 const Tenant = require('../models/tenant-model');
-const Building = require('../models/building-model');
+const { runDueDateReminders } = require('../services/due-reminder-service');
+const { parseFlexibleDateInput } = require('../utils/date-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -19,7 +20,6 @@ const normalizeReceiptFile = (file) => {
   };
 };
 
-// Generate invoice number
 const generateInvoiceNumber = () => {
   const date = new Date();
   const year = date.getFullYear();
@@ -28,36 +28,33 @@ const generateInvoiceNumber = () => {
   return `INV-${year}${month}-${random}`;
 };
 
-// Calculate invoice due date using the end of the billing period
 const calculateDueDate = (periodEnd) => {
   if (!periodEnd) return null;
-  return new Date(periodEnd);
+  return parseFlexibleDateInput(periodEnd);
 };
 
-// Calculate period dates based on payment frequency
 const calculatePeriodDates = (contract, invoiceDate = new Date()) => {
-  const leaseStart = new Date(contract.leaseStartDate || contract.date);
-  const frequency = contract.paymentFrequency.toLowerCase();
+  const frequency = String(contract.paymentFrequency || 'monthly').toLowerCase();
 
   let periodStart, periodEnd;
 
   switch (frequency) {
     case 'monthly':
-      const currentMonth = invoiceDate.getMonth();
-      const currentYear = invoiceDate.getFullYear();
-      periodStart = new Date(currentYear, currentMonth, 1);
-      periodEnd = new Date(currentYear, currentMonth + 1, 0);
+      periodStart = new Date(invoiceDate.getFullYear(), invoiceDate.getMonth(), 1);
+      periodEnd = new Date(invoiceDate.getFullYear(), invoiceDate.getMonth() + 1, 0);
       break;
-    case 'quarterly':
+    case 'quarterly': {
       const quarterStart = Math.floor(invoiceDate.getMonth() / 3) * 3;
       periodStart = new Date(invoiceDate.getFullYear(), quarterStart, 1);
       periodEnd = new Date(invoiceDate.getFullYear(), quarterStart + 3, 0);
       break;
-    case 'every 6 months':
+    }
+    case 'every 6 months': {
       const halfYear = invoiceDate.getMonth() < 6 ? 0 : 6;
       periodStart = new Date(invoiceDate.getFullYear(), halfYear, 1);
       periodEnd = new Date(invoiceDate.getFullYear(), halfYear + 6, 0);
       break;
+    }
     case 'yearly':
       periodStart = new Date(invoiceDate.getFullYear(), 0, 1);
       periodEnd = new Date(invoiceDate.getFullYear(), 11, 31);
@@ -70,20 +67,19 @@ const calculatePeriodDates = (contract, invoiceDate = new Date()) => {
   return { periodStart, periodEnd };
 };
 
-// Calculate late penalty (Ethiopian context - simple daily penalty)
 const calculateLatePenalty = (dueDate, paymentDate, rentAmount) => {
-  const due = new Date(dueDate);
-  const paid = new Date(paymentDate);
+  const due = parseFlexibleDateInput(dueDate);
+  const paid = parseFlexibleDateInput(paymentDate);
+
+  if (!due || !paid) return 0;
 
   if (paid <= due) return 0;
 
   const daysLate = Math.ceil((paid - due) / (1000 * 60 * 60 * 24));
-  // 2% per month late penalty, converted to daily
   const dailyPenaltyRate = (rentAmount * 0.02) / 30;
   return Math.round(daysLate * dailyPenaltyRate);
 };
 
-// Get all rent invoices
 router.get('/rent-invoices', async (req, res) => {
   try {
     const filter = req.query.building ? { building: req.query.building } : {};
@@ -101,7 +97,6 @@ router.get('/rent-invoices', async (req, res) => {
   }
 });
 
-// Generate rent invoice for a tenant
 router.post('/rent-invoices/generate', async (req, res) => {
   try {
     const { tenantId, contractId, invoiceDate } = req.body;
@@ -124,16 +119,18 @@ router.post('/rent-invoices/generate', async (req, res) => {
       return res.status(404).json({ error: "Tenant not found" });
     }
 
-    const invoiceDateObj = invoiceDate ? new Date(invoiceDate) : new Date();
+    const invoiceDateObj = invoiceDate ? parseFlexibleDateInput(invoiceDate) : new Date();
+    if (invoiceDate && !invoiceDateObj) {
+      return res.status(400).json({ error: "Invalid invoice date" });
+    }
     const { periodStart, periodEnd } = calculatePeriodDates(contract, invoiceDateObj);
     const dueDate = calculateDueDate(periodEnd);
 
-    // Check if invoice already exists for this period
     const existingInvoice = await RentInvoice.findOne({
       tenant: tenantId,
       contract: contractId,
-      periodStart: periodStart,
-      periodEnd: periodEnd
+      periodStart,
+      periodEnd
     });
 
     if (existingInvoice) {
@@ -161,11 +158,13 @@ router.post('/rent-invoices/generate', async (req, res) => {
   }
 });
 
-// Auto-generate invoices for all active contracts
 router.post('/rent-invoices/auto-generate', async (req, res) => {
   try {
     const { buildingId, targetDate } = req.body;
-    const targetDateObj = targetDate ? new Date(targetDate) : new Date();
+    const targetDateObj = targetDate ? parseFlexibleDateInput(targetDate) : new Date();
+    if (targetDate && !targetDateObj) {
+      return res.status(400).json({ error: "Invalid target date" });
+    }
 
     const filter = buildingId ? { building: buildingId } : {};
     const contracts = await Contract.find(filter).populate('tenant');
@@ -175,19 +174,19 @@ router.post('/rent-invoices/auto-generate', async (req, res) => {
 
     for (const contract of contracts) {
       try {
-        const { periodStart, periodEnd } = calculatePeriodDates(contract, targetDateObj);
+        if (!contract.tenant?._id) {
+          throw new Error("Contract has no tenant");
+        }
 
-        // Check if invoice already exists
+        const { periodStart, periodEnd } = calculatePeriodDates(contract, targetDateObj);
         const existingInvoice = await RentInvoice.findOne({
           tenant: contract.tenant._id,
           contract: contract._id,
-          periodStart: periodStart,
-          periodEnd: periodEnd
+          periodStart,
+          periodEnd
         });
 
         if (!existingInvoice) {
-          const dueDate = calculateDueDate(periodEnd);
-
           const invoice = await RentInvoice.create({
             building: contract.building,
             tenant: contract.tenant._id,
@@ -195,9 +194,10 @@ router.post('/rent-invoices/auto-generate', async (req, res) => {
             invoiceNumber: generateInvoiceNumber(),
             periodStart,
             periodEnd,
-            dueDate,
+            dueDate: calculateDueDate(periodEnd),
             rentAmount: contract.amount,
             totalAmount: contract.amount,
+            outstandingBalance: contract.amount,
             status: 'pending'
           });
 
@@ -219,7 +219,25 @@ router.post('/rent-invoices/auto-generate', async (req, res) => {
   }
 });
 
-// Record payment for invoice
+router.post('/rent-invoices/reminders/send', async (req, res) => {
+  try {
+    const result = await runDueDateReminders({
+      daysAhead: req.body.daysAhead,
+      dryRun: req.body.dryRun === true,
+      sendSms: req.body.sendSms,
+      sendEmail: req.body.sendEmail
+    });
+
+    const statusCode = result.failed > 0 && result.sent === 0 ? 400 : 200;
+    res.status(statusCode).json({
+      message: `Sent ${result.sent} due date reminder${result.sent === 1 ? '' : 's'}`,
+      ...result
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/rent-invoices/:id/pay', async (req, res) => {
   try {
     const { paymentDate, amount, paymentMethod, reference, notes, receipt } = req.body;
@@ -238,7 +256,10 @@ router.post('/rent-invoices/:id/pay', async (req, res) => {
       return res.status(400).json({ error: "Uploaded receipt is invalid or too large" });
     }
 
-    const paymentDateObj = paymentDate ? new Date(paymentDate) : new Date();
+    const paymentDateObj = paymentDate ? parseFlexibleDateInput(paymentDate) : new Date();
+    if (paymentDate && !paymentDateObj) {
+      return res.status(400).json({ error: "Invalid payment date" });
+    }
     const latePenalty = calculateLatePenalty(invoice.dueDate, paymentDateObj, invoice.rentAmount);
     const totalDue = invoice.rentAmount + latePenalty;
     const previousPaid = invoice.amountPaid || 0;
@@ -248,7 +269,6 @@ router.post('/rent-invoices/:id/pay', async (req, res) => {
       return res.status(400).json({ error: "Payment amount must be greater than zero" });
     }
 
-    // Create payment record
     const paymentRecord = await PaymentRecord.create({
       building: invoice.building,
       tenant: invoice.tenant,
@@ -261,7 +281,6 @@ router.post('/rent-invoices/:id/pay', async (req, res) => {
       receipt: normalizedReceipt
     });
 
-    // Update invoice
     invoice.paymentDate = paymentDateObj;
     invoice.latePenalty = latePenalty;
     invoice.totalAmount = totalDue;
@@ -280,16 +299,18 @@ router.post('/rent-invoices/:id/pay', async (req, res) => {
   }
 });
 
-// Get due date reminders
 router.get('/rent-invoices/reminders', async (req, res) => {
   try {
-    const { daysAhead = 7 } = req.query;
-    const reminderDate = new Date();
-    reminderDate.setDate(reminderDate.getDate() + parseInt(daysAhead));
+    const daysAhead = Number.parseInt(req.query.daysAhead || '7', 10);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const reminderDate = new Date(today);
+    reminderDate.setDate(reminderDate.getDate() + (Number.isFinite(daysAhead) ? daysAhead : 7));
+    reminderDate.setHours(23, 59, 59, 999);
 
     const filter = req.query.building ? { building: req.query.building } : {};
     filter.status = 'pending';
-    filter.dueDate = { $lte: reminderDate };
+    filter.dueDate = { $gte: today, $lte: reminderDate };
 
     const invoices = await RentInvoice.find(filter)
       .populate('tenant')
@@ -299,12 +320,12 @@ router.get('/rent-invoices/reminders', async (req, res) => {
     const reminders = invoices.map(invoice => ({
       invoiceId: invoice._id,
       invoiceNumber: invoice.invoiceNumber,
-      tenantName: invoice.tenant.tenantName,
-      tenantPhone: invoice.tenant.phone,
-      tenantEmail: invoice.tenant.email,
-      amount: invoice.totalAmount,
+      tenantName: invoice.tenant?.tenantName || '',
+      tenantPhone: invoice.tenant?.phone || '',
+      tenantEmail: invoice.tenant?.email || '',
+      amount: invoice.outstandingBalance || invoice.totalAmount,
       dueDate: invoice.dueDate,
-      daysUntilDue: Math.ceil((invoice.dueDate - new Date()) / (1000 * 60 * 60 * 24))
+      daysUntilDue: Math.ceil((invoice.dueDate - today) / (1000 * 60 * 60 * 24))
     }));
 
     res.json(reminders);
@@ -313,7 +334,6 @@ router.get('/rent-invoices/reminders', async (req, res) => {
   }
 });
 
-// Get overdue invoices
 router.get('/rent-invoices/overdue', async (req, res) => {
   try {
     const filter = req.query.building ? { building: req.query.building } : {};
@@ -332,9 +352,9 @@ router.get('/rent-invoices/overdue', async (req, res) => {
       return {
         invoiceId: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
-        tenantName: invoice.tenant.tenantName,
-        tenantPhone: invoice.tenant.phone,
-        tenantEmail: invoice.tenant.email,
+        tenantName: invoice.tenant?.tenantName || '',
+        tenantPhone: invoice.tenant?.phone || '',
+        tenantEmail: invoice.tenant?.email || '',
         amount: invoice.rentAmount,
         latePenalty,
         totalAmount: invoice.rentAmount + latePenalty,
@@ -349,10 +369,13 @@ router.get('/rent-invoices/overdue', async (req, res) => {
   }
 });
 
-// Update invoice status
 router.patch('/rent-invoices/:id', async (req, res) => {
   try {
     const { status, notes } = req.body;
+
+    if (status && !['pending', 'paid', 'overdue', 'cancelled'].includes(status)) {
+      return res.status(400).json({ error: "Invalid invoice status" });
+    }
 
     const invoice = await RentInvoice.findByIdAndUpdate(
       req.params.id,
@@ -370,7 +393,6 @@ router.patch('/rent-invoices/:id', async (req, res) => {
   }
 });
 
-// Delete invoice
 router.delete('/rent-invoices/:id', async (req, res) => {
   try {
     const invoice = await RentInvoice.findByIdAndDelete(req.params.id);
@@ -379,7 +401,6 @@ router.delete('/rent-invoices/:id', async (req, res) => {
       return res.status(404).json({ error: "Invoice not found" });
     }
 
-    // Delete associated payment records
     await PaymentRecord.deleteMany({ invoice: req.params.id });
 
     res.json({ message: "Invoice deleted successfully" });
@@ -388,7 +409,6 @@ router.delete('/rent-invoices/:id', async (req, res) => {
   }
 });
 
-// Get payment records
 router.get('/payment-records', async (req, res) => {
   try {
     const filter = req.query.building ? { building: req.query.building } : {};

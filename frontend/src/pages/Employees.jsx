@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  PencilSquareIcon,
+  TrashIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
@@ -185,6 +189,7 @@ export default function Employees() {
 
         <h2>Employees List</h2>
 
+        <div className="floors-table-wrapper">
         <table className="floors-table">
           <thead>
             <tr>
@@ -203,12 +208,16 @@ export default function Employees() {
                   <td>{employee.position}</td>
                   <td>{employee.phoneNumber || "-"}</td>
                   <td>
-                    <button onClick={() => editEmployee(employee)}>
-                      Edit
-                    </button>
-                    <button className="danger-btn" onClick={() => deleteEmployee(employee._id)}>
-                      Delete
-                    </button>
+                    <div className="table-action-stack">
+                      <div className="table-action-row">
+                        <button className="table-action-btn" onClick={() => editEmployee(employee)} title="Edit">
+                          <PencilSquareIcon />
+                        </button>
+                        <button className="table-action-btn danger-btn" onClick={() => deleteEmployee(employee._id)} title="Delete">
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -219,6 +228,7 @@ export default function Employees() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

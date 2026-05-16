@@ -1,4 +1,9 @@
 import { useEffect, useState } from "react";
+import {
+  PencilSquareIcon,
+  TrashIcon,
+  CheckIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
@@ -204,6 +209,7 @@ export default function Buildings() {
 
         <h2>Buildings List</h2>
 
+        <div className="floors-table-wrapper">
         <table className="floors-table">
           <thead>
             <tr>
@@ -229,15 +235,19 @@ export default function Buildings() {
                   <td>{building.phone || "-"}</td>
                   <td>{selectedBuildingId === building._id ? "Selected" : "-"}</td>
                   <td>
-                    <button onClick={() => setSelectedBuildingId(building._id)}>
-                      Select
-                    </button>
-                    <button onClick={() => editBuilding(building)}>
-                      Edit
-                    </button>
-                    <button className="danger-btn" onClick={() => deleteBuilding(building._id)}>
-                      Delete
-                    </button>
+                    <div className="table-action-stack">
+                      <button className="table-action-btn" onClick={() => setSelectedBuildingId(building._id)} title="Select">
+                        <CheckIcon />
+                      </button>
+                      <div className="table-action-row">
+                        <button className="table-action-btn" onClick={() => editBuilding(building)} title="Edit">
+                          <PencilSquareIcon />
+                        </button>
+                        <button className="table-action-btn danger-btn" onClick={() => deleteBuilding(building._id)} title="Delete">
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -248,6 +258,7 @@ export default function Buildings() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

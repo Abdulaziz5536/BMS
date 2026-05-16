@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  PencilSquareIcon,
+  TrashIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
@@ -8,6 +12,11 @@ import {
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import {
+  dateInputProps,
+  formatEthiopianDate,
+  toEthiopianDateInputValue
+} from "../utils/dateUtils";
 import "../style.css";
 
 export default function Utilities() {
@@ -223,7 +232,7 @@ export default function Utilities() {
     setWaterAmount(utility.waterAmount || "");
     setLightAmount(utility.lightAmount || "");
     setGeneratorGasAmount(utility.generatorGasAmount || "");
-    setDueDate(utility.dueDate || "");
+    setDueDate(toEthiopianDateInputValue(utility.dueDate));
     setPaymentFrequency(utility.paymentFrequency || "Monthly");
     setNotes(utility.notes || "");
     setStatus(utility.status || "pending");
@@ -365,7 +374,7 @@ export default function Utilities() {
             />
 
             <input
-              type="date"
+              {...dateInputProps}
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
               disabled={!selectedBuildingId}
@@ -458,6 +467,7 @@ export default function Utilities() {
           />
         </div>
 
+        <div className="floors-table-wrapper">
         <table className="floors-table">
           <thead>
             <tr>
@@ -494,7 +504,7 @@ export default function Utilities() {
                   <td>Br {utility.lightAmount || 0}</td>
                   <td>Br {utility.generatorGasAmount || 0}</td>
                   <td>Br {getUtilityTotal(utility)}</td>
-                  <td>{utility.dueDate ? utility.dueDate.split("-").reverse().join("/") : "-"}</td>
+                  <td>{formatEthiopianDate(utility.dueDate)}</td>
                   <td>
                     {utility.status === "paid" ? (
                       <span className="paid-status">paid</span>
@@ -504,11 +514,15 @@ export default function Utilities() {
                   </td>
                   <td>{renderFileLink(utility.utilityFile)}</td>
                   <td>
-                    <div className="action-buttons">
-                      <button onClick={() => editUtility(utility)}>Edit</button>
-                      <button className="danger-btn" onClick={() => deleteUtility(utility._id)}>
-                        Delete
-                      </button>
+                    <div className="table-action-stack">
+                      <div className="table-action-row">
+                        <button className="table-action-btn" onClick={() => editUtility(utility)} title="Edit">
+                          <PencilSquareIcon />
+                        </button>
+                        <button className="table-action-btn danger-btn" onClick={() => deleteUtility(utility._id)} title="Delete">
+                          <TrashIcon />
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -520,6 +534,7 @@ export default function Utilities() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

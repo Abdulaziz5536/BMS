@@ -5,7 +5,8 @@ const Invoice = require('../models/invoice-model');
 const PaymentRecord = require('../models/payment-record-model');
 const Contract = require('../models/contract-model');
 const Tenant = require('../models/tenant-model');
-const Building = require('../models/building-model');
+const { runDueDateReminders } = require('../services/due-reminder-service');
+const { parseFlexibleDateInput } = require('../utils/date-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -32,13 +33,12 @@ const generateInvoiceNumber = () => {
 // Calculate invoice due date using the end of the billing period
 const calculateDueDate = (periodEnd) => {
   if (!periodEnd) return null;
-  return new Date(periodEnd);
+  return parseFlexibleDateInput(periodEnd);
 };
 
 // Calculate period dates based on payment frequency
 const calculatePeriodDates = (contract, invoiceDate = new Date()) => {
-  const leaseStart = new Date(contract.leaseStartDate || contract.date);
-  const frequency = contract.paymentFrequency.toLowerCase();
+  const frequency = String(contract.paymentFrequency || 'monthly').toLowerCase();
 
   let periodStart, periodEnd;
 
@@ -73,8 +73,10 @@ const calculatePeriodDates = (contract, invoiceDate = new Date()) => {
 
 // Calculate late penalty (Ethiopian context - simple daily penalty)
 const calculateLatePenalty = (dueDate, paymentDate, rentAmount) => {
-  const due = new Date(dueDate);
-  const paid = new Date(paymentDate);
+  const due = parseFlexibleDateInput(dueDate);
+  const paid = parseFlexibleDateInput(paymentDate);
+
+  if (!due || !paid) return 0;
 
   if (paid <= due) return 0;
 
@@ -136,7 +138,10 @@ router.post('/invoices/generate', async (req, res) => {
       return res.status(404).json({ error: "Tenant not found" });
     }
 
-    const invoiceDateObj = invoiceDate ? new Date(invoiceDate) : new Date();
+    const invoiceDateObj = invoiceDate ? parseFlexibleDateInput(invoiceDate) : new Date();
+    if (invoiceDate && !invoiceDateObj) {
+      return res.status(400).json({ error: "Invalid invoice date" });
+    }
     const { periodStart, periodEnd } = calculatePeriodDates(contract, invoiceDateObj);
     const dueDate = calculateDueDate(periodEnd);
 
@@ -177,7 +182,14 @@ router.post('/invoices/generate', async (req, res) => {
 router.post('/invoices/auto-generate', async (req, res) => {
   try {
     const { buildingId, targetDate } = req.body;
-    const targetDateObj = targetDate ? new Date(targetDate) : new Date();
+    const targetDateObj = targetDate ? parseFlexibleDateInput(targetDate) : new Date();
+    if (targetDate && !targetDateObj) {
+      return res.status(400).json({ error: "Invalid target date" });
+    }
+
+    if (buildingId && !mongoose.Types.ObjectId.isValid(buildingId)) {
+      return res.status(400).json({ error: 'Invalid building id' });
+    }
 
     const filter = buildingId ? { building: buildingId } : {};
     const contracts = await Contract.find(filter).populate('tenant');
@@ -187,6 +199,10 @@ router.post('/invoices/auto-generate', async (req, res) => {
 
     for (const contract of contracts) {
       try {
+        if (!contract.tenant?._id) {
+          throw new Error("Contract has no tenant");
+        }
+
         const { periodStart, periodEnd } = calculatePeriodDates(contract, targetDateObj);
 
         // Check if invoice already exists
@@ -210,6 +226,7 @@ router.post('/invoices/auto-generate', async (req, res) => {
             dueDate,
             rentAmount: contract.amount,
             totalAmount: contract.amount,
+            outstandingBalance: contract.amount,
             status: 'pending'
           });
 
@@ -225,6 +242,32 @@ router.post('/invoices/auto-generate', async (req, res) => {
       generated: generatedInvoices.length,
       errors: errors.length,
       invoices: generatedInvoices
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/invoices/reminders/send', async (req, res) => {
+  try {
+    const buildingId = req.body.building || req.query.building || "";
+
+    if (buildingId && !mongoose.Types.ObjectId.isValid(buildingId)) {
+      return res.status(400).json({ error: "Invalid building id" });
+    }
+
+    const result = await runDueDateReminders({
+      daysAhead: req.body.daysAhead,
+      dryRun: req.body.dryRun === true,
+      sendSms: req.body.sendSms,
+      sendEmail: req.body.sendEmail,
+      buildingId
+    });
+
+    const statusCode = result.failed > 0 && result.sent === 0 ? 400 : 200;
+    res.status(statusCode).json({
+      message: `Sent ${result.sent} due date reminder${result.sent === 1 ? '' : 's'}`,
+      ...result
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -250,7 +293,10 @@ router.post('/invoices/:id/pay', async (req, res) => {
       return res.status(400).json({ error: "Uploaded receipt is invalid or too large" });
     }
 
-    const paymentDateObj = paymentDate ? new Date(paymentDate) : new Date();
+    const paymentDateObj = paymentDate ? parseFlexibleDateInput(paymentDate) : new Date();
+    if (paymentDate && !paymentDateObj) {
+      return res.status(400).json({ error: "Invalid payment date" });
+    }
     const latePenalty = calculateLatePenalty(invoice.dueDate, paymentDateObj, invoice.rentAmount);
     const totalDue = invoice.rentAmount + latePenalty;
     const previousPaid = invoice.amountPaid || 0;
@@ -295,9 +341,13 @@ router.post('/invoices/:id/pay', async (req, res) => {
 // Get due date reminders
 router.get('/invoices/reminders', async (req, res) => {
   try {
-    const { daysAhead = 7 } = req.query;
-    const reminderDate = new Date();
-    reminderDate.setDate(reminderDate.getDate() + parseInt(daysAhead));
+    const parsedDaysAhead = Number.parseInt(req.query.daysAhead || '7', 10);
+    const daysAhead = Number.isFinite(parsedDaysAhead) ? parsedDaysAhead : 7;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const reminderDate = new Date(today);
+    reminderDate.setDate(reminderDate.getDate() + daysAhead);
+    reminderDate.setHours(23, 59, 59, 999);
 
     const filter = {};
     if (req.query.building) {
@@ -307,22 +357,26 @@ router.get('/invoices/reminders', async (req, res) => {
       filter.building = new mongoose.Types.ObjectId(req.query.building);
     }
     filter.status = 'pending';
-    filter.dueDate = { $lte: reminderDate };
+    filter.dueDate = { $gte: today, $lte: reminderDate };
 
     const invoices = await Invoice.find(filter)
-      .populate('tenant')
+      .populate({
+        path: 'tenant',
+        populate: { path: 'unit', select: 'unitId' }
+      })
       .populate('contract')
       .sort({ dueDate: 1 });
 
     const reminders = invoices.map(invoice => ({
       invoiceId: invoice._id,
       invoiceNumber: invoice.invoiceNumber,
-      tenantName: invoice.tenant.tenantName,
-      tenantPhone: invoice.tenant.phone,
-      tenantEmail: invoice.tenant.email,
-      amount: invoice.totalAmount,
+      tenantName: invoice.tenant?.tenantName || '',
+      tenantPhone: invoice.tenant?.phone || '',
+      tenantEmail: invoice.tenant?.email || '',
+      tenantUnit: invoice.tenant?.unit?.unitId || '',
+      amount: invoice.outstandingBalance || invoice.totalAmount,
       dueDate: invoice.dueDate,
-      daysUntilDue: Math.ceil((invoice.dueDate - new Date()) / (1000 * 60 * 60 * 24))
+      daysUntilDue: Math.ceil((invoice.dueDate - today) / (1000 * 60 * 60 * 24))
     }));
 
     res.json(reminders);
@@ -345,7 +399,10 @@ router.get('/invoices/overdue', async (req, res) => {
     filter.dueDate = { $lt: new Date() };
 
     const invoices = await Invoice.find(filter)
-      .populate('tenant')
+      .populate({
+        path: 'tenant',
+        populate: { path: 'unit', select: 'unitId' }
+      })
       .populate('contract')
       .sort({ dueDate: 1 });
 
@@ -356,9 +413,10 @@ router.get('/invoices/overdue', async (req, res) => {
       return {
         invoiceId: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
-        tenantName: invoice.tenant.tenantName,
-        tenantPhone: invoice.tenant.phone,
-        tenantEmail: invoice.tenant.email,
+        tenantName: invoice.tenant?.tenantName || '',
+        tenantPhone: invoice.tenant?.phone || '',
+        tenantEmail: invoice.tenant?.email || '',
+        tenantUnit: invoice.tenant?.unit?.unitId || '',
         amount: invoice.rentAmount,
         latePenalty,
         totalAmount: invoice.rentAmount + latePenalty,
@@ -505,19 +563,114 @@ router.get('/reports/outstanding-rent', async (req, res) => {
 // Update invoice status
 router.patch('/invoices/:id', async (req, res) => {
   try {
-    const { status, notes } = req.body;
+    const {
+      dueDate,
+      periodStart,
+      periodEnd,
+      totalAmount,
+      status,
+      notes
+    } = req.body;
 
-    const invoice = await Invoice.findByIdAndUpdate(
-      req.params.id,
-      { status, notes },
-      { new: true }
-    ).populate('tenant').populate('contract');
+    if (status && !['pending', 'paid', 'overdue', 'cancelled'].includes(status)) {
+      return res.status(400).json({ error: "Invalid invoice status" });
+    }
+
+    const invoice = await Invoice.findById(req.params.id);
 
     if (!invoice) {
       return res.status(404).json({ error: "Invoice not found" });
     }
 
+    let dueDateChanged = false;
+    if (dueDate) {
+      const nextDueDate = parseFlexibleDateInput(dueDate);
+
+      if (!nextDueDate) {
+        return res.status(400).json({ error: "Invalid due date" });
+      }
+
+      // compare by milliseconds to avoid timezone/ISO-string edge cases
+      const prevMs = invoice.dueDate ? new Date(invoice.dueDate).getTime() : null;
+      const nextMs = new Date(nextDueDate).getTime();
+
+      if (prevMs !== nextMs) {
+        // clear previous reminders so a new reminder can be sent for the updated date
+        invoice.remindersSent = [];
+        dueDateChanged = true;
+        console.log(`Invoice ${invoice._id}: dueDate changed from ${prevMs ? new Date(prevMs).toISOString() : 'none'} to ${new Date(nextMs).toISOString()}`);
+      }
+
+      invoice.dueDate = nextDueDate;
+    }
+
+    if (periodStart) {
+      const nextPeriodStart = parseFlexibleDateInput(periodStart);
+
+      if (!nextPeriodStart) {
+        return res.status(400).json({ error: "Invalid period start date" });
+      }
+
+      invoice.periodStart = nextPeriodStart;
+    }
+
+    if (periodEnd) {
+      const nextPeriodEnd = parseFlexibleDateInput(periodEnd);
+
+      if (!nextPeriodEnd) {
+        return res.status(400).json({ error: "Invalid period end date" });
+      }
+
+      invoice.periodEnd = nextPeriodEnd;
+    }
+
+    if (invoice.periodStart && invoice.periodEnd && invoice.periodEnd < invoice.periodStart) {
+      return res.status(400).json({ error: "Period end cannot be before period start" });
+    }
+
+    if (totalAmount !== undefined) {
+      const normalizedTotal = Number(totalAmount);
+
+      if (!Number.isFinite(normalizedTotal) || normalizedTotal <= 0) {
+        return res.status(400).json({ error: "Total amount must be greater than zero" });
+      }
+
+      invoice.rentAmount = normalizedTotal;
+      invoice.totalAmount = normalizedTotal + (invoice.latePenalty || 0);
+      invoice.outstandingBalance = Math.max(0, invoice.totalAmount - (invoice.amountPaid || 0));
+    }
+
+    if (status) {
+      invoice.status = status;
+    }
+
+    if (notes !== undefined) {
+      invoice.notes = String(notes || '').trim();
+    }
+
+    await invoice.save();
+    await invoice.populate('tenant');
+    await invoice.populate('contract');
     res.json({ message: "Invoice updated", invoice });
+
+    // If due date changed, trigger reminder job for the building in background.
+    // Do not await to avoid delaying the HTTP response.
+    if (dueDateChanged) {
+      try {
+        const buildingId = invoice.building ? String(invoice.building) : undefined;
+        console.log(`Scheduling due-date reminder run for building ${buildingId || 'all'} (invoice ${invoice._id})`);
+        setTimeout(() => {
+          try {
+            // run due date reminders for this building only
+            runDueDateReminders({ buildingId });
+          } catch (err) {
+            console.error('Failed to run due date reminders after invoice update:', err);
+          }
+        }, 1000);
+      } catch (err) {
+        console.error('Failed to schedule due date reminder run:', err);
+      }
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

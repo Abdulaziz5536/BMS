@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  PencilSquareIcon,
+  TrashIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
@@ -183,6 +187,7 @@ export default function Floors() {
 
         <h2>Floors List</h2>
 
+        <div className="floors-table-wrapper">
         <table className="floors-table">
           <thead>
             <tr>
@@ -201,8 +206,16 @@ export default function Floors() {
                   <td>{item.units}</td>
                   <td>{item.totalSqm}</td>
                   <td>
-                    <button onClick={() => editFloor(item)}>Edit</button>
-                    <button className="danger-btn" onClick={() => deleteFloor(item._id)}>Delete</button>
+                    <div className="table-action-stack">
+                      <div className="table-action-row">
+                        <button className="table-action-btn" onClick={() => editFloor(item)} title="Edit">
+                          <PencilSquareIcon />
+                        </button>
+                        <button className="table-action-btn danger-btn" onClick={() => deleteFloor(item._id)} title="Delete">
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -213,6 +226,7 @@ export default function Floors() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

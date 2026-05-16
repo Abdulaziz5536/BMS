@@ -16,6 +16,7 @@ const dashboardRouter = require("./routes/dashboard-route");
 const utilityRouter = require("./routes/utility-route");
 const invoiceRouter = require("./routes/invoice-route");
 const announcementRouter = require("./routes/announcement-route");
+const { startDueDateReminderJob } = require("./services/due-reminder-service");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,7 +49,10 @@ app.use((err, req, res, next) => {
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("mongoDB is connected"))
+  .then(() => {
+    console.log("mongoDB is connected");
+    startDueDateReminderJob();
+  })
   .catch((err) => console.log(err));
 
 app.listen(PORT, () => {
