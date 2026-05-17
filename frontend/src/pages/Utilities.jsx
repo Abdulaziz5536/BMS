@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PencilSquareIcon,
   TrashIcon
@@ -15,7 +15,7 @@ import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import {
   dateInputProps,
   formatEthiopianDate,
-  toEthiopianDateInputValue
+  normalizeDateInputForApi
 } from "../utils/dateUtils";
 import "../style.css";
 
@@ -35,6 +35,7 @@ export default function Utilities() {
   const [utilityFile, setUtilityFile] = useState(undefined);
 
   const [editingId, setEditingId] = useState(null);
+  const editUtilityFormRef = useRef(null);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -121,6 +122,15 @@ export default function Utilities() {
     fetchUtilities();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBuildingId]);
+
+  useEffect(() => {
+    if (editingId) {
+      editUtilityFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingId]);
 
   const getUtilityTotal = (utility) => (
     (Number(utility.waterAmount) || 0) +
@@ -232,7 +242,7 @@ export default function Utilities() {
     setWaterAmount(utility.waterAmount || "");
     setLightAmount(utility.lightAmount || "");
     setGeneratorGasAmount(utility.generatorGasAmount || "");
-    setDueDate(toEthiopianDateInputValue(utility.dueDate));
+    setDueDate(normalizeDateInputForApi(utility.dueDate));
     setPaymentFrequency(utility.paymentFrequency || "Monthly");
     setNotes(utility.notes || "");
     setStatus(utility.status || "pending");
@@ -332,7 +342,7 @@ export default function Utilities() {
           <p className="error">Add or select a building before adding utility payments.</p>
         )}
 
-        <section className="panel">
+        <section className="panel" ref={editUtilityFormRef}>
           <h2>{editingId ? "Edit Utility Payment" : "Add Utility Payment"}</h2>
 
           <div className="form-grid">

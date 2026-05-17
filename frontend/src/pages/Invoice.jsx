@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import {
   BanknotesIcon,
   PencilSquareIcon
@@ -14,8 +14,7 @@ import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import {
   dateInputProps,
   formatEthiopianDate,
-  toEthiopianDateInputValue,
-  todayEthiopianDateInputValue
+  normalizeDateInputForApi
 } from "../utils/dateUtils";
 import "../style.css";
 
@@ -42,6 +41,7 @@ export default function Invoice() {
   const [receiptFile, setReceiptFile] = useState(null);
   const [currentInvoiceId, setCurrentInvoiceId] = useState(null);
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+  const editInvoiceRef = useRef(null);
   const [editInvoiceForm, setEditInvoiceForm] = useState({
     dueDate: "",
     periodStart: "",
@@ -151,6 +151,15 @@ export default function Invoice() {
     fetchReminders();
     fetchOverdue();
   }, [fetchContracts, fetchInvoices, fetchOverdue, fetchReminders, fetchTenants, selectedBuildingId]);
+
+  useEffect(() => {
+    if (editingInvoiceId) {
+      editInvoiceRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingInvoiceId]);
 
   // Filter and sort invoices
   const filteredAndSortedInvoices = invoices
@@ -334,9 +343,9 @@ export default function Invoice() {
     setCurrentInvoiceId(null);
     setEditingInvoiceId(invoice._id);
     setEditInvoiceForm({
-      dueDate: toEthiopianDateInputValue(invoice.dueDate),
-      periodStart: toEthiopianDateInputValue(invoice.periodStart),
-      periodEnd: toEthiopianDateInputValue(invoice.periodEnd),
+      dueDate: normalizeDateInputForApi(invoice.dueDate),
+      periodStart: normalizeDateInputForApi(invoice.periodStart),
+      periodEnd: normalizeDateInputForApi(invoice.periodEnd),
       totalAmount: String(invoice.rentAmount || invoice.totalAmount || ""),
       status: invoice.status || "pending",
       notes: invoice.notes || ""
@@ -710,7 +719,7 @@ export default function Invoice() {
         )}
 
         {editingInvoiceId && (
-          <section className="panel payment-form">
+          <section className="panel payment-form" ref={editInvoiceRef}>
             <h2>Edit Invoice</h2>
             <div className="form-grid">
               <label className="field-label">

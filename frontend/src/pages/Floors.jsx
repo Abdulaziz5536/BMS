@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PencilSquareIcon,
   TrashIcon
@@ -23,6 +23,7 @@ export default function Floors() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const floorFormRef = useRef(null);
 
   const clearForm = () => {
     setFloor("");
@@ -52,6 +53,15 @@ export default function Floors() {
     setError("");
     loadFloors();
   }, [selectedBuildingId]);
+
+  useEffect(() => {
+    if (editingId) {
+      floorFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingId]);
 
   const saveFloor = async () => {
     setMessage("");
@@ -146,7 +156,7 @@ export default function Floors() {
           <p className="error">Add or select a building before managing floors.</p>
         )}
 
-        <div className="floors-form">
+        <div className="floors-form" ref={floorFormRef}>
           <input
             type="number"
             placeholder="Floor Number"

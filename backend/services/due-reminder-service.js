@@ -33,7 +33,7 @@ const getInvoiceAmount = (invoice) =>
   invoice.outstandingBalance || invoice.totalAmount || invoice.rentAmount || 0;
 
 const reminderAlreadySent = (invoice, type) =>
-  invoice.remindersSent?.some((reminder) => reminder.type === type);
+  (invoice.remindersSent || []).some((reminder) => reminder.type === type);
 
 const buildDueDateMessage = (invoice, daysUntilDue) => {
   const tenantName = invoice.tenant?.tenantName || "Tenant";
@@ -47,7 +47,7 @@ const buildDueDateMessage = (invoice, daysUntilDue) => {
 
   // Amharic message (no invoice number)
   // e.g. "ሰላም Amanuel፣ የኪራይ ክፍያዎ Br 1000 ነው። ክፍያው ዛሬ (16 May 2026) ይጠጋል። እባክዎ ክፍያዎን በቀን ውስጥ ያከናውኑ።"
-  const am = `ሰላም ${tenantName}፣ የኪራይ ክፍያዎ Br ${amount} ነው። ክፍያው ${timing} (${dueDate}) ይጠጋል። እባክዎ ክፍያዎን በቀን ውስጥ ያከናውኑ።`;
+  const am = `ሰላም ${tenantName}፣ የኪራይ ክፍያዎ Br ${amount} ነው። ክፍያው ${timing} (${dueDate}) ይጠጋል። እባክዎ ክፍያዎን በጊዜ ውስጥ ያከናውኑ።`;
 
   return `${en}\n${am}`;
 };
@@ -60,7 +60,7 @@ const buildLatePaymentMessage = (invoice, daysOverdue) => {
   const en = `Hi ${tenantName}, your rent payment of Br ${amount} was due on ${dueDate} and is now ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue. Please complete payment as soon as possible.`;
 
   // Amharic message
-  const am = `ሰላም ${tenantName}፣ የኪራይ ክፍያዎ Br ${amount} ነው። ክፍያው ${dueDate} የተዘገየ ነው እና አሁን ${daysOverdue} ቀን(ዎች) በላይ ይጠፋል። እባክዎ በፍጥነት ክፍያዎን ያከናውኑ።`;
+  const am = `ሰላም ${tenantName}፣ የኪራይ ክፍያዎ Br ${amount} ነው። ክፍያው ${dueDate} የተዘገየ ነው እና አሁን ${daysOverdue} ቀን(ዎች) በላይ አልፏል። እባክዎ በፍጥነት ክፍያዎን ያከናውኑ።`;
 
   return `${en}\n${am}`;
 };
@@ -69,7 +69,9 @@ const getPendingInvoices = async (Model, daysAhead, buildingId) => {
   const today = getStartOfToday();
   const reminderEnd = getEndOfDay(new Date(today.getTime() + daysAhead * DAY_MS));
   const filter = {
-    status: "pending",
+    // include both pending and already-marked overdue invoices so late-payment
+    // reminders are still sent if status was changed elsewhere
+    status: { $in: ["pending", "overdue"] },
     dueDate: { $lte: reminderEnd }
   };
 
@@ -164,6 +166,7 @@ const processInvoices = async (Model, label, options) => {
     );
 
     if (reminderResult.sent > 0) {
+      invoice.remindersSent = invoice.remindersSent || [];
       invoice.remindersSent.push({
         type: reminderType,
         sentAt: new Date(),
@@ -251,6 +254,78 @@ const runDueDateReminders = async (overrideOptions = {}) => {
   return mergeResults(results);
 };
 
+const runReminderForInvoice = async (invoiceId, overrideOptions = {}) => {
+  const options = {
+    dryRun: overrideOptions.dryRun === true,
+    sendSms: overrideOptions.sendSms ?? process.env.DUE_REMINDER_SEND_SMS !== "false",
+    sendEmail: overrideOptions.sendEmail ?? process.env.DUE_REMINDER_SEND_EMAIL === "true",
+    force: overrideOptions.force === true
+  };
+
+  const invoice = await Invoice.findById(invoiceId).populate('tenant').populate('building');
+  if (!invoice) {
+    return { checked: 0, sent: 0, skipped: 0, failed: 1, errors: [{ error: 'Invoice not found' }] };
+  }
+
+  const today = getStartOfToday();
+  const daysUntilDue = Math.ceil((invoice.dueDate - today) / DAY_MS);
+  const isOverdue = daysUntilDue < 0;
+  const reminderType = isOverdue ? 'late_payment' : 'due_date';
+
+  if (!options.force && reminderAlreadySent(invoice, reminderType)) {
+    return { checked: 1, sent: 0, skipped: 1, failed: 0, errors: [] };
+  }
+
+  const message = isOverdue
+    ? buildLatePaymentMessage(invoice, Math.abs(daysUntilDue))
+    : buildDueDateMessage(invoice, daysUntilDue);
+
+  if (options.dryRun) return { checked: 1, sent: 0, skipped: 1, failed: 0, errors: [] };
+
+  const reminderResult = await sendTenantReminder(invoice, reminderType, message, options);
+
+  if (reminderResult.sent > 0) {
+    invoice.remindersSent = invoice.remindersSent || [];
+    invoice.remindersSent.push({ type: reminderType, sentAt: new Date(), message });
+    await invoice.save();
+    return { checked: 1, sent: 1, skipped: 0, failed: 0, errors: [] };
+  }
+
+  return { checked: 1, sent: 0, skipped: 0, failed: 1, errors: reminderResult.errors };
+};
+
+const runRemindersForTenant = async (tenantId, overrideOptions = {}) => {
+  const options = {
+    dryRun: overrideOptions.dryRun === true,
+    sendSms: overrideOptions.sendSms ?? process.env.DUE_REMINDER_SEND_SMS !== "false",
+    sendEmail: overrideOptions.sendEmail ?? process.env.DUE_REMINDER_SEND_EMAIL === "true",
+    force: overrideOptions.force === true
+  };
+
+  // find pending or overdue invoices for tenant
+  const invoices = await Invoice.find({ tenant: tenantId, status: { $in: ['pending', 'overdue'] } })
+    .populate('tenant')
+    .populate('building')
+    .sort({ dueDate: 1 });
+
+  if (!invoices || invoices.length === 0) {
+    return { checked: 0, sent: 0, skipped: 0, failed: 0, errors: [] };
+  }
+
+  const results = { checked: 0, sent: 0, skipped: 0, failed: 0, errors: [] };
+
+  for (const inv of invoices) {
+    const res = await runReminderForInvoice(inv._id, { ...options, force: options.force });
+    results.checked += res.checked || 0;
+    results.sent += res.sent || 0;
+    results.skipped += res.skipped || 0;
+    results.failed += res.failed || 0;
+    if (res.errors && res.errors.length) results.errors.push(...res.errors);
+  }
+
+  return results;
+};
+
 const startDueDateReminderJob = () => {
   if (process.env.DUE_REMINDER_ENABLED === "false") {
     console.log("Due date reminder job is disabled");
@@ -286,3 +361,7 @@ module.exports = {
   runDueDateReminders,
   startDueDateReminderJob
 };
+
+// Additional admin helpers
+module.exports.runReminderForInvoice = runReminderForInvoice;
+module.exports.runRemindersForTenant = runRemindersForTenant;

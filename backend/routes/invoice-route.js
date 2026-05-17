@@ -6,6 +6,7 @@ const PaymentRecord = require('../models/payment-record-model');
 const Contract = require('../models/contract-model');
 const Tenant = require('../models/tenant-model');
 const { runDueDateReminders } = require('../services/due-reminder-service');
+const dueReminderService = require('../services/due-reminder-service');
 const { parseFlexibleDateInput } = require('../utils/date-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
@@ -80,10 +81,9 @@ const calculateLatePenalty = (dueDate, paymentDate, rentAmount) => {
 
   if (paid <= due) return 0;
 
-  const daysLate = Math.ceil((paid - due) / (1000 * 60 * 60 * 24));
-  // 2% per month late penalty, converted to daily
-  const dailyPenaltyRate = (rentAmount * 0.02) / 30;
-  return Math.round(daysLate * dailyPenaltyRate);
+  // Fixed late penalty: 10% of the rent amount when payment is overdue
+  const penalty = (Number(rentAmount) || 0) * 0.10;
+  return Math.round(penalty);
 };
 
 // Get all invoices
@@ -269,6 +269,42 @@ router.post('/invoices/reminders/send', async (req, res) => {
       message: `Sent ${result.sent} due date reminder${result.sent === 1 ? '' : 's'}`,
       ...result
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin: run reminders for a specific invoice or tenant (or fallback to normal run)
+router.post('/invoices/reminders/run', async (req, res) => {
+  try {
+    const { invoiceId, tenantId, buildingId, dryRun, sendSms, sendEmail, force } = req.body;
+
+    if (invoiceId) {
+      if (!mongoose.Types.ObjectId.isValid(invoiceId)) {
+        return res.status(400).json({ error: 'Invalid invoice id' });
+      }
+
+      const result = await (dueReminderService.runReminderForInvoice
+        ? await dueReminderService.runReminderForInvoice(invoiceId, { dryRun, sendSms, sendEmail, force })
+        : await runDueDateReminders({ dryRun, sendSms, sendEmail, buildingId }));
+
+      return res.json(result);
+    }
+
+    if (tenantId) {
+      if (!mongoose.Types.ObjectId.isValid(tenantId)) {
+        return res.status(400).json({ error: 'Invalid tenant id' });
+      }
+
+      const result = await (dueReminderService.runRemindersForTenant
+        ? await dueReminderService.runRemindersForTenant(tenantId, { dryRun, sendSms, sendEmail, force })
+        : await runDueDateReminders({ dryRun, sendSms, sendEmail, buildingId }));
+
+      return res.json(result);
+    }
+
+    const result = await runDueDateReminders({ daysAhead: req.body.daysAhead, dryRun, sendSms, sendEmail, buildingId });
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

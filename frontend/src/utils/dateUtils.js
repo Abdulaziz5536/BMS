@@ -165,7 +165,8 @@ export const normalizeDateInputForApi = (value) => {
 };
 
 export const dateInputProps = {
-  type: "text",
-  inputMode: "numeric",
+  // Use native date picker by default (gregorian). For Ethiopian input use
+  // the helper functions (`toEthiopianDateInputValue`, `normalizeDateInputForApi`).
+  type: "date",
   placeholder: "YYYY-MM-DD"
 };

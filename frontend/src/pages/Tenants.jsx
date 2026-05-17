@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import {
   BanknotesIcon,
   ClockIcon,
@@ -20,7 +20,7 @@ import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import {
   dateInputProps,
   formatEthiopianDate,
-  toEthiopianDateInputValue
+  normalizeDateInputForApi
 } from "../utils/dateUtils";
 import "../style.css";
 
@@ -77,6 +77,9 @@ export default function Tenant() {
   const [moveOutDate, setMoveOutDate] = useState("");
   const [fileInputKey, setFileInputKey] = useState(0);
   const [editingId, setEditingId] = useState(null);
+  const tenantFormRef = useRef(null);
+  const historySectionRef = useRef(null);
+  const [historyScrollTrigger, setHistoryScrollTrigger] = useState(0);
 
   const [historyTenant, setHistoryTenant] = useState(null);
   const [paymentHistory, setPaymentHistory] = useState([]);
@@ -146,6 +149,24 @@ export default function Tenant() {
     fetchUnits();
     fetchTenants();
   }, [clearForm, fetchTenants, fetchUnits, selectedBuildingId]);
+
+  useEffect(() => {
+    if (editingId) {
+      tenantFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingId]);
+
+  useEffect(() => {
+    if (historyScrollTrigger) {
+      historySectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [historyScrollTrigger]);
 
   const filteredAndSortedTenants = tenants
     .filter((tenant) =>
@@ -263,8 +284,8 @@ export default function Tenant() {
     setEmergencyContactName(tenant.emergencyContactName || "");
     setEmergencyContactPhone(tenant.emergencyContactPhone || "");
     setEmergencyContactRelation(tenant.emergencyContactRelation || "");
-    setMoveInDate(toEthiopianDateInputValue(tenant.moveInDate));
-    setMoveOutDate(toEthiopianDateInputValue(tenant.moveOutDate));
+    setMoveInDate(normalizeDateInputForApi(tenant.moveInDate));
+    setMoveOutDate(normalizeDateInputForApi(tenant.moveOutDate));
     setEditingId(tenant._id);
     setFileInputKey((value) => value + 1);
     setMessage("");
@@ -306,6 +327,7 @@ export default function Tenant() {
       setHistoryError("");
       setHistoryTenant(tenant);
       setPaymentHistory([]);
+      setHistoryScrollTrigger((current) => current + 1);
 
       const res = await fetch(`${API_BASE}/tenants/${tenant._id}/payment-history`);
       const data = await readResponse(res);
@@ -374,7 +396,7 @@ export default function Tenant() {
           <p className="error">Add or select a building before managing tenants.</p>
         )}
 
-        <section className="panel tenant-panel">
+        <section className="panel tenant-panel" ref={tenantFormRef}>
           <h2>{editingId ? "Edit Tenant" : "Add Tenant"}</h2>
 
           <div className="form-grid">
@@ -600,7 +622,7 @@ export default function Tenant() {
         </div>
 
         {historyTenant && (
-          <section className="panel history-panel">
+          <section className="panel history-panel" ref={historySectionRef}>
             <div className="history-header">
               <div>
                 <p className="history-eyebrow">Payment History</p>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   PencilSquareIcon,
   TrashIcon
@@ -24,6 +24,7 @@ function Unit() {
   const [floors, setFloors] = useState([]);
   const [floor, setFloor] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const unitFormRef = useRef(null);
 
   const clearForm = () => {
     setUnitId("");
@@ -70,6 +71,15 @@ function Unit() {
     fetchUnits();
     fetchFloors();
   }, [selectedBuildingId]);
+
+  useEffect(() => {
+    if (editingId) {
+      unitFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingId]);
 
   const saveUnit = async () => {
     setMessage("");
@@ -162,7 +172,7 @@ function Unit() {
           <p className="error">Add or select a building before managing units.</p>
         )}
 
-        <section className="panel">
+        <section className="panel" ref={unitFormRef}>
           <h2>{editingId ? "Edit Unit" : "Add Unit"}</h2>
 
           <div className="form-grid">

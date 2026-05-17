@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PencilSquareIcon,
   TrashIcon
@@ -15,7 +15,7 @@ import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import {
   dateInputProps,
   formatEthiopianDate,
-  toEthiopianDateInputValue
+  normalizeDateInputForApi
 } from "../utils/dateUtils";
 import "../style.css";
 
@@ -61,6 +61,7 @@ export default function Contracts() {
   const [contractFile, setContractFile] = useState(undefined);
 
   const [editingId, setEditingId] = useState(null);
+  const contractFormRef = useRef(null);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -118,6 +119,15 @@ export default function Contracts() {
     fetchTenants();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBuildingId]);
+
+  useEffect(() => {
+    if (editingId) {
+      contractFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingId]);
 
   const filteredAndSortedContracts = contracts
     .filter(
@@ -210,8 +220,8 @@ export default function Contracts() {
   const editContract = (contract) => {
     setTenantId(contract.tenant?._id || contract.tenant || "");
     setAmount(contract.amount || "");
-    setLeaseStartDate(toEthiopianDateInputValue(contract.leaseStartDate || contract.date));
-    setLeaseEndDate(toEthiopianDateInputValue(contract.leaseEndDate));
+    setLeaseStartDate(normalizeDateInputForApi(contract.leaseStartDate || contract.date));
+    setLeaseEndDate(normalizeDateInputForApi(contract.leaseEndDate));
     setPaymentFrequency(contract.paymentFrequency || "");
     setContractStatus(contract.status || "pending");
     setContractFile(contract.contractFile || undefined);
@@ -262,7 +272,7 @@ export default function Contracts() {
           <p className="error">Add or select a building before managing contracts.</p>
         )}
 
-        <section className="panel">
+        <section className="panel" ref={contractFormRef}>
           <h2>{editingId ? "Edit Contract" : "Add Contract"}</h2>
 
           <div className="form-grid contract-form-grid">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PencilSquareIcon,
   TrashIcon
@@ -21,6 +21,7 @@ export default function Employees() {
   const [position, setPosition] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const employeeFormRef = useRef(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -52,6 +53,15 @@ export default function Employees() {
     setError("");
     fetchEmployees();
   }, [selectedBuildingId]);
+
+  useEffect(() => {
+    if (editingId) {
+      employeeFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingId]);
 
   const saveEmployee = async () => {
     setMessage("");
@@ -142,7 +152,7 @@ export default function Employees() {
           <p className="error">Add or select a building before managing employees.</p>
         )}
 
-        <section className="panel">
+        <section className="panel" ref={employeeFormRef}>
           <h2>{editingId ? "Edit Employee" : "Add Employee"}</h2>
 
           <div className="form-grid">

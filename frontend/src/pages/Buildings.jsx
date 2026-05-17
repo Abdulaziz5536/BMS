@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PencilSquareIcon,
   TrashIcon,
@@ -26,6 +26,7 @@ export default function Buildings() {
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const buildingFormRef = useRef(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -47,6 +48,15 @@ export default function Buildings() {
   useEffect(() => {
     loadBuildings();
   }, []);
+
+  useEffect(() => {
+    if (editingId) {
+      buildingFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingId]);
 
   const clearForm = () => {
     setName("");
@@ -155,7 +165,7 @@ export default function Buildings() {
       <div className="main-content">
         <h1>Buildings</h1>
 
-        <section className="panel">
+        <section className="panel" ref={buildingFormRef}>
           <h2>{editingId ? "Edit Building" : "Add Building"}</h2>
 
           <div className="form-grid">
