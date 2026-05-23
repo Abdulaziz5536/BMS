@@ -3,7 +3,9 @@ const router = express.Router();
 const Contract = require('../models/contract-model');
 const Invoice = require('../models/invoice-model');
 const RentInvoice = require('../models/rent-invoice-model');
+const PaymentRecord = require('../models/payment-record-model');
 const Tenant = require('../models/tenant-model');
+const { recordAuditLog } = require('../services/audit-log-service');
 const {
   applyContractStatusToInvoices,
   syncContractPaymentState
@@ -35,6 +37,9 @@ const normalizeTenantFile = (file) => {
     data: file.data
   };
 };
+
+const getContractLabel = (contract) =>
+  `${contract.paymentFrequency || "Contract"} / Br ${contract.amount || 0}`;
 
 router.get('/contract', async (req, res) => {
   try {
@@ -75,6 +80,10 @@ router.post('/contract', async (req, res) => {
       return res.status(400).json({ error: "Please fill in all fields" });
     }
 
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ error: "Contract amount must be greater than zero" });
+    }
+
     const startDateObj = parseFlexibleDateInput(startDate);
     const leaseEndDateObj = parseFlexibleDateInput(leaseEndDate);
 
@@ -113,6 +122,15 @@ router.post('/contract', async (req, res) => {
       contractFile: normalizedContractFile
     });
 
+    await recordAuditLog({
+      building: contract.building,
+      action: "created",
+      entityType: "contract",
+      entityId: contract._id,
+      entityLabel: getContractLabel(contract),
+      message: "Contract created"
+    });
+
     res.json({ message: "contract created", contract });
   } catch (err) {
     res.status(500).json({ err: err.message });
@@ -138,6 +156,10 @@ router.put('/contract/:id', async (req, res) => {
 
     if (!building || !tenant || !amount || !startDate || !leaseEndDate || !paymentFrequency) {
       return res.status(400).json({ error: "Please fill in all fields" });
+    }
+
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ error: "Contract amount must be greater than zero" });
     }
 
     const startDateObj = parseFlexibleDateInput(startDate);
@@ -196,6 +218,19 @@ router.put('/contract/:id', async (req, res) => {
       invoicePeriodSync.updated + rentInvoicePeriodSync.updated;
     const invoicePeriodsSkipped =
       invoicePeriodSync.skipped + rentInvoicePeriodSync.skipped;
+
+    await recordAuditLog({
+      building: updatedContract.building,
+      action: "updated",
+      entityType: "contract",
+      entityId: updatedContract._id,
+      entityLabel: getContractLabel(updatedContract),
+      message: "Contract updated",
+      metadata: {
+        invoicePeriodsUpdated,
+        invoicePeriodsSkipped
+      }
+    });
 
     return res.json({
       message: invoicePeriodsUpdated > 0
@@ -261,6 +296,14 @@ router.patch('/contract/:id/status', async (req, res) => {
 
     await applyContractStatusToInvoices(contract, status);
     await syncContractPaymentState(contract);
+    await recordAuditLog({
+      building: contract.building,
+      action: "status_changed",
+      entityType: "contract",
+      entityId: contract._id,
+      entityLabel: getContractLabel(contract),
+      message: `Contract status changed to ${status}`
+    });
 
     return res.json({
       message: "Contract status updated",
@@ -287,6 +330,15 @@ router.patch('/contract/:id/pay', async (req, res) => {
     contract.status = "paid";
     await contract.save();
     await applyContractStatusToInvoices(contract, "paid");
+    const paymentRecord = await PaymentRecord.create({
+      building: contract.building,
+      tenant: contract.tenant,
+      contract: contract._id,
+      paymentDate: new Date(),
+      amount: contract.amount,
+      paymentMethod: "cash",
+      notes: "Recorded from contract payment action"
+    });
 
     // 2) create next pending contract based on paymentFrequency
     const baseStart = parseDateOrNull(contract.leaseStartDate || contract.date);
@@ -308,6 +360,19 @@ router.patch('/contract/:id/pay', async (req, res) => {
       contractFile: contract.contractFile
     });
 
+    await recordAuditLog({
+      building: contract.building,
+      action: "recorded",
+      entityType: "payment",
+      entityId: paymentRecord._id,
+      entityLabel: getContractLabel(contract),
+      message: `Contract payment of Br ${contract.amount} recorded and next contract created`,
+      metadata: {
+        contract: contract._id,
+        nextContract: nextContract._id
+      }
+    });
+
     return res.json({
       message: "Payment marked as paid and next contract created",
       contract,
@@ -320,11 +385,32 @@ router.patch('/contract/:id/pay', async (req, res) => {
 
 router.delete('/contract/:id', async (req, res) => {
   try {
+    const [invoiceCount, rentInvoiceCount, paymentCount] = await Promise.all([
+      Invoice.countDocuments({ contract: req.params.id }),
+      RentInvoice.countDocuments({ contract: req.params.id }),
+      PaymentRecord.countDocuments({ contract: req.params.id })
+    ]);
+
+    if (invoiceCount || rentInvoiceCount || paymentCount) {
+      return res.status(400).json({
+        error: "Cannot delete this contract because it has invoices or payment records. Delete or cancel those records first."
+      });
+    }
+
     const contract = await Contract.findByIdAndDelete(req.params.id);
 
     if (!contract) {
       return res.status(404).json({ error: "Contract not found" });
     }
+
+    await recordAuditLog({
+      building: contract.building,
+      action: "deleted",
+      entityType: "contract",
+      entityId: contract._id,
+      entityLabel: getContractLabel(contract),
+      message: "Contract deleted"
+    });
 
     res.json({ message: "contract removed" });
 

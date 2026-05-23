@@ -3,6 +3,7 @@ const router = express.Router();
 const Unit = require("../models/unit-model");
 const Floor = require("../models/floor-model");
 const Tenant = require("../models/tenant-model");
+const { recordAuditLog } = require("../services/audit-log-service");
 
 router.get('/units', async (req,res) => {
   try {
@@ -55,6 +56,15 @@ router.post('/units', async (req,res) => {
     floor
   });
 
+  await recordAuditLog({
+    building: unit.building,
+    action: "created",
+    entityType: "unit",
+    entityId: unit._id,
+    entityLabel: unit.unitId,
+    message: `Unit ${unit.unitId} created`
+  });
+
   res.json({message:"unit added", unit});
  } catch (error) {
   res.status(500).json({ error: error.message });
@@ -105,6 +115,15 @@ router.put('/units/:id', async (req,res) => {
     return res.status(404).json({ error: "unit not found" });
   }
 
+  await recordAuditLog({
+    building: updatedUnit.building,
+    action: "updated",
+    entityType: "unit",
+    entityId: updatedUnit._id,
+    entityLabel: updatedUnit.unitId,
+    message: `Unit ${updatedUnit.unitId} updated`
+  });
+
   res.json({ message: "unit updated", updatedUnit });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -113,11 +132,28 @@ router.put('/units/:id', async (req,res) => {
 
 router.delete('/units/:id', async (req,res) => {
   try {
+    const tenantCount = await Tenant.countDocuments({ unit: req.params.id });
+
+    if (tenantCount > 0) {
+      return res.status(400).json({
+        error: "Cannot delete this unit because a tenant is assigned to it. Move or delete the tenant first."
+      });
+    }
+
     const unit = await Unit.findByIdAndDelete(req.params.id);
 
     if(!unit){
       return res.status(404).json({ error: "unit not found" });
     }
+
+    await recordAuditLog({
+      building: unit.building,
+      action: "deleted",
+      entityType: "unit",
+      entityId: unit._id,
+      entityLabel: unit.unitId,
+      message: `Unit ${unit.unitId} deleted`
+    });
 
     res.json({message:"unit deleted"});
   } catch (error) {

@@ -1,11 +1,13 @@
 import { useCallback, useState, useEffect, useRef } from "react";
 import {
   BanknotesIcon,
+  DocumentTextIcon,
   PencilSquareIcon,
   TrashIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
 import { confirmAction } from "../components/confirmAction";
+import FilePreviewLink from "../components/FilePreviewLink";
 import {
   API_BASE,
   invalidateCache,
@@ -33,6 +35,8 @@ export default function Invoice() {
   const [tenants, setTenants] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [overdue, setOverdue] = useState([]);
+  const [paymentRecords, setPaymentRecords] = useState([]);
+  const [reminderHistory, setReminderHistory] = useState([]);
 
   // Form states
   const [selectedTenant, setSelectedTenant] = useState("");
@@ -147,6 +151,42 @@ export default function Invoice() {
     }
   }, [selectedBuildingId]);
 
+  const fetchPaymentRecords = useCallback(async () => {
+    if (!selectedBuildingId) {
+      setPaymentRecords([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(withBuilding("/payment-records", selectedBuildingId));
+      const data = await readResponse(res);
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load payment records");
+      }
+      setPaymentRecords(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to load payment records:", error);
+    }
+  }, [selectedBuildingId]);
+
+  const fetchReminderHistory = useCallback(async () => {
+    if (!selectedBuildingId) {
+      setReminderHistory([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(withBuilding("/invoices/reminders/history", selectedBuildingId));
+      const data = await readResponse(res);
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load reminder history");
+      }
+      setReminderHistory(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to load reminder history:", error);
+    }
+  }, [selectedBuildingId]);
+
   useEffect(() => {
     setMessage("");
     setError("");
@@ -155,7 +195,9 @@ export default function Invoice() {
     fetchTenants();
     fetchReminders();
     fetchOverdue();
-  }, [fetchContracts, fetchInvoices, fetchOverdue, fetchReminders, fetchTenants, selectedBuildingId]);
+    fetchPaymentRecords();
+    fetchReminderHistory();
+  }, [fetchContracts, fetchInvoices, fetchOverdue, fetchPaymentRecords, fetchReminderHistory, fetchReminders, fetchTenants, selectedBuildingId]);
 
   useEffect(() => {
     if (editingInvoiceId) {
@@ -236,6 +278,7 @@ export default function Invoice() {
         setMessage(data.message);
         fetchInvoices(false);
         fetchReminders();
+        fetchReminderHistory();
         setSelectedTenant("");
         setSelectedContract("");
       } else {
@@ -265,6 +308,7 @@ export default function Invoice() {
         setMessage(data.message);
         fetchInvoices(false);
         fetchReminders();
+        fetchReminderHistory();
       } else {
         setError(data.error);
       }
@@ -336,6 +380,8 @@ export default function Invoice() {
         invalidateCache(selectedBuildingId);
         fetchInvoices(false);
         fetchOverdue();
+        fetchPaymentRecords();
+        fetchReminderHistory();
         // Reset form
         setPaymentAmount("");
         setPaymentDate("");
@@ -416,6 +462,8 @@ export default function Invoice() {
         fetchInvoices(false);
         fetchReminders();
         fetchOverdue();
+        fetchPaymentRecords();
+        fetchReminderHistory();
       } else {
         setError(data.error || "Failed to update invoice");
       }
@@ -463,6 +511,8 @@ export default function Invoice() {
         fetchInvoices(false);
         fetchReminders();
         fetchOverdue();
+        fetchPaymentRecords();
+        fetchReminderHistory();
       } else {
         setError(data.error || "Failed to delete invoice");
       }
@@ -481,6 +531,82 @@ export default function Invoice() {
       cancelled: "secondary-btn"
     };
     return <span className={classes[status] || "pending-status"}>{status}</span>;
+  };
+
+  const normalizeStoredFile = (file) => {
+    if (!file?.data) {
+      return null;
+    }
+
+    if (String(file.data).startsWith("data:")) {
+      return file;
+    }
+
+    return {
+      ...file,
+      data: `data:${file.type || "application/octet-stream"};base64,${file.data}`
+    };
+  };
+
+  const findInvoiceForPayment = (payment) =>
+    payment.invoice || invoices.find((invoice) => String(invoice._id) === String(payment.invoice));
+
+  const printReceipt = (payment) => {
+    const invoice = findInvoiceForPayment(payment);
+    const tenant = payment.tenant || invoice?.tenant;
+    const receiptWindow = window.open("", "_blank", "width=860,height=720");
+
+    if (!receiptWindow) {
+      setError("Popup blocked. Allow popups to print receipts.");
+      return;
+    }
+
+    receiptWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>BHA MALL Receipt</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; color: #111827; background: #f3f4f6; }
+            .receipt { max-width: 720px; margin: 32px auto; background: #fff; border: 1px solid #d1d5db; }
+            .header { background: #0f4c81; color: white; padding: 24px 28px; }
+            .brand { margin: 0 0 6px; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+            h1 { margin: 0; font-size: 26px; }
+            .body { padding: 28px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            td { padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
+            td:first-child { color: #64748b; width: 190px; }
+            .total { font-size: 22px; font-weight: 700; color: #0f4c81; }
+            .footer { color: #64748b; font-size: 13px; padding-top: 22px; }
+            @media print { body { background: white; } .receipt { margin: 0; border: none; } }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="header">
+              <p class="brand">BHA MALL</p>
+              <h1>Payment Receipt</h1>
+            </div>
+            <div class="body">
+              <p>This confirms payment received from <strong>${tenant?.tenantName || "Tenant"}</strong>.</p>
+              <table>
+                <tr><td>Receipt Date</td><td>${formatEthiopianDate(payment.paymentDate)}</td></tr>
+                <tr><td>Invoice</td><td>${invoice?.invoiceNumber || payment.contract?.paymentFrequency || "Payment record"}</td></tr>
+                <tr><td>Tenant</td><td>${tenant?.tenantName || "-"}</td></tr>
+                <tr><td>Unit</td><td>${tenant?.unit?.unitId || "-"}</td></tr>
+                <tr><td>Payment Method</td><td>${payment.paymentMethod || "-"}</td></tr>
+                <tr><td>Reference</td><td>${payment.reference || "-"}</td></tr>
+                <tr><td>Amount Paid</td><td class="total">${formatCurrency(payment.amount)}</td></tr>
+                <tr><td>Notes</td><td>${payment.notes || "-"}</td></tr>
+              </table>
+              <p class="footer">Generated by BHA MALL Building Management System.</p>
+            </div>
+          </div>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `);
+    receiptWindow.document.close();
   };
 
   return (
@@ -513,6 +639,18 @@ export default function Invoice() {
             onClick={() => setActiveTab("overdue")}
           >
             Overdue ({overdue.length})
+          </button>
+          <button
+            className={activeTab === "payments" ? "active" : ""}
+            onClick={() => setActiveTab("payments")}
+          >
+            Payments ({paymentRecords.length})
+          </button>
+          <button
+            className={activeTab === "history" ? "active" : ""}
+            onClick={() => setActiveTab("history")}
+          >
+            Reminder History ({reminderHistory.length})
           </button>
         </div>
 
@@ -719,6 +857,109 @@ export default function Invoice() {
             ) : (
               <p>No overdue payments</p>
             )}
+          </section>
+        )}
+
+        {activeTab === "payments" && (
+          <section className="panel">
+            <div className="section-header">
+              <div>
+                <h2>Payment Ledger</h2>
+                <p>{paymentRecords.length} recorded payment{paymentRecords.length === 1 ? "" : "s"}</p>
+              </div>
+            </div>
+
+            <div className="floors-table-wrapper">
+              <table className="floors-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Tenant</th>
+                    <th>Record</th>
+                    <th>Amount</th>
+                    <th>Method</th>
+                    <th>Reference</th>
+                    <th>Receipt File</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentRecords.length > 0 ? (
+                    paymentRecords.map((payment) => (
+                      <tr key={payment._id}>
+                        <td>{formatEthiopianDate(payment.paymentDate)}</td>
+                        <td>{payment.tenant?.tenantName || "-"}</td>
+                        <td>
+                          {payment.invoice?.invoiceNumber ||
+                            payment.contract?.paymentFrequency ||
+                            (payment.utility ? "Utility payment" : "Payment")}
+                        </td>
+                        <td>{formatCurrency(payment.amount)}</td>
+                        <td>{payment.paymentMethod || "-"}</td>
+                        <td>{payment.reference || "-"}</td>
+                        <td>
+                          <FilePreviewLink file={normalizeStoredFile(payment.receipt)} label="Receipt file" />
+                        </td>
+                        <td>
+                          <button className="table-action-btn" onClick={() => printReceipt(payment)} title="Print receipt">
+                            <DocumentTextIcon />
+                            <span>Receipt</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="8">No payment records found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "history" && (
+          <section className="panel">
+            <div className="section-header">
+              <div>
+                <h2>Reminder History</h2>
+                <p>{reminderHistory.length} reminder record{reminderHistory.length === 1 ? "" : "s"}</p>
+              </div>
+            </div>
+
+            <div className="floors-table-wrapper">
+              <table className="floors-table">
+                <thead>
+                  <tr>
+                    <th>Sent At</th>
+                    <th>Invoice</th>
+                    <th>Tenant</th>
+                    <th>Unit</th>
+                    <th>Type</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reminderHistory.length > 0 ? (
+                    reminderHistory.map((item, index) => (
+                      <tr key={`${item.invoiceId}-${item.sentAt}-${index}`}>
+                        <td>{formatEthiopianDate(item.sentAt)}</td>
+                        <td>{item.invoiceNumber}</td>
+                        <td>{item.tenantName || "-"}</td>
+                        <td>{item.tenantUnit || "-"}</td>
+                        <td>{item.type === "late_payment" ? "Overdue" : "Due date"}</td>
+                        <td>{item.message || "-"}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="6">No reminder history found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
 

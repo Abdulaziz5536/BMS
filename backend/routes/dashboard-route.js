@@ -6,6 +6,10 @@ const Tenant = require("../models/tenant-model");
 const Employee = require("../models/employees-model");
 const Contract = require("../models/contract-model");
 const Utility = require("../models/utility-model");
+const Invoice = require("../models/invoice-model");
+const RentInvoice = require("../models/rent-invoice-model");
+const PaymentRecord = require("../models/payment-record-model");
+const AuditLog = require("../models/audit-log-model");
 
 router.get("/dashboard", async (req,res) => {
 
@@ -89,10 +93,58 @@ router.get("/dashboard", async (req,res) => {
       status: "pending"
     });
 
-    const pendingUtilityPayments = await Utility.countDocuments({
-      ...filter,
-      status: "pending"
-    });
+  const pendingUtilityPayments = await Utility.countDocuments({
+    ...filter,
+    status: "pending"
+  });
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueSoonEnd = new Date(today);
+  dueSoonEnd.setDate(dueSoonEnd.getDate() + 7);
+  dueSoonEnd.setHours(23, 59, 59, 999);
+
+  const [invoiceOutstanding, rentInvoiceOutstanding] = await Promise.all([
+    Invoice.aggregate([
+      { $match: { ...aggregateFilter, outstandingBalance: { $gt: 0 } } },
+      { $group: { _id: null, total: { $sum: "$outstandingBalance" }, count: { $sum: 1 } } }
+    ]),
+    RentInvoice.aggregate([
+      { $match: { ...aggregateFilter, outstandingBalance: { $gt: 0 } } },
+      { $group: { _id: null, total: { $sum: "$outstandingBalance" }, count: { $sum: 1 } } }
+    ])
+  ]);
+
+  const outstandingRent =
+    (invoiceOutstanding[0]?.total || 0) +
+    (rentInvoiceOutstanding[0]?.total || 0);
+  const outstandingInvoiceCount =
+    (invoiceOutstanding[0]?.count || 0) +
+    (rentInvoiceOutstanding[0]?.count || 0);
+
+  const [dueSoonInvoices, overdueInvoices, dueSoonRentInvoices, overdueRentInvoices] = await Promise.all([
+    Invoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $gte: today, $lte: dueSoonEnd } }),
+    Invoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $lt: today } }),
+    RentInvoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $gte: today, $lte: dueSoonEnd } }),
+    RentInvoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $lt: today } })
+  ]);
+
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const monthlyPaymentResult = await PaymentRecord.aggregate([
+    {
+      $match: {
+        ...aggregateFilter,
+        paymentDate: { $gte: monthStart, $lt: monthEnd }
+      }
+    },
+    { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }
+  ]);
+
+  const recentActivity = await AuditLog.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(8)
+    .lean();
 
     res.json({
       totalUnits,
@@ -104,7 +156,14 @@ router.get("/dashboard", async (req,res) => {
       utilityRevenue,
       pendingPayments,
       pendingUtilityPayments,
-      occupancyRate
+      occupancyRate,
+      outstandingRent,
+      outstandingInvoiceCount,
+      dueSoonInvoices: dueSoonInvoices + dueSoonRentInvoices,
+      overdueInvoices: overdueInvoices + overdueRentInvoices,
+      monthlyCollected: monthlyPaymentResult[0]?.total || 0,
+      monthlyPaymentCount: monthlyPaymentResult[0]?.count || 0,
+      recentActivity
     });
     
   } catch (error) {

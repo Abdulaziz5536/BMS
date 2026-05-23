@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Floor = require('../models/floor-model');
+const Unit = require('../models/unit-model');
+const { recordAuditLog } = require('../services/audit-log-service');
 
 router.post('/floors', async (req, res) => {
   try {
@@ -17,6 +19,10 @@ router.post('/floors', async (req, res) => {
       return res.status(400).json({ error: "Floor, units, and total SQM must be valid numbers" });
     }
 
+    if (unitCount < 0 || totalArea < 0) {
+      return res.status(400).json({ error: "Units and total SQM cannot be negative" });
+    }
+
     const existingFloor = await Floor.findOne({
       building,
       floor: floorNumber
@@ -31,6 +37,15 @@ router.post('/floors', async (req, res) => {
       floor: floorNumber,
       units: unitCount,
       totalSqm: totalArea
+    });
+
+    await recordAuditLog({
+      building: newFloor.building,
+      action: "created",
+      entityType: "floor",
+      entityId: newFloor._id,
+      entityLabel: String(newFloor.floor),
+      message: `Floor ${newFloor.floor} created`
     });
 
     res.status(201).json({
@@ -68,6 +83,10 @@ router.put('/floors/:id', async (req, res) => {
       return res.status(400).json({ error: "Floor, units, and total SQM must be valid numbers" });
     }
 
+    if (unitCount < 0 || totalArea < 0) {
+      return res.status(400).json({ error: "Units and total SQM cannot be negative" });
+    }
+
     const existingFloor = await Floor.findOne({
       building,
       floor: floorNumber,
@@ -93,6 +112,15 @@ router.put('/floors/:id', async (req, res) => {
       return res.status(404).json({ error: "Floor not found" });
     }
 
+    await recordAuditLog({
+      building: updatedFloor.building,
+      action: "updated",
+      entityType: "floor",
+      entityId: updatedFloor._id,
+      entityLabel: String(updatedFloor.floor),
+      message: `Floor ${updatedFloor.floor} updated`
+    });
+
     res.json({
       message: "Floor updated successfully",
       updatedFloor
@@ -105,12 +133,28 @@ router.put('/floors/:id', async (req, res) => {
 router.delete('/floors/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const unitCount = await Unit.countDocuments({ floor: id });
+
+    if (unitCount > 0) {
+      return res.status(400).json({
+        error: "Cannot delete this floor because units are assigned to it. Delete or move those units first."
+      });
+    }
 
     const deletedFloor = await Floor.findByIdAndDelete(id);
 
     if (!deletedFloor) {
       return res.status(404).json({ error: "Floor not found" });
     }
+
+    await recordAuditLog({
+      building: deletedFloor.building,
+      action: "deleted",
+      entityType: "floor",
+      entityId: deletedFloor._id,
+      entityLabel: String(deletedFloor.floor),
+      message: `Floor ${deletedFloor.floor} deleted`
+    });
 
     res.json({ message: "Floor deleted successfully" });
   } catch (error) {

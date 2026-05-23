@@ -19,6 +19,7 @@ import {
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import { formatEthiopianDateTime } from "../utils/dateUtils";
+import { formatFloorLabel } from "../utils/floorUtils";
 import "../style.css";
 
 const initialFormData = {
@@ -377,7 +378,7 @@ export default function Announcements() {
                     onChange={() => toggleSelection("selectedFloors", floor._id)}
                   />
                   <span>
-                    <strong>Floor {floor.floor}</strong>
+                    <strong>Floor {formatFloorLabel(floor.floor)}</strong>
                     <small>{floor.units} units</small>
                   </span>
                 </label>

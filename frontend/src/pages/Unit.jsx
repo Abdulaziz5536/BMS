@@ -13,6 +13,12 @@ import {
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import { formatFloorLabel } from "../utils/floorUtils";
+
+const sortCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base"
+});
 
 function Unit() {
   const selectedBuildingId = useSelectedBuilding();
@@ -25,6 +31,8 @@ function Unit() {
   const [floors, setFloors] = useState([]);
   const [floor, setFloor] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const [sortField, setSortField] = useState("unitId");
+  const [sortDirection, setSortDirection] = useState("asc");
   const unitFormRef = useRef(null);
 
   const clearForm = useCallback(() => {
@@ -173,6 +181,32 @@ function Unit() {
     }
   };
 
+  const getSortValue = (item, field) => {
+    if (field === "floor") {
+      return item.floor?.floor ?? "";
+    }
+
+    return item[field] ?? "";
+  };
+
+  const sortedUnits = [...units].sort((a, b) => {
+    const aValue = getSortValue(a, sortField);
+    const bValue = getSortValue(b, sortField);
+    const result = sortCollator.compare(String(aValue), String(bValue));
+
+    return sortDirection === "asc" ? result : -result;
+  });
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+      return;
+    }
+
+    setSortField(field);
+    setSortDirection("asc");
+  };
+
   return (
     <div className="app-layout">
       <Sidebar />
@@ -217,7 +251,7 @@ function Unit() {
               <option value="">Select Floor</option>
               {floors.map((item) => (
                 <option key={item._id} value={item._id}>
-                  Floor {item.floor}
+                  Floor {formatFloorLabel(item.floor)}
                 </option>
               ))}
             </select>
@@ -245,23 +279,33 @@ function Unit() {
         <table className="floors-table">
           <thead>
             <tr>
-              <th>Unit ID</th>
-              <th>Area</th>
-              <th>Type</th>
-              <th>Floor</th>
-              <th>Status</th>
+              <th onClick={() => handleSort("unitId")}>
+                Unit ID {sortField === "unitId" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("area")}>
+                Area {sortField === "area" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("type")}>
+                Type {sortField === "type" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("floor")}>
+                Floor {sortField === "floor" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("status")}>
+                Status {sortField === "status" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {units.length > 0 ? (
-              units.map((unit) => (
+            {sortedUnits.length > 0 ? (
+              sortedUnits.map((unit) => (
                 <tr key={unit._id}>
                   <td>{unit.unitId}</td>
                   <td>{unit.area}</td>
                   <td>{unit.type}</td>
-                  <td>{unit.floor?.floor || "-"}</td>
+                  <td>{formatFloorLabel(unit.floor?.floor)}</td>
                   <td>
                     <span className={unit.status === "Occupied" ? "occupied-status" : "available-status"}>
                       {unit.status || "Available"}

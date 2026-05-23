@@ -6,7 +6,8 @@
     "dev": "start \"bms-backend\" /B node backend/index.js && npm.cmd --prefix frontend run dev",
     "dev:frontend": "npm.cmd --prefix frontend run dev",
     "dev:backend": "node backend/index.js",
-    "build": "npm.cmd --prefix frontend run build"
+    "build": "npm.cmd --prefix frontend run build",
+    "test": "node --test backend/tests/*.test.js && node verify_backend_routes.js"
   },
   "repository": {
     "type": "git",

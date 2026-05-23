@@ -13,6 +13,8 @@ import {
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import { formatFloorLabel } from "../utils/floorUtils";
+import { compareSortValues, nextSortDirection } from "../utils/sortUtils";
 import "../style.css";
 
 export default function Floors() {
@@ -24,6 +26,8 @@ export default function Floors() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
+  const [sortField, setSortField] = useState("floor");
+  const [sortDirection, setSortDirection] = useState("asc");
   const floorFormRef = useRef(null);
 
   const clearForm = useCallback(() => {
@@ -157,6 +161,15 @@ export default function Floors() {
     }
   };
 
+  const sortedFloors = [...floors].sort((a, b) =>
+    compareSortValues(a[sortField], b[sortField], sortDirection)
+  );
+
+  const handleSort = (field) => {
+    setSortDirection(nextSortDirection(sortField, field, sortDirection));
+    setSortField(field);
+  };
+
   return (
     <div className="app-layout">
       <Sidebar />
@@ -213,18 +226,24 @@ export default function Floors() {
         <table className="floors-table">
           <thead>
             <tr>
-              <th>Floor</th>
-              <th>Units</th>
-              <th>Total SQM</th>
+              <th onClick={() => handleSort("floor")} className="sortable-header">
+                Floor {sortField === "floor" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("units")} className="sortable-header">
+                Units {sortField === "units" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("totalSqm")} className="sortable-header">
+                Total SQM {sortField === "totalSqm" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {floors.length > 0 ? (
-              floors.map((item) => (
+            {sortedFloors.length > 0 ? (
+              sortedFloors.map((item) => (
                 <tr key={item._id}>
-                  <td>{item.floor}</td>
+                  <td>{formatFloorLabel(item.floor)}</td>
                   <td>{item.units}</td>
                   <td>{item.totalSqm}</td>
                   <td>

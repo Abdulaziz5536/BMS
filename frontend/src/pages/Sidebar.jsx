@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
+import { SidebarSuppressContext } from "../components/sidebarContext";
 import {
   API_BASE,
   buildingsUpdatedEvent,
@@ -9,11 +10,17 @@ import {
   setSelectedBuildingId
 } from "../buildingSelection";
 
-export default function Sidebar() {
+export default function Sidebar({ persistent = false }) {
+  const suppressNestedSidebar = useContext(SidebarSuppressContext);
+  const isSuppressed = suppressNestedSidebar && !persistent;
   const [buildings, setBuildings] = useState([]);
   const [selectedBuilding, setSelectedBuilding] = useState(getSelectedBuildingId());
 
-  const loadBuildings = async () => {
+  const loadBuildings = useCallback(async () => {
+    if (isSuppressed) {
+      return;
+    }
+
     await loadCachedJson(
       `${API_BASE}/buildings`,
       (data) => {
@@ -32,9 +39,13 @@ export default function Sidebar() {
       null,
       "Failed to load buildings"
     );
-  };
+  }, [isSuppressed]);
 
   useEffect(() => {
+    if (isSuppressed) {
+      return undefined;
+    }
+
     loadBuildings();
 
     const syncSelectedBuilding = (event) => {
@@ -48,7 +59,11 @@ export default function Sidebar() {
       window.removeEventListener("buildingChanged", syncSelectedBuilding);
       window.removeEventListener(buildingsUpdatedEvent, loadBuildings);
     };
-  }, []);
+  }, [isSuppressed, loadBuildings]);
+
+  if (isSuppressed) {
+    return null;
+  }
 
   const changeBuilding = (buildingId) => {
     setSelectedBuilding(buildingId);
@@ -130,6 +145,12 @@ export default function Sidebar() {
         <li>
           <NavLink to="/announcements" className={({ isActive }) => (isActive ? "active" : "")}>
             Announcements
+          </NavLink>
+        </li>
+
+        <li>
+          <NavLink to="/system" className={({ isActive }) => (isActive ? "active" : "")}>
+            System
           </NavLink>
         </li>
       </ul>

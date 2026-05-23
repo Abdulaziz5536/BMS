@@ -24,6 +24,7 @@ import {
   formatEthiopianDate,
   normalizeDateInputForApi
 } from "../utils/dateUtils";
+import { formatFloorLabel } from "../utils/floorUtils";
 import "../style.css";
 
 const MAX_UPLOAD_SIZE = 5 * 1024 * 1024;
@@ -101,7 +102,7 @@ export default function Tenant() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState("tenantName");
+  const [sortField, setSortField] = useState("unit");
   const [sortDirection, setSortDirection] = useState("asc");
 
   const [message, setMessage] = useState("");
@@ -181,6 +182,14 @@ export default function Tenant() {
       });
     }
   }, [historyScrollTrigger]);
+
+  const getTenantUnit = useCallback((tenant) => {
+    if (tenant.unit && typeof tenant.unit === "object") {
+      return tenant.unit;
+    }
+
+    return units.find((item) => item._id === tenant.unit);
+  }, [units]);
 
   const filteredAndSortedTenants = tenants
     .filter((tenant) =>
@@ -370,14 +379,6 @@ export default function Tenant() {
     } finally {
       setHistoryLoading(false);
     }
-  };
-
-  const getTenantUnit = (tenant) => {
-    if (tenant.unit && typeof tenant.unit === "object") {
-      return tenant.unit;
-    }
-
-    return units.find((item) => item._id === tenant.unit);
   };
 
   const renderFileLink = (file, label) => {
@@ -603,7 +604,7 @@ export default function Tenant() {
                     <td>{tenant.phone}</td>
                     <td>{tenant.email || "-"}</td>
                     <td>{tenantUnit?.unitId || "Unassigned"}</td>
-                    <td>{tenantUnit?.floor?.floor || "-"}</td>
+                    <td>{formatFloorLabel(tenantUnit?.floor?.floor)}</td>
                     <td>{formatEthiopianDate(tenant.moveInDate)}</td>
                     <td>{formatEthiopianDate(tenant.moveOutDate)}</td>
                     <td>

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Employee = require('../models/employees-model');
+const { recordAuditLog } = require('../services/audit-log-service');
 
 const normalizeEmployeePayload = (body) => {
   const salary = Number(body.salary || 0);
@@ -46,7 +47,7 @@ router.post('/employees', async (req,res) => {
        }
 
        if(!Number.isFinite(employeeData.salary) || employeeData.salary < 0){
-        return res.status(400).json({error:"Salary must be a valid number"});
+        return res.status(400).json({error:"Net salary must be a valid number"});
        }
 
        const existingEmployee = await Employee.findOne({
@@ -61,6 +62,14 @@ router.post('/employees', async (req,res) => {
        }
 
        const employee = await Employee.create(employeeData);
+       await recordAuditLog({
+        building: employee.building,
+        action: "created",
+        entityType: "employee",
+        entityId: employee._id,
+        entityLabel: employee.name,
+        message: `Employee ${employee.name} created`
+       });
        res.json({message:"employee created", employee})
   }catch(err){
     res.status(500).json({err:err.message});
@@ -82,7 +91,7 @@ router.put('/employees/:id', async (req,res) => {
     }
 
     if(!Number.isFinite(employeeData.salary) || employeeData.salary < 0){
-      return res.status(400).json({error:"Salary must be a valid number"});
+      return res.status(400).json({error:"Net salary must be a valid number"});
     }
 
     const existingEmployee = await Employee.findOne({
@@ -107,6 +116,15 @@ router.put('/employees/:id', async (req,res) => {
       return res.status(404).json({err:"employee not found"});
     }
 
+    await recordAuditLog({
+      building: employee.building,
+      action: "updated",
+      entityType: "employee",
+      entityId: employee._id,
+      entityLabel: employee.name,
+      message: `Employee ${employee.name} updated`
+    });
+
     res.json({message:"employee updated", employee});
   } catch (err) {
     res.status(500).json({err:err.message});
@@ -120,6 +138,15 @@ router.delete('/employees/:id', async (req,res) => {
     if(!employee){
       return res.status(404).json({err:"employee not found"});
     }
+
+    await recordAuditLog({
+      building: employee.building,
+      action: "deleted",
+      entityType: "employee",
+      entityId: employee._id,
+      entityLabel: employee.name,
+      message: `Employee ${employee.name} deleted`
+    });
 
     res.json({message:"employee deleted"});
   } catch (err) {

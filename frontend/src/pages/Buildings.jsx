@@ -16,6 +16,7 @@ import {
   setSelectedBuildingId
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import { compareSortValues, nextSortDirection } from "../utils/sortUtils";
 import "../style.css";
 
 export default function Buildings() {
@@ -30,6 +31,8 @@ export default function Buildings() {
   const buildingFormRef = useRef(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [sortField, setSortField] = useState("name");
+  const [sortDirection, setSortDirection] = useState("asc");
 
   const loadBuildings = async () => {
     await loadCachedJson(
@@ -162,6 +165,15 @@ export default function Buildings() {
     }
   };
 
+  const sortedBuildings = [...buildings].sort((a, b) =>
+    compareSortValues(a[sortField], b[sortField], sortDirection)
+  );
+
+  const handleSort = (field) => {
+    setSortDirection(nextSortDirection(sortField, field, sortDirection));
+    setSortField(field);
+  };
+
   return (
     <div className="app-layout">
       <Sidebar />
@@ -227,18 +239,26 @@ export default function Buildings() {
         <table className="floors-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Address</th>
-              <th>Manager</th>
-              <th>Phone</th>
+              <th onClick={() => handleSort("name")} className="sortable-header">
+                Name {sortField === "name" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("address")} className="sortable-header">
+                Address {sortField === "address" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("managerName")} className="sortable-header">
+                Manager {sortField === "managerName" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("phone")} className="sortable-header">
+                Phone {sortField === "phone" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th>Active</th>
               <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {buildings.length > 0 ? (
-              buildings.map((building) => (
+            {sortedBuildings.length > 0 ? (
+              sortedBuildings.map((building) => (
                 <tr
                   key={building._id}
                   className={selectedBuildingId === building._id ? "selected-row" : ""}

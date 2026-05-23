@@ -152,6 +152,91 @@ export default function Dashboard() {
     }))
   ].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
+  const renderTenantPaymentDue = () => (
+    <section className="panel dashboard-due-panel dashboard-priority-panel">
+      <div className="section-header">
+        <div>
+          <h2>Tenant Payment Due</h2>
+          <p>{duePayments.length} tenant payment{duePayments.length === 1 ? "" : "s"} need attention</p>
+        </div>
+        <button className="secondary-btn" onClick={() => navigate("/invoice")}>
+          Open Invoices
+        </button>
+      </div>
+
+      <div className="dashboard-reminder-actions">
+        <button onClick={sendRemindersNow} disabled={reminderLoading || !selectedBuildingId}>
+          <PaperAirplaneIcon />
+          Send Reminders Now
+        </button>
+      </div>
+
+      {paymentAlertError && <p className="error">{paymentAlertError}</p>}
+      {paymentAlertsLoading && <p className="message">Loading due payments...</p>}
+      {reminderResult && (
+        <p className={reminderResult.failed > 0 ? "error" : "message"}>
+          Reminder send checked {reminderResult.checked || 0},
+          sent {reminderResult.sent || 0}, skipped {reminderResult.skipped || 0},
+          failed {reminderResult.failed || 0}.
+        </p>
+      )}
+
+      {duePayments.length > 0 ? (
+        <div className="dashboard-due-list">
+          {duePayments.map((item) => (
+            <article
+              key={`${item.alertType}-${item.invoiceId}`}
+              className={`dashboard-due-item ${item.alertType === "overdue" ? "is-overdue" : ""}`}
+            >
+              <div className="dashboard-due-main">
+                <div className="dashboard-due-icon">
+                  {item.alertType === "overdue" ? <BellAlertIcon /> : <CalendarDaysIcon />}
+                </div>
+                <div>
+                  <div className="dashboard-due-topline">
+                    <h3>{item.tenantName || "Tenant"}</h3>
+                    <span className={`status-pill ${item.alertType === "overdue" ? "status-overdue" : "status-pending"}`}>
+                      {item.timingLabel}
+                    </span>
+                  </div>
+                  <p>
+                    Invoice {item.invoiceNumber}
+                    {item.tenantUnit && ` / Unit ${item.tenantUnit}`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="dashboard-due-meta">
+                <span>
+                  <CurrencyDollarIcon />
+                  {formatCurrency(item.amountDue)}
+                </span>
+                <span>
+                  <CalendarDaysIcon />
+                  {formatEthiopianDate(item.dueDate)}
+                </span>
+                {item.tenantPhone && (
+                  <span>
+                    <PhoneIcon />
+                    {item.tenantPhone}
+                  </span>
+                )}
+                {item.tenantEmail && (
+                  <span>
+                    <EnvelopeIcon />
+                    {item.tenantEmail}
+                  </span>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        !paymentAlertsLoading && <p className="empty-state">No due tenant payments for this building.</p>
+      )}
+    </section>
+  );
+
   return (
     <div className="app-layout">
       <Sidebar />
@@ -163,6 +248,8 @@ export default function Dashboard() {
           <p className="error">Add or select a building to see dashboard data.</p>
         )}
         {error && <p className="error">{error}</p>}
+
+        {renderTenantPaymentDue()}
 
         <div className="dashboard-container">
           <div className="card" onClick={() => navigate("/units")} style={{ cursor: "pointer" }}>
@@ -218,88 +305,46 @@ export default function Dashboard() {
             <ScaleIcon className="card-icon" />
             Occupancy: {dashboard?.occupancyRate || 0}%
           </div>
+
+          <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
+            <CurrencyDollarIcon className="card-icon" />
+            Outstanding Rent: {formatCurrency(dashboard?.outstandingRent)}
+          </div>
+
+          <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
+            <BellAlertIcon className="card-icon" />
+            Overdue Invoices: {dashboard?.overdueInvoices || 0}
+          </div>
+
+          <div className="card">
+            <CurrencyDollarIcon className="card-icon" />
+            Collected This Month: {formatCurrency(dashboard?.monthlyCollected)}
+          </div>
         </div>
 
-        <section className="panel dashboard-due-panel">
+        <section className="panel dashboard-activity-panel">
           <div className="section-header">
             <div>
-              <h2>Tenant Payment Due</h2>
-              <p>{duePayments.length} tenant payment{duePayments.length === 1 ? "" : "s"} need attention</p>
+              <h2>Recent Activity</h2>
+              <p>{dashboard?.recentActivity?.length || 0} latest system action{dashboard?.recentActivity?.length === 1 ? "" : "s"}</p>
             </div>
-            <button className="secondary-btn" onClick={() => navigate("/invoice")}>
-              Open Invoices
+            <button className="secondary-btn" onClick={() => navigate("/activity")}>
+              Open Activity
             </button>
           </div>
 
-          <div className="dashboard-reminder-actions">
-            <button onClick={sendRemindersNow} disabled={reminderLoading || !selectedBuildingId}>
-              <PaperAirplaneIcon />
-              Send Reminders Now
-            </button>
-          </div>
-
-          {paymentAlertError && <p className="error">{paymentAlertError}</p>}
-          {paymentAlertsLoading && <p className="message">Loading due payments...</p>}
-          {reminderResult && (
-            <p className={reminderResult.failed > 0 ? "error" : "message"}>
-              Reminder send checked {reminderResult.checked || 0},
-              sent {reminderResult.sent || 0}, skipped {reminderResult.skipped || 0},
-              failed {reminderResult.failed || 0}.
-            </p>
-          )}
-
-          {duePayments.length > 0 ? (
-            <div className="dashboard-due-list">
-              {duePayments.map((item) => (
-                <article
-                  key={`${item.alertType}-${item.invoiceId}`}
-                  className={`dashboard-due-item ${item.alertType === "overdue" ? "is-overdue" : ""}`}
-                >
-                  <div className="dashboard-due-main">
-                    <div className="dashboard-due-icon">
-                      {item.alertType === "overdue" ? <BellAlertIcon /> : <CalendarDaysIcon />}
-                    </div>
-                    <div>
-                      <div className="dashboard-due-topline">
-                        <h3>{item.tenantName || "Tenant"}</h3>
-                        <span className={`status-pill ${item.alertType === "overdue" ? "status-overdue" : "status-pending"}`}>
-                          {item.timingLabel}
-                        </span>
-                      </div>
-                      <p>
-                        Invoice {item.invoiceNumber}
-                        {item.tenantUnit && ` / Unit ${item.tenantUnit}`}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="dashboard-due-meta">
-                    <span>
-                      <CurrencyDollarIcon />
-                      {formatCurrency(item.amountDue)}
-                    </span>
-                    <span>
-                      <CalendarDaysIcon />
-                      {formatEthiopianDate(item.dueDate)}
-                    </span>
-                    {item.tenantPhone && (
-                      <span>
-                        <PhoneIcon />
-                        {item.tenantPhone}
-                      </span>
-                    )}
-                    {item.tenantEmail && (
-                      <span>
-                        <EnvelopeIcon />
-                        {item.tenantEmail}
-                      </span>
-                    )}
-                  </div>
-                </article>
+          {dashboard?.recentActivity?.length > 0 ? (
+            <div className="activity-list compact-list">
+              {dashboard.recentActivity.map((item) => (
+                <div key={item._id} className="activity-row">
+                  <strong>{item.entityLabel || item.entityType}</strong>
+                  <span>{item.message || item.action}</span>
+                  <small>{formatEthiopianDate(item.createdAt)}</small>
+                </div>
               ))}
             </div>
           ) : (
-            !paymentAlertsLoading && <p className="empty-state">No due tenant payments for this building.</p>
+            <p className="empty-state">No recent activity yet.</p>
           )}
         </section>
 

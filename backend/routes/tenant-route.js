@@ -3,7 +3,11 @@ const router = express.Router();
 const Tenant = require('../models/tenant-model');
 const Unit = require('../models/unit-model');
 const Contract = require('../models/contract-model');
+const Invoice = require('../models/invoice-model');
+const RentInvoice = require('../models/rent-invoice-model');
+const PaymentRecord = require('../models/payment-record-model');
 const Utility = require('../models/utility-model');
+const { recordAuditLog } = require('../services/audit-log-service');
 const {
   normalizeDateOnlyString,
   parseFlexibleDateInput
@@ -134,6 +138,14 @@ router.post('/tenants', async (req,res) => {
       unit,
       ...extraTenantData
     });
+    await recordAuditLog({
+      building: tenant.building,
+      action: "created",
+      entityType: "tenant",
+      entityId: tenant._id,
+      entityLabel: tenant.tenantName,
+      message: `Tenant ${tenant.tenantName} created`
+    });
     res.json({message:"tenant added", tenant});
     
   } catch (error) {
@@ -227,6 +239,15 @@ router.put('/tenants/:id', async (req,res) => {
       return res.status(404).json({error:"tenant not found"});
     }
 
+    await recordAuditLog({
+      building: tenant.building,
+      action: "updated",
+      entityType: "tenant",
+      entityId: tenant._id,
+      entityLabel: tenant.tenantName,
+      message: `Tenant ${tenant.tenantName} updated`
+    });
+
     res.json({message:"tenant updated", tenant});
   } catch (error) {
     res.status(500).json({error:error.message});
@@ -243,6 +264,10 @@ router.get('/tenants/:id/payment-history', async (req,res) => {
 
     const contracts = await Contract.find({ tenant: req.params.id }).sort({ createdAt: -1 });
     const utilities = await Utility.find({ tenant: req.params.id }).sort({ createdAt: -1 });
+    const paymentRecords = await PaymentRecord.find({ tenant: req.params.id })
+      .populate('invoice')
+      .populate('contract')
+      .sort({ paymentDate: -1 });
 
     const rentHistory = contracts.map((contract) => ({
       _id: contract._id,
@@ -265,7 +290,16 @@ router.get('/tenants/:id/payment-history', async (req,res) => {
       details: "Water, light, generator gas"
     }));
 
-    const paymentHistory = [...rentHistory, ...utilityHistory].sort(
+    const paymentRecordHistory = paymentRecords.map((payment) => ({
+      _id: payment._id,
+      type: payment.invoice ? "Invoice Payment" : "Contract Payment",
+      date: payment.paymentDate,
+      amount: payment.amount || 0,
+      status: "paid",
+      details: payment.invoice?.invoiceNumber || payment.contract?.paymentFrequency || payment.reference || "Payment record"
+    }));
+
+    const paymentHistory = [...paymentRecordHistory, ...rentHistory, ...utilityHistory].sort(
       (a, b) => new Date(b.date) - new Date(a.date)
     );
 
@@ -277,11 +311,34 @@ router.get('/tenants/:id/payment-history', async (req,res) => {
 
 router.delete('/tenants/:id', async (req,res) => {
   try {
+    const [contractCount, utilityCount, invoiceCount, rentInvoiceCount, paymentCount] = await Promise.all([
+      Contract.countDocuments({ tenant: req.params.id }),
+      Utility.countDocuments({ tenant: req.params.id }),
+      Invoice.countDocuments({ tenant: req.params.id }),
+      RentInvoice.countDocuments({ tenant: req.params.id }),
+      PaymentRecord.countDocuments({ tenant: req.params.id })
+    ]);
+
+    if (contractCount || utilityCount || invoiceCount || rentInvoiceCount || paymentCount) {
+      return res.status(400).json({
+        error: "Cannot delete this tenant because contracts, invoices, utilities, or payment records still use it. Delete or close those records first."
+      });
+    }
+
     const tenant = await Tenant.findByIdAndDelete(req.params.id);
 
     if(!tenant){
       return res.status(404).json({error:"tenant not found"});
     }
+
+    await recordAuditLog({
+      building: tenant.building,
+      action: "deleted",
+      entityType: "tenant",
+      entityId: tenant._id,
+      entityLabel: tenant.tenantName,
+      message: `Tenant ${tenant.tenantName} deleted`
+    });
 
     res.json({message:"tenant removed"});
   } catch (error) {

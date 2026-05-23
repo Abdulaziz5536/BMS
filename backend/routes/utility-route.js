@@ -3,6 +3,8 @@ const router = express.Router();
 
 const Utility = require("../models/utility-model");
 const Tenant = require("../models/tenant-model");
+const PaymentRecord = require("../models/payment-record-model");
+const { recordAuditLog } = require("../services/audit-log-service");
 const {
   normalizeDateOnlyString,
   parseFlexibleDateInput,
@@ -69,6 +71,16 @@ const normalizeUtilityFile = (file) => {
   return null;
 };
 
+const getUtilityTotal = (utility) =>
+  (Number(utility.waterAmount) || 0) +
+  (Number(utility.lightAmount) || 0) +
+  (Number(utility.generatorGasAmount) || 0);
+
+const validateUtilityAmounts = (waterAmount, lightAmount, generatorGasAmount) => {
+  const amounts = [waterAmount, lightAmount, generatorGasAmount].map((value) => Number(value) || 0);
+  return amounts.every((amount) => amount >= 0);
+};
+
 router.get("/utilities", async (req, res) => {
   try {
     const utilities = await Utility.find(getBuildingFilter(req.query.building))
@@ -100,6 +112,10 @@ router.post("/utilities", async (req, res) => {
       return res.status(400).json({ error: "Building and tenant are required" });
     }
 
+    if (!validateUtilityAmounts(waterAmount, lightAmount, generatorGasAmount)) {
+      return res.status(400).json({ error: "Utility amounts cannot be negative" });
+    }
+
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
     if (!tenantRecord) {
       return res.status(400).json({ error: "Tenant does not belong to this building" });
@@ -129,6 +145,15 @@ router.post("/utilities", async (req, res) => {
       utilityFile: normalizedUtilityFile
     });
 
+    await recordAuditLog({
+      building: utility.building,
+      action: "created",
+      entityType: "utility",
+      entityId: utility._id,
+      entityLabel: String(getUtilityTotal(utility)),
+      message: "Utility payment created"
+    });
+
     res.status(201).json({ message: "Utility payment added", utility });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -152,6 +177,10 @@ router.put("/utilities/:id", async (req, res) => {
 
     if (!building || !tenant) {
       return res.status(400).json({ error: "Building and tenant are required" });
+    }
+
+    if (!validateUtilityAmounts(waterAmount, lightAmount, generatorGasAmount)) {
+      return res.status(400).json({ error: "Utility amounts cannot be negative" });
     }
 
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
@@ -191,6 +220,15 @@ router.put("/utilities/:id", async (req, res) => {
       return res.status(404).json({ error: "Utility payment not found" });
     }
 
+    await recordAuditLog({
+      building: utility.building,
+      action: "updated",
+      entityType: "utility",
+      entityId: utility._id,
+      entityLabel: String(getUtilityTotal(utility)),
+      message: "Utility payment updated"
+    });
+
     res.json({ message: "Utility payment updated", utility });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -214,6 +252,15 @@ router.patch("/utilities/:id/status", async (req, res) => {
     if (!utility) {
       return res.status(404).json({ error: "Utility payment not found" });
     }
+
+    await recordAuditLog({
+      building: utility.building,
+      action: "status_changed",
+      entityType: "utility",
+      entityId: utility._id,
+      entityLabel: String(getUtilityTotal(utility)),
+      message: `Utility status changed to ${status}`
+    });
 
     return res.json({
       message: "Utility status updated",
@@ -239,6 +286,16 @@ router.patch("/utilities/:id/pay", async (req, res) => {
     utility.status = "paid";
     await utility.save();
 
+    const paymentRecord = await PaymentRecord.create({
+      building: utility.building,
+      tenant: utility.tenant,
+      utility: utility._id,
+      paymentDate: new Date(),
+      amount: getUtilityTotal(utility),
+      paymentMethod: "cash",
+      notes: "Recorded from utility payment action"
+    });
+
     // 2) create next pending utility
     const nextDueDate = calculateNextDueDate(utility.dueDate, utility.paymentFrequency);
 
@@ -256,6 +313,19 @@ router.patch("/utilities/:id/pay", async (req, res) => {
       utilityFile: utility.utilityFile
     });
 
+    await recordAuditLog({
+      building: utility.building,
+      action: "recorded",
+      entityType: "payment",
+      entityId: paymentRecord._id,
+      entityLabel: String(getUtilityTotal(utility)),
+      message: `Utility payment of Br ${getUtilityTotal(utility)} recorded and next utility created`,
+      metadata: {
+        utility: utility._id,
+        nextUtility: nextUtility._id
+      }
+    });
+
     return res.json({
       message: "Utility payment marked as paid and next utility created",
       utility,
@@ -268,10 +338,27 @@ router.patch("/utilities/:id/pay", async (req, res) => {
 
 router.delete("/utilities/:id", async (req, res) => {
   try {
+    const paymentCount = await PaymentRecord.countDocuments({ utility: req.params.id });
+
+    if (paymentCount > 0) {
+      return res.status(400).json({
+        error: "Cannot delete this utility payment because payment records use it."
+      });
+    }
+
     const utility = await Utility.findByIdAndDelete(req.params.id);
     if (!utility) {
       return res.status(404).json({ error: "Utility payment not found" });
     }
+
+    await recordAuditLog({
+      building: utility.building,
+      action: "deleted",
+      entityType: "utility",
+      entityId: utility._id,
+      entityLabel: String(getUtilityTotal(utility)),
+      message: "Utility payment deleted"
+    });
 
     res.json({ message: "Utility payment deleted" });
   } catch (error) {

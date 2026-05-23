@@ -6,6 +6,7 @@ const BUILDING_CHANGED_EVENT = "buildingChanged";
 const BUILDINGS_UPDATED_EVENT = "buildingsUpdated";
 const responseCache = new Map();
 const prefetchedBuildings = new Map();
+const RESPONSE_CACHE_TTL = 45000;
 const PREFETCH_TTL = 30000;
 
 export const getSelectedBuildingId = () => localStorage.getItem(BUILDING_STORAGE_KEY) || "";
@@ -103,10 +104,22 @@ export const loadCachedJson = async (
   fallbackMessage = "Failed to load data",
   options = {}
 ) => {
-  const cachedData = options.useCache === false ? undefined : getCachedData(url);
+  const cachedEntry = options.useCache === false ? undefined : responseCache.get(url);
+  const cachedData = cachedEntry?.data;
+  const cacheIsFresh =
+    cachedEntry &&
+    Date.now() - cachedEntry.updatedAt < (options.cacheTtl ?? RESPONSE_CACHE_TTL);
 
   if (cachedData !== undefined) {
     setData(cachedData);
+  }
+
+  if (cachedData !== undefined && cacheIsFresh && options.revalidate !== true) {
+    if (setError) {
+      setError("");
+    }
+
+    return cachedData;
   }
 
   try {

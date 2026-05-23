@@ -108,7 +108,7 @@ export default function Login() {
         id="signup-button"
         onClick={() => navigate("/signup")}
       >
-        Don’t have an account? Sign Up
+        Don't have an account? Sign Up
       </button>
       <h2 className="message">{message}</h2>
       <h2 className="error">{error}</h2>

@@ -15,6 +15,14 @@ const paymentRecordSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Invoice"
   },
+  contract: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Contract"
+  },
+  utility: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Utility"
+  },
 
   paymentDate: {
     type: Date,
@@ -58,5 +66,7 @@ const paymentRecordSchema = new mongoose.Schema({
 // Index for efficient queries
 paymentRecordSchema.index({ tenant: 1, paymentDate: -1 });
 paymentRecordSchema.index({ invoice: 1 });
+paymentRecordSchema.index({ contract: 1 });
+paymentRecordSchema.index({ utility: 1 });
 
 module.exports = mongoose.model("PaymentRecord", paymentRecordSchema);

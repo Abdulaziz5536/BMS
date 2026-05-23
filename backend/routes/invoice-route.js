@@ -6,6 +6,7 @@ const PaymentRecord = require('../models/payment-record-model');
 const Contract = require('../models/contract-model');
 const Tenant = require('../models/tenant-model');
 const { runDueDateReminders } = require('../services/due-reminder-service');
+const { recordAuditLog } = require('../services/audit-log-service');
 const {
   getInvoiceFieldsForContractStatus,
   setInvoiceStatusFields,
@@ -55,6 +56,8 @@ const calculateLatePenalty = (dueDate, paymentDate, rentAmount) => {
   const penalty = (Number(rentAmount) || 0) * 0.10;
   return Math.round(penalty);
 };
+
+const getInvoiceLabel = (invoice) => invoice.invoiceNumber || String(invoice._id);
 
 // Get all invoices
 router.get('/invoices', async (req, res) => {
@@ -146,6 +149,15 @@ router.post('/invoices/generate', async (req, res) => {
       ...getInvoiceFieldsForContractStatus(contract, contract.amount)
     });
 
+    await recordAuditLog({
+      building: invoice.building,
+      action: "created",
+      entityType: "invoice",
+      entityId: invoice._id,
+      entityLabel: getInvoiceLabel(invoice),
+      message: `Invoice ${getInvoiceLabel(invoice)} generated`
+    });
+
     res.json({ message: "Invoice generated successfully", invoice });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -216,6 +228,18 @@ router.post('/invoices/auto-generate', async (req, res) => {
       }
     }
 
+    if (generatedInvoices.length > 0) {
+      await recordAuditLog({
+        building: buildingId || generatedInvoices[0].building,
+        action: "auto_generated",
+        entityType: "invoice",
+        message: `${generatedInvoices.length} invoices auto-generated`,
+        metadata: {
+          generated: generatedInvoices.map((invoice) => String(invoice._id))
+        }
+      });
+    }
+
     res.json({
       message: `Generated ${generatedInvoices.length} invoices`,
       generated: generatedInvoices.length,
@@ -240,6 +264,14 @@ router.post('/invoices/reminders/send', async (req, res) => {
       sendSms: req.body.sendSms,
       sendEmail: req.body.sendEmail,
       buildingId
+    });
+
+    await recordAuditLog({
+      building: buildingId || undefined,
+      action: "sent",
+      entityType: "reminder",
+      message: `Manual reminder run checked ${result.checked || 0}, sent ${result.sent || 0}, failed ${result.failed || 0}`,
+      metadata: result
     });
 
     const statusCode = result.failed > 0 && result.sent === 0 ? 400 : 200;
@@ -307,11 +339,61 @@ router.post('/invoices/:id/pay', async (req, res) => {
     await invoice.save();
     await syncContractStatusFromInvoices(invoice.contract);
 
+    await recordAuditLog({
+      building: invoice.building,
+      action: "recorded",
+      entityType: "payment",
+      entityId: paymentRecord._id,
+      entityLabel: paymentRecord.reference || getInvoiceLabel(invoice),
+      message: `Payment of Br ${paymentValue} recorded for invoice ${getInvoiceLabel(invoice)}`,
+      metadata: {
+        invoice: invoice._id,
+        amount: paymentValue,
+        paymentMethod: paymentRecord.paymentMethod
+      }
+    });
+
     res.json({
       message: "Payment recorded successfully",
       invoice,
       payment: paymentRecord
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/invoices/reminders/history', async (req, res) => {
+  try {
+    const filter = { remindersSent: { $exists: true, $ne: [] } };
+
+    if (req.query.building) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
+        return res.status(400).json({ error: 'Invalid building id' });
+      }
+      filter.building = new mongoose.Types.ObjectId(req.query.building);
+    }
+
+    const invoices = await Invoice.find(filter)
+      .populate({
+        path: 'tenant',
+        populate: { path: 'unit', select: 'unitId' }
+      })
+      .sort({ updatedAt: -1 });
+
+    const history = invoices.flatMap((invoice) =>
+      (invoice.remindersSent || []).map((reminder) => ({
+        invoiceId: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        tenantName: invoice.tenant?.tenantName || "",
+        tenantUnit: invoice.tenant?.unit?.unitId || "",
+        type: reminder.type,
+        sentAt: reminder.sentAt,
+        message: reminder.message || ""
+      }))
+    ).sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
+
+    res.json(history);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -539,6 +621,26 @@ router.get('/reports/outstanding-rent', async (req, res) => {
   }
 });
 
+router.get('/invoices/:id/receipt', async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id).populate('tenant').populate('contract');
+
+    if (!invoice) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    const payments = await PaymentRecord.find({ invoice: invoice._id }).sort({ paymentDate: -1 });
+
+    res.json({
+      invoice,
+      payments,
+      generatedAt: new Date()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update invoice status
 router.patch('/invoices/:id', async (req, res) => {
   try {
@@ -607,6 +709,10 @@ router.patch('/invoices/:id', async (req, res) => {
       return res.status(400).json({ error: "Period end cannot be before period start" });
     }
 
+    if (invoice.dueDate && invoice.periodStart && invoice.dueDate < invoice.periodStart) {
+      return res.status(400).json({ error: "Due date cannot be before period start" });
+    }
+
     const previousStatus = invoice.status;
 
     if (totalAmount !== undefined) {
@@ -635,6 +741,21 @@ router.patch('/invoices/:id', async (req, res) => {
     await syncContractStatusFromInvoices(invoice.contract);
     await invoice.populate('tenant');
     await invoice.populate('contract');
+
+    await recordAuditLog({
+      building: invoice.building,
+      action: "updated",
+      entityType: "invoice",
+      entityId: invoice._id,
+      entityLabel: getInvoiceLabel(invoice),
+      message: `Invoice ${getInvoiceLabel(invoice)} updated`,
+      metadata: {
+        dueDateChanged,
+        previousStatus,
+        status: invoice.status
+      }
+    });
+
     res.json({ message: "Invoice updated", invoice });
 
     // If due date changed, trigger reminder job for the building in background.
@@ -673,6 +794,15 @@ router.delete('/invoices/:id', async (req, res) => {
     await PaymentRecord.deleteMany({ invoice: req.params.id });
     await syncContractStatusFromInvoices(invoice.contract);
 
+    await recordAuditLog({
+      building: invoice.building,
+      action: "deleted",
+      entityType: "invoice",
+      entityId: invoice._id,
+      entityLabel: getInvoiceLabel(invoice),
+      message: `Invoice ${getInvoiceLabel(invoice)} deleted`
+    });
+
     res.json({ message: "Invoice deleted successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -701,10 +831,27 @@ router.get('/payment-records', async (req, res) => {
       }
       filter.invoice = new mongoose.Types.ObjectId(req.query.invoice);
     }
+    if (req.query.contract) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.contract)) {
+        return res.status(400).json({ error: 'Invalid contract id' });
+      }
+      filter.contract = new mongoose.Types.ObjectId(req.query.contract);
+    }
+    if (req.query.utility) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.utility)) {
+        return res.status(400).json({ error: 'Invalid utility id' });
+      }
+      filter.utility = new mongoose.Types.ObjectId(req.query.utility);
+    }
 
     const payments = await PaymentRecord.find(filter)
-      .populate('tenant')
+      .populate({
+        path: 'tenant',
+        populate: { path: 'unit', select: 'unitId' }
+      })
       .populate('invoice')
+      .populate('contract')
+      .populate('utility')
       .sort({ paymentDate: -1 });
 
     res.json(payments);

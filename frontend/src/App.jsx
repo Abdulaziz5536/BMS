@@ -13,14 +13,33 @@ import Utilities from "./pages/Utilities";
 import Invoice from "./pages/Invoice";
 import Rent from "./pages/Rent";
 import Announcements from "./pages/Announcements";
+import Activity from "./pages/Activity";
+import SystemTools from "./pages/SystemTools";
+import Sidebar from "./pages/Sidebar";
 
 import ConfirmDialogProvider from "./components/ConfirmDialog";
+import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { SidebarSuppressContext } from "./components/sidebarContext";
 
+function ProtectedAppPage({ children }) {
+  return (
+    <ProtectedRoute>
+      <div className="app-layout persistent-app-layout">
+        <Sidebar persistent />
+        <SidebarSuppressContext.Provider value={true}>
+          <main className="main-content route-content">
+            {children}
+          </main>
+        </SidebarSuppressContext.Provider>
+      </div>
+    </ProtectedRoute>
+  );
+}
 
 function App() {
   return (
-    <>
+    <ErrorBoundary>
     <ConfirmDialogProvider />
     <Routes>
 
@@ -31,54 +50,54 @@ function App() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Dashboard />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
       <Route
         path="/buildings"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Buildings />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
       <Route
         path="/rent"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Rent />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
       <Route
         path="/floors"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Floors />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
       <Route
         path="/units"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Unit />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
       <Route
         path="/tenants"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Tenants />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
@@ -86,48 +105,64 @@ function App() {
       <Route
         path="/contracts"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Contracts />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
       <Route
         path="/employees"
         element={ 
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Employees />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
       <Route
         path="/utilities"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Utilities />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
       <Route
         path="/invoice"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Invoice />
-          </ProtectedRoute>
+          </ProtectedAppPage>
         }
       />
 
       <Route
         path="/announcements"
         element={
-          <ProtectedRoute>
+          <ProtectedAppPage>
             <Announcements />
-          </ProtectedRoute>
+          </ProtectedAppPage>
+        }
+      />
+      <Route
+        path="/activity"
+        element={
+          <ProtectedAppPage>
+            <Activity />
+          </ProtectedAppPage>
+        }
+      />
+      <Route
+        path="/system"
+        element={
+          <ProtectedAppPage>
+            <SystemTools />
+          </ProtectedAppPage>
         }
       />
     </Routes>
-    </>
+    </ErrorBoundary>
   );
 }
 

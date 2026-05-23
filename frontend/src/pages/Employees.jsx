@@ -14,6 +14,7 @@ import {
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import { compareSortValues, nextSortDirection } from "../utils/sortUtils";
 import "../style.css";
 
 const TAX_BRACKETS = [
@@ -42,6 +43,40 @@ const calculateIncomeTax = (salary) => {
   return Number(tax.toFixed(2));
 };
 
+const calculateNetPayFromGross = (grossSalary) => {
+  const gross = Math.max(0, Number(grossSalary) || 0);
+  const employeePension = gross * EMPLOYEE_PENSION_RATE;
+  const incomeTax = calculateIncomeTax(gross);
+  return gross - employeePension - incomeTax;
+};
+
+const calculateGrossSalaryFromNet = (netSalary) => {
+  const targetNet = Math.max(0, Number(netSalary) || 0);
+
+  if (targetNet === 0) {
+    return 0;
+  }
+
+  let low = 0;
+  let high = Math.max(targetNet / (1 - EMPLOYEE_PENSION_RATE), targetNet + 1000);
+
+  while (calculateNetPayFromGross(high) < targetNet) {
+    high *= 2;
+  }
+
+  for (let i = 0; i < 80; i += 1) {
+    const mid = (low + high) / 2;
+
+    if (calculateNetPayFromGross(mid) < targetNet) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return Number(high.toFixed(2));
+};
+
 export default function Employees() {
   const selectedBuildingId = useSelectedBuilding();
   const [employees, setEmployees] = useState([]);
@@ -57,6 +92,8 @@ export default function Employees() {
   const employeeFormRef = useRef(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [sortField, setSortField] = useState("name");
+  const [sortDirection, setSortDirection] = useState("asc");
 
   const clearForm = useCallback(() => {
     setName("");
@@ -70,11 +107,11 @@ export default function Employees() {
   }, []);
 
   const payrollRows = useMemo(() => employees.map((employee) => {
-    const grossSalary = Number(employee.salary || 0);
+    const netPay = Number(employee.salary || 0);
+    const grossSalary = calculateGrossSalaryFromNet(netPay);
     const employeePension = Number((grossSalary * EMPLOYEE_PENSION_RATE).toFixed(2));
     const employerPension = Number((grossSalary * EMPLOYER_PENSION_RATE).toFixed(2));
     const incomeTax = calculateIncomeTax(grossSalary);
-    const netPay = Number((grossSalary - employeePension - incomeTax).toFixed(2));
     const governmentRemittance = Number((employeePension + employerPension + incomeTax).toFixed(2));
 
     return {
@@ -103,6 +140,10 @@ export default function Employees() {
     netPay: 0,
     governmentRemittance: 0
   }), [payrollRows]);
+
+  const sortedEmployees = useMemo(() => [...employees].sort((a, b) =>
+    compareSortValues(a[sortField], b[sortField], sortDirection)
+  ), [employees, sortDirection, sortField]);
 
   const fetchEmployees = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
@@ -236,6 +277,11 @@ export default function Employees() {
     }
   };
 
+  const handleSort = (field) => {
+    setSortDirection(nextSortDirection(sortField, field, sortDirection));
+    setSortField(field);
+  };
+
   return (
     <div className="app-layout">
       <Sidebar />
@@ -286,7 +332,7 @@ export default function Employees() {
             <input
               type="number"
               min="0"
-              placeholder="Monthly Salary (Br)"
+              placeholder="Net Monthly Salary (Br)"
               value={salary}
               onChange={(e) => setSalary(e.target.value)}
               disabled={!selectedBuildingId}
@@ -331,19 +377,31 @@ export default function Employees() {
         <table className="floors-table employee-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Position</th>
-              <th>Phone Number</th>
-              <th>Email</th>
-              <th>Salary</th>
-              <th>Emergency Contact</th>
+              <th onClick={() => handleSort("name")} className="sortable-header">
+                Name {sortField === "name" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("position")} className="sortable-header">
+                Position {sortField === "position" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("phoneNumber")} className="sortable-header">
+                Phone Number {sortField === "phoneNumber" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("email")} className="sortable-header">
+                Email {sortField === "email" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("salary")} className="sortable-header">
+                Net Salary {sortField === "salary" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("emergencyContactName")} className="sortable-header">
+                Emergency Contact {sortField === "emergencyContactName" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {employees.length > 0 ? (
-              employees.map((employee) => (
+            {sortedEmployees.length > 0 ? (
+              sortedEmployees.map((employee) => (
                 <tr key={employee._id}>
                   <td>{employee.name}</td>
                   <td>{employee.position}</td>
@@ -382,7 +440,7 @@ export default function Employees() {
           <div className="section-header">
             <div>
               <h2>Payroll Generator</h2>
-              <p>Monthly PAYE, 7% employee pension, 11% employer pension, net pay, and government remittance summary.</p>
+              <p>Payroll uses the entered net salary to calculate gross pay, PAYE, pension, and government remittance.</p>
             </div>
             <div className="payroll-actions">
               <input

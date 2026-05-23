@@ -7,6 +7,7 @@ const {
   sendEmail,
   sendSMS
 } = require("./messaging-service");
+const { recordAuditLog } = require("./audit-log-service");
 const { formatEthiopianDate } = require("../utils/date-utils");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -316,6 +317,22 @@ const processInvoices = async (Model, label, options) => {
         message: getReminderText(message)
       });
       await invoice.save();
+      await recordAuditLog({
+        building: invoice.building?._id || invoice.building,
+        action: "sent",
+        entityType: "reminder",
+        entityId: invoice._id,
+        entityLabel: invoice.invoiceNumber,
+        message: `${reminderType === "late_payment" ? "Overdue" : "Due-date"} reminder sent for invoice ${invoice.invoiceNumber}`,
+        metadata: {
+          invoiceModel: label,
+          type: reminderType,
+          channels: {
+            email: options.sendEmail,
+            sms: options.sendSms
+          }
+        }
+      });
       results.sent += 1;
     } else {
       results.failed += 1;
