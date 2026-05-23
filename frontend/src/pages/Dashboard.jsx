@@ -95,10 +95,10 @@ export default function Dashboard() {
     fetchPaymentAlerts();
   }, [fetchDashboard, fetchPaymentAlerts]);
 
-  const runReminderCheck = async (dryRun) => {
+  const sendRemindersNow = async () => {
     if (!selectedBuildingId) {
       setReminderResult(null);
-      setPaymentAlertError("Select a building before checking reminders.");
+      setPaymentAlertError("Select a building before sending reminders.");
       return;
     }
 
@@ -112,18 +112,16 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           building: selectedBuildingId,
-          daysAhead: 7,
-          dryRun,
-          ...(dryRun ? { sendSms: true, sendEmail: true } : {})
+          daysAhead: 7
         })
       });
       const data = await readResponse(res);
 
       if (!res.ok) {
-        throw new Error(data.error || data.message || "Reminder check failed");
+        throw new Error(data.error || data.message || "Reminder send failed");
       }
 
-      setReminderResult({ ...data, dryRun });
+      setReminderResult(data);
       fetchPaymentAlerts();
     } catch (error) {
       setPaymentAlertError(error.message);
@@ -234,11 +232,7 @@ export default function Dashboard() {
           </div>
 
           <div className="dashboard-reminder-actions">
-            <button onClick={() => runReminderCheck(true)} disabled={reminderLoading || !selectedBuildingId}>
-              <ArrowPathIcon />
-              Test Reminder Scan
-            </button>
-            <button onClick={() => runReminderCheck(false)} disabled={reminderLoading || !selectedBuildingId}>
+            <button onClick={sendRemindersNow} disabled={reminderLoading || !selectedBuildingId}>
               <PaperAirplaneIcon />
               Send Reminders Now
             </button>
@@ -248,7 +242,7 @@ export default function Dashboard() {
           {paymentAlertsLoading && <p className="message">Loading due payments...</p>}
           {reminderResult && (
             <p className={reminderResult.failed > 0 ? "error" : "message"}>
-              {reminderResult.dryRun ? "Test scan" : "Reminder send"} checked {reminderResult.checked || 0},
+              Reminder send checked {reminderResult.checked || 0},
               sent {reminderResult.sent || 0}, skipped {reminderResult.skipped || 0},
               failed {reminderResult.failed || 0}.
             </p>

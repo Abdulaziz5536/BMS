@@ -86,7 +86,7 @@ router.put('/floors/:id', async (req, res) => {
         units: unitCount,
         totalSqm: totalArea
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!updatedFloor) {

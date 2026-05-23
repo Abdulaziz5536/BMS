@@ -14,11 +14,14 @@ import Invoice from "./pages/Invoice";
 import Rent from "./pages/Rent";
 import Announcements from "./pages/Announcements";
 
+import ConfirmDialogProvider from "./components/ConfirmDialog";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 
 function App() {
   return (
+    <>
+    <ConfirmDialogProvider />
     <Routes>
 
       <Route path="/" element={<Login />} />
@@ -124,6 +127,7 @@ function App() {
         }
       />
     </Routes>
+    </>
   );
 }
 

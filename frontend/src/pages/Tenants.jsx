@@ -9,6 +9,8 @@ import {
   XMarkIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
+import FilePreviewLink from "../components/FilePreviewLink";
 import {
   API_BASE,
   invalidateCache,
@@ -57,6 +59,18 @@ const readUploadFile = (file, expectedType) => {
 };
 
 const formatCurrency = (amount) => `Br ${Number(amount || 0).toLocaleString()}`;
+
+const normalizeSortValue = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  return String(value).toLowerCase();
+};
 
 export default function Tenant() {
   const selectedBuildingId = useSelectedBuilding();
@@ -179,15 +193,18 @@ export default function Tenant() {
       let aValue = a[sortField];
       let bValue = b[sortField];
 
+      if (sortField === "tenantId" || sortField === "phone") {
+        aValue = Number(aValue) || 0;
+        bValue = Number(bValue) || 0;
+      }
+
       if (sortField === "unit") {
         aValue = getTenantUnit(a)?.unitId || "";
         bValue = getTenantUnit(b)?.unitId || "";
       }
 
-      if (typeof aValue === "string") {
-        aValue = aValue.toLowerCase();
-        bValue = bValue.toLowerCase();
-      }
+      aValue = normalizeSortValue(aValue);
+      bValue = normalizeSortValue(bValue);
 
       if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
       if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
@@ -293,6 +310,17 @@ export default function Tenant() {
   };
 
   const deleteTenant = async (id) => {
+    const shouldDelete = await confirmAction({
+      title: "Delete tenant?",
+      message: "Are you sure you want to delete this tenant?",
+      confirmText: "Yes",
+      cancelText: "No"
+    });
+
+    if (!shouldDelete) {
+      return;
+    }
+
     try {
       setMessage("");
       setError("");
@@ -357,11 +385,7 @@ export default function Tenant() {
       return "-";
     }
 
-    return (
-      <a className="file-link" href={file.data} target="_blank" rel="noreferrer" download={file.name}>
-        {label}
-      </a>
-    );
+    return <FilePreviewLink file={file} label={label} />;
   };
 
   const selectableUnits = units.filter(

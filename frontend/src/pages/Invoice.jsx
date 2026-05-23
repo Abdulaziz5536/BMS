@@ -1,11 +1,14 @@
 import { useCallback, useState, useEffect, useRef } from "react";
 import {
   BanknotesIcon,
-  PencilSquareIcon
+  PencilSquareIcon,
+  TrashIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
+  invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
@@ -14,7 +17,8 @@ import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import {
   dateInputProps,
   formatEthiopianDate,
-  normalizeDateInputForApi
+  normalizeDateInputForApi,
+  todayEthiopianDateInputValue
 } from "../utils/dateUtils";
 import "../style.css";
 
@@ -42,6 +46,7 @@ export default function Invoice() {
   const [currentInvoiceId, setCurrentInvoiceId] = useState(null);
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   const editInvoiceRef = useRef(null);
+  const paymentFormRef = useRef(null);
   const [editInvoiceForm, setEditInvoiceForm] = useState({
     dueDate: "",
     periodStart: "",
@@ -160,6 +165,15 @@ export default function Invoice() {
       });
     }
   }, [editingInvoiceId]);
+
+  useEffect(() => {
+    if (currentInvoiceId) {
+      paymentFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [currentInvoiceId]);
 
   // Filter and sort invoices
   const filteredAndSortedInvoices = invoices
@@ -319,6 +333,7 @@ export default function Invoice() {
       if (res.ok) {
         setMessage("Payment recorded successfully");
         setCurrentInvoiceId(null);
+        invalidateCache(selectedBuildingId);
         fetchInvoices(false);
         fetchOverdue();
         // Reset form
@@ -397,11 +412,59 @@ export default function Invoice() {
       if (res.ok) {
         setMessage(data.message || "Invoice updated");
         cancelEditingInvoice();
+        invalidateCache(selectedBuildingId);
         fetchInvoices(false);
         fetchReminders();
         fetchOverdue();
       } else {
         setError(data.error || "Failed to update invoice");
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteInvoice = async (invoice) => {
+    const shouldDelete = await confirmAction({
+      title: "Delete invoice?",
+      message: `Are you sure you want to delete invoice ${invoice.invoiceNumber}? This also removes its payment records.`,
+      confirmText: "Yes",
+      cancelText: "No"
+    });
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setMessage("");
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/invoices/${invoice._id}`, {
+        method: "DELETE"
+      });
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        setMessage(data.message || "Invoice deleted successfully");
+        invalidateCache(selectedBuildingId);
+
+        if (currentInvoiceId === invoice._id) {
+          setCurrentInvoiceId(null);
+        }
+
+        if (editingInvoiceId === invoice._id) {
+          cancelEditingInvoice();
+        }
+
+        fetchInvoices(false);
+        fetchReminders();
+        fetchOverdue();
+      } else {
+        setError(data.error || "Failed to delete invoice");
       }
     } catch (error) {
       setError(error.message);
@@ -577,6 +640,14 @@ export default function Invoice() {
                               <span>Record Payment</span>
                             </button>
                           )}
+                          <button
+                            className="table-action-btn danger-btn"
+                            onClick={() => deleteInvoice(invoice)}
+                            disabled={loading}
+                          >
+                            <TrashIcon />
+                            <span>Delete</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -653,7 +724,7 @@ export default function Invoice() {
 
         {/* Payment Recording Modal/Form - Simple inline form for now */}
         {currentInvoiceId && (
-          <section className="panel payment-form">
+          <section className="panel payment-form" ref={paymentFormRef}>
             <h2>Record Payment</h2>
             <div className="form-grid">
               <input

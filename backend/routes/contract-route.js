@@ -1,18 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const Contract = require('../models/contract-model');
+const Invoice = require('../models/invoice-model');
+const RentInvoice = require('../models/rent-invoice-model');
 const Tenant = require('../models/tenant-model');
+const {
+  applyContractStatusToInvoices,
+  syncContractPaymentState
+} = require('../services/payment-status-sync-service');
+const { recalculateInvoicePeriodsForContract } = require('../services/invoice-period-service');
 const {
   normalizeDateOnlyString,
   parseFlexibleDateInput,
   toIsoDate
 } = require('../utils/date-utils');
-
-const tenantFileSchemaShape = {
-  name: String,
-  type: String,
-  data: String
-};
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -120,90 +121,89 @@ router.post('/contract', async (req, res) => {
 
 router.put('/contract/:id', async (req, res) => {
   try {
-    if (Object.keys(req.body || {}).length > 0) {
-      const {
-        building,
-        tenant,
-        amount,
-        date,
-        leaseStartDate,
-        leaseEndDate,
-        contractLength,
-        paymentFrequency,
-        status,
-        contractFile
-      } = req.body;
+    const {
+      building,
+      tenant,
+      amount,
+      date,
+      leaseStartDate,
+      leaseEndDate,
+      contractLength,
+      paymentFrequency,
+      status,
+      contractFile
+    } = req.body || {};
 
-      const startDate = leaseStartDate || date;
+    const startDate = leaseStartDate || date;
 
-      if (!building || !tenant || !amount || !startDate || !leaseEndDate || !paymentFrequency) {
-        return res.status(400).json({ error: "Please fill in all fields" });
-      }
-
-      const startDateObj = parseFlexibleDateInput(startDate);
-      const leaseEndDateObj = parseFlexibleDateInput(leaseEndDate);
-
-      if (!startDateObj || !leaseEndDateObj) {
-        return res.status(400).json({ error: "Invalid lease date" });
-      }
-
-      if (leaseEndDateObj < startDateObj) {
-        return res.status(400).json({ error: "Lease end date cannot be before lease start date" });
-      }
-
-      const normalizedStartDate = normalizeDateOnlyString(startDate);
-      const normalizedLeaseEndDate = normalizeDateOnlyString(leaseEndDate);
-
-      const tenantRecord = await Tenant.findOne({ _id: tenant, building });
-
-      if (!tenantRecord) {
-        return res.status(400).json({ error: "Tenant does not belong to this building" });
-      }
-
-      const normalizedContractFile = normalizeTenantFile(contractFile);
-      if (!isValidFile(normalizedContractFile)) {
-        return res.status(400).json({ error: "Uploaded file is invalid or too large" });
-      }
-
-      const updatedContract = await Contract.findByIdAndUpdate(
-        req.params.id,
-        {
-          building,
-          tenant,
-          amount: Number(amount),
-          date: normalizedStartDate,
-          leaseStartDate: normalizedStartDate,
-          leaseEndDate: normalizedLeaseEndDate,
-          contractLength,
-          paymentFrequency,
-          status: status || "pending",
-          contractFile: normalizedContractFile
-        },
-        { new: true }
-      );
-
-      if (!updatedContract) {
-        return res.status(404).json({ error: "Contract not found" });
-      }
-
-      return res.json({
-        message: "Contract updated",
-        contract: updatedContract
-      });
+    if (!building || !tenant || !amount || !startDate || !leaseEndDate || !paymentFrequency) {
+      return res.status(400).json({ error: "Please fill in all fields" });
     }
 
-    const contract = await Contract.findById(req.params.id);
+    const startDateObj = parseFlexibleDateInput(startDate);
+    const leaseEndDateObj = parseFlexibleDateInput(leaseEndDate);
 
-    if (!contract) {
+    if (!startDateObj || !leaseEndDateObj) {
+      return res.status(400).json({ error: "Invalid lease date" });
+    }
+
+    if (leaseEndDateObj < startDateObj) {
+      return res.status(400).json({ error: "Lease end date cannot be before lease start date" });
+    }
+
+    const normalizedStartDate = normalizeDateOnlyString(startDate);
+    const normalizedLeaseEndDate = normalizeDateOnlyString(leaseEndDate);
+
+    const tenantRecord = await Tenant.findOne({ _id: tenant, building });
+
+    if (!tenantRecord) {
+      return res.status(400).json({ error: "Tenant does not belong to this building" });
+    }
+
+    const normalizedContractFile = normalizeTenantFile(contractFile);
+    if (!isValidFile(normalizedContractFile)) {
+      return res.status(400).json({ error: "Uploaded file is invalid or too large" });
+    }
+
+    const updatedContract = await Contract.findByIdAndUpdate(
+      req.params.id,
+      {
+        building,
+        tenant,
+        amount: Number(amount),
+        date: normalizedStartDate,
+        leaseStartDate: normalizedStartDate,
+        leaseEndDate: normalizedLeaseEndDate,
+        contractLength,
+        paymentFrequency,
+        status: status || "pending",
+        contractFile: normalizedContractFile
+      },
+      { returnDocument: "after" }
+    );
+
+    if (!updatedContract) {
       return res.status(404).json({ error: "Contract not found" });
     }
 
-    contract.status = "paid";
-    await contract.save();
+    const [invoicePeriodSync, rentInvoicePeriodSync] = await Promise.all([
+      recalculateInvoicePeriodsForContract(Invoice, updatedContract),
+      recalculateInvoicePeriodsForContract(RentInvoice, updatedContract)
+    ]);
+    await applyContractStatusToInvoices(updatedContract, updatedContract.status);
+
+    const invoicePeriodsUpdated =
+      invoicePeriodSync.updated + rentInvoicePeriodSync.updated;
+    const invoicePeriodsSkipped =
+      invoicePeriodSync.skipped + rentInvoicePeriodSync.skipped;
 
     return res.json({
-      message: "Payment marked as paid",
-      contract
+      message: invoicePeriodsUpdated > 0
+        ? `Contract updated and ${invoicePeriodsUpdated} invoice date${invoicePeriodsUpdated === 1 ? "" : "s"} updated`
+        : "Contract updated",
+      contract: updatedContract,
+      invoicePeriodsUpdated,
+      invoicePeriodsSkipped
     });
 
   } catch (err) {
@@ -252,12 +252,15 @@ router.patch('/contract/:id/status', async (req, res) => {
     const contract = await Contract.findByIdAndUpdate(
       req.params.id,
       { status },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!contract) {
       return res.status(404).json({ error: "Contract not found" });
     }
+
+    await applyContractStatusToInvoices(contract, status);
+    await syncContractPaymentState(contract);
 
     return res.json({
       message: "Contract status updated",
@@ -283,6 +286,7 @@ router.patch('/contract/:id/pay', async (req, res) => {
     // 1) mark current as paid
     contract.status = "paid";
     await contract.save();
+    await applyContractStatusToInvoices(contract, "paid");
 
     // 2) create next pending contract based on paymentFrequency
     const baseStart = parseDateOrNull(contract.leaseStartDate || contract.date);

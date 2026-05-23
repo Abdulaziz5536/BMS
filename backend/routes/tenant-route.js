@@ -220,7 +220,7 @@ router.put('/tenants/:id', async (req,res) => {
         unit,
         ...extraTenantData
       },
-      {new:true}
+      { returnDocument: "after" }
     );
 
     if(!tenant){

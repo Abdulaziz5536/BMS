@@ -4,12 +4,15 @@ const User = require('../models/auth-model');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-router.use(express.json());
-
 router.post('/signup', async (req,res) => {
-  const {name,email,password} = req.body;
+  const name = String(req.body.name || "").trim();
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
 
   try{
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Please fill in all fields" });
+    }
 
      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
@@ -21,7 +24,7 @@ router.post('/signup', async (req,res) => {
         return res.status(400).json({error:"User already exists"});
   }
 
-    if(password.length !== 6){
+    if(!/^\d{6}$/.test(password)){
       return res.status(400).json({error:"Password should be 6 digits"});
   }
 
@@ -41,9 +44,13 @@ router.post('/signup', async (req,res) => {
 
 })
 router.post('/login', async (req,res) => {
-  const {email,password} = req.body;
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const password = String(req.body.password || "");
   
   try{
+  if (!email || !password) {
+    return res.status(400).json({ error: "Please fill in all fields" });
+  }
 
     
   const user = await User.findOne({email});

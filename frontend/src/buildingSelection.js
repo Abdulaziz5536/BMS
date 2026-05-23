@@ -1,4 +1,5 @@
-export const API_BASE = "http://localhost:3000";
+const configuredApiBase = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+export const API_BASE = configuredApiBase.replace(/\/$/, "");
 
 const BUILDING_STORAGE_KEY = "selectedBuildingId";
 const BUILDING_CHANGED_EVENT = "buildingChanged";

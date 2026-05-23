@@ -6,6 +6,7 @@ import {
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
+  invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
@@ -14,7 +15,8 @@ import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import {
   dateInputProps,
   formatEthiopianDate,
-  normalizeDateInputForApi
+  normalizeDateInputForApi,
+  todayEthiopianDateInputValue
 } from "../utils/dateUtils";
 import "../style.css";
 
@@ -319,6 +321,7 @@ export default function Rent() {
       if (res.ok) {
         setMessage("Payment recorded successfully");
         setCurrentInvoiceId(null);
+        invalidateCache(selectedBuildingId);
         fetchInvoices(false);
         fetchReminders();
         fetchOverdue();
@@ -407,6 +410,7 @@ export default function Rent() {
       if (res.ok) {
         setMessage(data.message || "Invoice updated");
         cancelEditingInvoice();
+        invalidateCache(selectedBuildingId);
         fetchInvoices(false);
         fetchReminders();
         fetchOverdue();

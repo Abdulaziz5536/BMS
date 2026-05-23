@@ -35,6 +35,81 @@ const getInvoiceAmount = (invoice) =>
 const reminderAlreadySent = (invoice, type) =>
   (invoice.remindersSent || []).some((reminder) => reminder.type === type);
 
+const getReminderText = (message) => {
+  if (typeof message === "string") {
+    return message;
+  }
+
+  return message?.text || "";
+};
+
+const getSmsText = (message) => {
+  if (typeof message === "string") {
+    return message;
+  }
+
+  return message?.sms || getReminderText(message);
+};
+
+const buildEmailHtml = ({
+  title,
+  greeting,
+  summary,
+  amharic,
+  details,
+  extraTitle = "Important notice",
+  extraLines = [],
+  accentColor = "#2563eb",
+  headerColor = "#0f4c81"
+}) => {
+  const importantNotes = extraLines.filter(Boolean);
+
+  return `
+    <div style="background: #f3f6fb; padding: 28px 14px; font-family: Arial, sans-serif; color: #1f2937;">
+      <div style="max-width: 660px; margin: auto; background: #ffffff; border: 1px solid #dbe4f0; border-radius: 12px; overflow: hidden;">
+        <div style="background: ${headerColor}; color: #ffffff; padding: 24px 28px;">
+          <p style="margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 1px;">BHA MALL</p>
+          <h1 style="margin: 0; font-size: 24px; font-weight: 700;">${title}</h1>
+        </div>
+
+        <div style="padding: 26px 28px;">
+          <p style="font-size: 16px; margin: 0 0 18px;">${greeting}</p>
+
+          <div style="background: #f8fbff; border-left: 4px solid ${accentColor}; padding: 16px 18px; margin-bottom: 22px;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.65;">${summary}</p>
+            ${amharic ? `<p style="margin: 16px 0 0; font-size: 15px; line-height: 1.65;">${amharic}</p>` : ''}
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 22px; font-size: 14px;">
+            ${details.map((item) => `
+              <tr>
+                <td style="padding: 11px 0; color: #64748b; width: 145px; vertical-align: top; border-bottom: 1px solid #edf2f7;">${item.label}</td>
+                <td style="padding: 11px 0; color: #111827; border-bottom: 1px solid #edf2f7;">${item.value}</td>
+              </tr>
+            `).join('')}
+          </table>
+
+          ${importantNotes.length > 0 ? `
+            <div style="background: #fff8ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 16px 18px; margin-bottom: 22px;">
+              <p style="margin: 0 0 12px; color: #9a3412; font-size: 13px; font-weight: 700;">${extraTitle}</p>
+              ${importantNotes.map((line, index) => `
+                <p style="margin: ${index === 0 ? "0" : "12px"} 0 0; color: ${index < 2 ? "#374151" : "#64748b"}; font-size: 14px; line-height: 1.65;">${line}</p>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          <p style="margin: 0; font-size: 14px; color: #475569;">Thank you for your attention.</p>
+          <p style="margin: 8px 0 0; font-size: 14px; color: #475569;">ስለ ትኩረትዎ እናመሰግናለን።</p>
+        </div>
+
+        <div style="background: #f8fafc; text-align: center; font-size: 12px; color: #94a3b8; padding: 15px 20px;">
+          This is an automated reminder from Good Stay Real Estate.
+        </div>
+      </div>
+    </div>
+  `;
+};
+
 const buildDueDateMessage = (invoice, daysUntilDue) => {
   const tenantName = invoice.tenant?.tenantName || "Tenant";
   const dueDate = formatEthiopianDate(invoice.dueDate);
@@ -42,27 +117,95 @@ const buildDueDateMessage = (invoice, daysUntilDue) => {
   const timing = daysUntilDue === 0
     ? "today"
     : `in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}`;
-  // English message (no invoice number)
+  const timingAmharic = daysUntilDue === 0
+    ? "ዛሬ"
+    : `${daysUntilDue} ቀን ውስጥ`;
+  const dueNote = "Please make payment before the due date to avoid any penalties.";
+  const dueNoteAmharic = "እባክዎ ተጨማሪ ቅጣት እንዳይኖር ክፍያዎን ከመክፈያ ቀኑ በፊት ያጠናቁ።";
+  const paidNote = "If you have already paid, please ignore this message.";
+  const paidNoteAmharic = "ክፍያዎን አስቀድመው ከፈጸሙ እባክዎ ይህን መልዕክት ችላ ይበሉ።";
+
   const en = `Hi ${tenantName}, your rent payment of Br ${amount} is due ${timing} (${dueDate}). Please complete payment by the due date.`;
+  const am = `ሰላም ${tenantName}፣ የኪራይ ክፍያዎ ${amount} ብር ነው። ክፍያው ${timingAmharic}(ቀን/ቀናት ውስጥ) (${dueDate}) ነው። እባክዎ ክፍያዎን በጊዜ ውስጥ ያከናውኑ።`;
 
-  // Amharic message (no invoice number)
-  // e.g. "ሰላም Amanuel፣ የኪራይ ክፍያዎ Br 1000 ነው። ክፍያው ዛሬ (16 May 2026) ይጠጋል። እባክዎ ክፍያዎን በቀን ውስጥ ያከናውኑ።"
-  const am = `ሰላም ${tenantName}፣ የኪራይ ክፍያዎ Br ${amount} ነው። ክፍያው ${timing} (${dueDate}) ይጠጋል። እባክዎ ክፍያዎን በጊዜ ውስጥ ያከናውኑ።`;
+  const text = `${en}
+${am}
 
-  return `${en}\n${am}`;
+${dueNote}
+${dueNoteAmharic}
+
+${paidNote}
+${paidNoteAmharic}`;
+  const sms = `${en}
+${am}`;
+  const html = buildEmailHtml({
+    title: "Rent Payment Reminder",
+    greeting: `Hello ${tenantName},`,
+    summary: `Your rent payment of Br ${amount} is due ${timing} on ${dueDate}.`,
+    amharic: `የኪራይ ክፍያዎ ${amount} ብር ነው። ክፍያው በ ${timingAmharic} (${dueDate}) ነው።`,
+    details: [
+      { label: "Amount", value: `Br ${amount}` },
+      { label: "Due date", value: dueDate },
+      { label: "Reminder", value: daysUntilDue === 0 ? "Due today" : `Due ${timing}` }
+    ],
+    extraTitle: "Payment notice",
+    extraLines: [
+      dueNote,
+      dueNoteAmharic,
+      paidNote,
+      paidNoteAmharic
+    ]
+  });
+
+  return { text, html, sms };
 };
 
 const buildLatePaymentMessage = (invoice, daysOverdue) => {
   const tenantName = invoice.tenant?.tenantName || "Tenant";
   const dueDate = formatEthiopianDate(invoice.dueDate);
   const amount = getInvoiceAmount(invoice);
-  // English message (no invoice number)
-  const en = `Hi ${tenantName}, your rent payment of Br ${amount} was due on ${dueDate} and is now ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue. Please complete payment as soon as possible.`;
+  const overdueTiming = `${daysOverdue} day${daysOverdue === 1 ? "" : "s"}`;
+  const overdueTimingAmharic = `${daysOverdue} ቀን`;
+  const overdueNote = "Please settle your outstanding balance immediately to avoid further penalties.";
+  const overdueNoteAmharic = "ተጨማሪ ቅጣት እንዳይጨመር እባክዎ ያለብዎትን ቀሪ ክፍያ በአስቸኳይ ይፈጽሙ።";
+  const helpNote = "If you have already paid or need help with your payment plan, please contact the office.";
+  const helpNoteAmharic = "ክፍያዎን አስቀድመው ከፈጸሙ ወይም በክፍያ ዕቅድዎ ላይ እርዳታ ካስፈለገዎት እባክዎ ቢሮውን ያነጋግሩ።";
 
-  // Amharic message
-  const am = `ሰላም ${tenantName}፣ የኪራይ ክፍያዎ Br ${amount} ነው። ክፍያው ${dueDate} የተዘገየ ነው እና አሁን ${daysOverdue} ቀን(ዎች) በላይ አልፏል። እባክዎ በፍጥነት ክፍያዎን ያከናውኑ።`;
+  const en = `Hi ${tenantName}, your rent payment of Br ${amount} was due on ${dueDate} and is now ${overdueTiming} overdue. Please complete payment as soon as possible.`;
+  const am = `ሰላም ${tenantName}፣ የኪራይ ክፍያዎ Br ${amount} ነው። ክፍያው ${dueDate} የተዘገየ ነው እና አሁን ${overdueTimingAmharic} በላይ አልፏል። እባክዎ በፍጥነት ክፍያዎን ያከናውኑ።`;
 
-  return `${en}\n${am}`;
+  const text = `${en}
+${am}
+
+${overdueNote}
+${overdueNoteAmharic}
+
+${helpNote}
+${helpNoteAmharic}`;
+  const sms = `${en}
+${am}`;
+  const html = buildEmailHtml({
+    title: "Overdue Rent Notice",
+    greeting: `Hello ${tenantName},`,
+    summary: `Your rent payment of Br ${amount} was due on ${dueDate} and is now ${overdueTiming} overdue.`,
+    amharic: `የኪራይ ክፍያዎ ${amount} ብር ነው። ክፍያው በ ${dueDate} የተዘገየ ነው እና አሁን ከ ${overdueTimingAmharic} በላይ ነው።`,
+    details: [
+      { label: "Amount", value: `Br ${amount}` },
+      { label: "Due date", value: dueDate },
+      { label: "Days overdue", value: overdueTiming }
+    ],
+    extraTitle: "Overdue notice",
+    extraLines: [
+      overdueNote,
+      overdueNoteAmharic,
+      helpNote,
+      helpNoteAmharic
+    ],
+    accentColor: "#dc2626",
+    headerColor: "#7f1d1d"
+  });
+
+  return { text, html, sms };
 };
 
 const getPendingInvoices = async (Model, daysAhead, buildingId) => {
@@ -96,7 +239,7 @@ const sendTenantReminder = async (invoice, type, message, options) => {
 
   if (options.sendSms) {
     if (tenant.phone) {
-      const smsResult = await sendSMS(tenant.phone, message);
+      const smsResult = await sendSMS(tenant.phone, getSmsText(message));
 
       if (smsResult.success) {
         sent += 1;
@@ -113,7 +256,12 @@ const sendTenantReminder = async (invoice, type, message, options) => {
       const subject = type === "late_payment"
         ? "Rent payment overdue"
         : "Rent payment due reminder";
-      const emailResult = await sendEmail(tenant.email, subject, message);
+      const emailResult = await sendEmail(
+        tenant.email,
+        subject,
+        getReminderText(message),
+        message.html
+      );
 
       if (emailResult.success) {
         sent += 1;
@@ -153,11 +301,6 @@ const processInvoices = async (Model, label, options) => {
       ? buildLatePaymentMessage(invoice, Math.abs(daysUntilDue))
       : buildDueDateMessage(invoice, daysUntilDue);
 
-    if (options.dryRun) {
-      results.skipped += 1;
-      continue;
-    }
-
     const reminderResult = await sendTenantReminder(
       invoice,
       reminderType,
@@ -170,7 +313,7 @@ const processInvoices = async (Model, label, options) => {
       invoice.remindersSent.push({
         type: reminderType,
         sentAt: new Date(),
-        message
+        message: getReminderText(message)
       });
       await invoice.save();
       results.sent += 1;
@@ -206,13 +349,20 @@ const runDueDateReminders = async (overrideOptions = {}) => {
       overrideOptions.daysAhead ?? process.env.DUE_REMINDER_DAYS_AHEAD,
       3
     ),
-    dryRun: overrideOptions.dryRun === true,
-    sendSms: overrideOptions.sendSms ?? process.env.DUE_REMINDER_SEND_SMS !== "false",
-    sendEmail: overrideOptions.sendEmail ?? process.env.DUE_REMINDER_SEND_EMAIL === "true",
+    sendSms: overrideOptions.sendSms !== undefined
+      ? overrideOptions.sendSms
+      : process.env.DUE_REMINDER_SEND_SMS !== undefined
+        ? process.env.DUE_REMINDER_SEND_SMS === "true"
+        : false,
+    sendEmail: overrideOptions.sendEmail !== undefined
+      ? overrideOptions.sendEmail
+      : process.env.DUE_REMINDER_SEND_EMAIL !== undefined
+        ? process.env.DUE_REMINDER_SEND_EMAIL === "true"
+        : isEmailConfigured(),
     buildingId: overrideOptions.buildingId || ""
   };
 
-  if (!options.dryRun && options.sendSms && !isSmsConfigured()) {
+  if (options.sendSms && !isSmsConfigured()) {
     return {
       checked: 0,
       sent: 0,
@@ -224,7 +374,7 @@ const runDueDateReminders = async (overrideOptions = {}) => {
     };
   }
 
-  if (!options.dryRun && options.sendEmail && !isEmailConfigured()) {
+  if (options.sendEmail && !isEmailConfigured()) {
     return {
       checked: 0,
       sent: 0,
@@ -254,81 +404,29 @@ const runDueDateReminders = async (overrideOptions = {}) => {
   return mergeResults(results);
 };
 
-const runReminderForInvoice = async (invoiceId, overrideOptions = {}) => {
-  const options = {
-    dryRun: overrideOptions.dryRun === true,
-    sendSms: overrideOptions.sendSms ?? process.env.DUE_REMINDER_SEND_SMS !== "false",
-    sendEmail: overrideOptions.sendEmail ?? process.env.DUE_REMINDER_SEND_EMAIL === "true",
-    force: overrideOptions.force === true
-  };
-
-  const invoice = await Invoice.findById(invoiceId).populate('tenant').populate('building');
-  if (!invoice) {
-    return { checked: 0, sent: 0, skipped: 0, failed: 1, errors: [{ error: 'Invoice not found' }] };
+const summarizeReminderError = (entry) => {
+  if (typeof entry === "string") {
+    return entry;
   }
 
-  const today = getStartOfToday();
-  const daysUntilDue = Math.ceil((invoice.dueDate - today) / DAY_MS);
-  const isOverdue = daysUntilDue < 0;
-  const reminderType = isOverdue ? 'late_payment' : 'due_date';
+  const invoice = entry.invoiceNumber || entry.invoiceId;
+  const errors = Array.isArray(entry.errors) ? entry.errors.join("; ") : entry.error;
 
-  if (!options.force && reminderAlreadySent(invoice, reminderType)) {
-    return { checked: 1, sent: 0, skipped: 1, failed: 0, errors: [] };
-  }
-
-  const message = isOverdue
-    ? buildLatePaymentMessage(invoice, Math.abs(daysUntilDue))
-    : buildDueDateMessage(invoice, daysUntilDue);
-
-  if (options.dryRun) return { checked: 1, sent: 0, skipped: 1, failed: 0, errors: [] };
-
-  const reminderResult = await sendTenantReminder(invoice, reminderType, message, options);
-
-  if (reminderResult.sent > 0) {
-    invoice.remindersSent = invoice.remindersSent || [];
-    invoice.remindersSent.push({ type: reminderType, sentAt: new Date(), message });
-    await invoice.save();
-    return { checked: 1, sent: 1, skipped: 0, failed: 0, errors: [] };
-  }
-
-  return { checked: 1, sent: 0, skipped: 0, failed: 1, errors: reminderResult.errors };
+  return [entry.invoiceModel, invoice, errors].filter(Boolean).join(": ");
 };
 
-const runRemindersForTenant = async (tenantId, overrideOptions = {}) => {
-  const options = {
-    dryRun: overrideOptions.dryRun === true,
-    sendSms: overrideOptions.sendSms ?? process.env.DUE_REMINDER_SEND_SMS !== "false",
-    sendEmail: overrideOptions.sendEmail ?? process.env.DUE_REMINDER_SEND_EMAIL === "true",
-    force: overrideOptions.force === true
-  };
-
-  // find pending or overdue invoices for tenant
-  const invoices = await Invoice.find({ tenant: tenantId, status: { $in: ['pending', 'overdue'] } })
-    .populate('tenant')
-    .populate('building')
-    .sort({ dueDate: 1 });
-
-  if (!invoices || invoices.length === 0) {
-    return { checked: 0, sent: 0, skipped: 0, failed: 0, errors: [] };
-  }
-
-  const results = { checked: 0, sent: 0, skipped: 0, failed: 0, errors: [] };
-
-  for (const inv of invoices) {
-    const res = await runReminderForInvoice(inv._id, { ...options, force: options.force });
-    results.checked += res.checked || 0;
-    results.sent += res.sent || 0;
-    results.skipped += res.skipped || 0;
-    results.failed += res.failed || 0;
-    if (res.errors && res.errors.length) results.errors.push(...res.errors);
-  }
-
-  return results;
-};
+const summarizeReminderResult = (result) => ({
+  checked: result.checked,
+  sent: result.sent,
+  skipped: result.skipped,
+  failed: result.failed,
+  errors: (result.errors || []).slice(0, 3).map(summarizeReminderError),
+  moreErrors: Math.max(0, (result.errors || []).length - 3)
+});
 
 const startDueDateReminderJob = () => {
-  if (process.env.DUE_REMINDER_ENABLED === "false") {
-    console.log("Due date reminder job is disabled");
+  if (process.env.DUE_REMINDER_ENABLED !== "true") {
+    console.log("Due date reminder job is disabled. Set DUE_REMINDER_ENABLED=true to enable it.");
     return null;
   }
 
@@ -343,7 +441,7 @@ const startDueDateReminderJob = () => {
       const result = await runDueDateReminders();
 
       if (result.sent > 0 || result.failed > 0) {
-        console.log("Due date reminder job result:", result);
+        console.log("Due date reminder job result:", summarizeReminderResult(result));
       }
     } catch (error) {
       console.error("Due date reminder job failed:", error);
@@ -361,7 +459,3 @@ module.exports = {
   runDueDateReminders,
   startDueDateReminderJob
 };
-
-// Additional admin helpers
-module.exports.runReminderForInvoice = runReminderForInvoice;
-module.exports.runRemindersForTenant = runRemindersForTenant;

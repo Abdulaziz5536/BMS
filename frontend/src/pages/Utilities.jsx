@@ -4,6 +4,8 @@ import {
   TrashIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
+import FilePreviewLink from "../components/FilePreviewLink";
 import {
   API_BASE,
   invalidateCache,
@@ -252,32 +254,18 @@ export default function Utilities() {
     setError("");
   };
 
-  const updateStatus = async (id, nextStatus) => {
-    try {
-      setMessage("");
-      setError("");
-
-      const res = await fetch(`${API_BASE}/utilities/${id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus })
-      });
-
-      const data = await readResponse(res);
-
-      if (res.ok) {
-        setMessage(data.message || "Utility status updated");
-        invalidateCache(selectedBuildingId);
-        fetchUtilities(false);
-      } else {
-        setError(data.error || data.err || "Failed to update status");
-      }
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
   const deleteUtility = async (id) => {
+    const shouldDelete = await confirmAction({
+      title: "Delete utility payment?",
+      message: "Are you sure you want to delete this utility payment?",
+      confirmText: "Yes",
+      cancelText: "No"
+    });
+
+    if (!shouldDelete) {
+      return;
+    }
+
     try {
       setMessage("");
       setError("");
@@ -299,36 +287,9 @@ export default function Utilities() {
     }
   };
 
-  const markAsPaid = async (id) => {
-    // keep for convenience, but status dropdown also works
-    try {
-      setMessage("");
-      setError("");
-
-      const res = await fetch(`${API_BASE}/utilities/${id}/pay`, {
-        method: "PATCH"
-      });
-      const data = await readResponse(res);
-
-      if (res.ok) {
-        setMessage(data.message || "Utility payment marked as paid");
-        invalidateCache(selectedBuildingId);
-        fetchUtilities(false);
-      } else {
-        setError(data.error || data.err || "Failed to mark payment as paid");
-      }
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
   const renderFileLink = (file) => {
     if (!file?.data) return "-";
-    return (
-      <a className="file-link" href={file.data} target="_blank" rel="noreferrer" download={file.name}>
-        {file.name}
-      </a>
-    );
+    return <FilePreviewLink file={file} />;
   };
 
   return (

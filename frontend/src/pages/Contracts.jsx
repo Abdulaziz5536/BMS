@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   PencilSquareIcon,
   TrashIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
+import FilePreviewLink from "../components/FilePreviewLink";
 import {
   API_BASE,
   invalidateCache,
@@ -231,6 +233,17 @@ export default function Contracts() {
   };
 
   const deleteContract = async (id) => {
+    const shouldDelete = await confirmAction({
+      title: "Delete contract?",
+      message: "Are you sure you want to delete this contract?",
+      confirmText: "Yes",
+      cancelText: "No"
+    });
+
+    if (!shouldDelete) {
+      return;
+    }
+
     try {
       setMessage("");
       setError("");
@@ -255,11 +268,7 @@ export default function Contracts() {
 
   const renderFileLink = (file) => {
     if (!file?.data) return "-";
-    return (
-      <a className="file-link" href={file.data} target="_blank" rel="noreferrer" download={file.name}>
-        {file.name}
-      </a>
-    );
+    return <FilePreviewLink file={file} />;
   };
 
   return (

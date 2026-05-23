@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE, readResponse } from "../buildingSelection";
 import "../style.css";
 
 export default function Login() {
@@ -26,7 +27,7 @@ export default function Login() {
 
     try {
 
-      const res = await fetch("http://localhost:3000/login", {
+      const res = await fetch(`${API_BASE}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -34,7 +35,7 @@ export default function Login() {
         body: JSON.stringify({ email, password })
       });
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
 
@@ -49,10 +50,10 @@ export default function Login() {
 
       } else {
 
-        if (data.error === "User not found") {
+        if (data.error === "User does not exist") {
           setError("Account does not exist. Please sign up.");
         } 
-        else if (data.error === "Wrong password") {
+        else if (data.error === "Invalid credentials") {
           setError("Incorrect password. Try again.");
         } 
         else {
@@ -61,7 +62,7 @@ export default function Login() {
 
       }
 
-    } catch (error) {
+    } catch {
 
       setError("Server error. Please try again.");
 

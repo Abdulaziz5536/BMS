@@ -98,7 +98,7 @@ router.put('/units/:id', async (req,res) => {
       type: normalizedType,
       floor
     },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if(!updatedUnit){

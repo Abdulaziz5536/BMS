@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   PencilSquareIcon,
   TrashIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
   invalidateCache,
@@ -25,14 +26,14 @@ export default function Floors() {
   const [editingId, setEditingId] = useState(null);
   const floorFormRef = useRef(null);
 
-  const clearForm = () => {
+  const clearForm = useCallback(() => {
     setFloor("");
     setUnits("");
     setSqm("");
     setEditingId(null);
-  };
+  }, []);
 
-  const loadFloors = async (useCache = true) => {
+  const loadFloors = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setFloors([]);
       return;
@@ -45,14 +46,14 @@ export default function Floors() {
       "Failed to load floors",
       { useCache }
     );
-  };
+  }, [selectedBuildingId]);
 
   useEffect(() => {
     clearForm();
     setMessage("");
     setError("");
     loadFloors();
-  }, [selectedBuildingId]);
+  }, [clearForm, loadFloors, selectedBuildingId]);
 
   useEffect(() => {
     if (editingId) {
@@ -123,6 +124,17 @@ export default function Floors() {
   };
 
   const deleteFloor = async (id) => {
+    const shouldDelete = await confirmAction({
+      title: "Delete floor?",
+      message: "Are you sure you want to delete this floor?",
+      confirmText: "Yes",
+      cancelText: "No"
+    });
+
+    if (!shouldDelete) {
+      return;
+    }
+
     try {
       setMessage("");
       setError("");

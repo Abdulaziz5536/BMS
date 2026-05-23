@@ -9,6 +9,7 @@ import {
   XMarkIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
   invalidateCache,
@@ -312,7 +313,14 @@ export default function Announcements() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this announcement?")) {
+    const shouldDelete = await confirmAction({
+      title: "Delete announcement?",
+      message: "Are you sure you want to delete this announcement?",
+      confirmText: "Yes",
+      cancelText: "No"
+    });
+
+    if (!shouldDelete) {
       return;
     }
 

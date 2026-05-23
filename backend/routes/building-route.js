@@ -51,7 +51,7 @@ router.put("/buildings/:id", async (req, res) => {
     const building = await Building.findByIdAndUpdate(
       req.params.id,
       { name, address, managerName, phone, notes },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!building) {

@@ -28,6 +28,17 @@ const textToHtml = (value) => escapeHtml(value).replace(/\n/g, "<br>");
 const isEmailConfigured = () =>
   Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
 
+const describeSendError = (error) => {
+  const details = [
+    error?.message,
+    error?.cause?.code,
+    error?.cause?.hostname ? `host ${error.cause.hostname}` : "",
+    error?.response
+  ].filter(Boolean);
+
+  return details.join(" - ") || "Unknown messaging error";
+};
+
 let emailTransporter;
 
 const getEmailTransporter = () => {
@@ -178,12 +189,13 @@ const sendSMS = async (phoneNumber, message) => {
 
     return { success: true, to, providerResponse: responseBody };
   } catch (error) {
-    console.error("SMS sending error:", error);
-    return { success: false, error: error.message || "Unknown SMS error" };
+    const message = describeSendError(error);
+    console.error("SMS sending error:", message);
+    return { success: false, error: message };
   }
 };
 
-const sendEmail = async (email, subject, message) => {
+const sendEmail = async (email, subject, message, html) => {
   try {
     const transporter = getEmailTransporter();
     const from = process.env.SMTP_FROM || process.env.SMTP_USER;
@@ -192,7 +204,7 @@ const sendEmail = async (email, subject, message) => {
       to: email,
       subject,
       text: message,
-      html: textToHtml(message)
+      html: html || textToHtml(message)
     });
 
     if (!info?.messageId) {
@@ -201,8 +213,9 @@ const sendEmail = async (email, subject, message) => {
 
     return { success: true };
   } catch (error) {
-    console.error("Email sending error:", error);
-    return { success: false, error: error.message || "Unknown email error" };
+    const message = describeSendError(error);
+    console.error("Email sending error:", message);
+    return { success: false, error: message };
   }
 };
 

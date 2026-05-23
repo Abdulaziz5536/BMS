@@ -431,7 +431,7 @@ const updateAnnouncement = async (req, res) => {
     const announcement = await Announcement.findByIdAndUpdate(
       req.params.id,
       update,
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     ).populate("building").populate("sentBy", "name email");
 
     if (!announcement) {

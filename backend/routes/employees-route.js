@@ -2,6 +2,26 @@ const express = require('express');
 const router = express.Router();
 const Employee = require('../models/employees-model');
 
+const normalizeEmployeePayload = (body) => {
+  const salary = Number(body.salary || 0);
+
+  return {
+    building: body.building,
+    name: String(body.name || "").trim(),
+    position: String(body.position || "").trim(),
+    phoneNumber: String(body.phoneNumber || "").trim(),
+    email: String(body.email || "").trim().toLowerCase(),
+    salary: Number.isFinite(salary) ? salary : NaN,
+    emergencyContactName: String(body.emergencyContactName || "").trim(),
+    emergencyContactPhone: String(body.emergencyContactPhone || "").trim()
+  };
+};
+
+const isValidEmail = (email) => {
+  if (!email) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
 router.get('/employees', async(req,res) => {
   try {
     const filter = req.query.building ? { building: req.query.building } : {};
@@ -15,32 +35,32 @@ router.get('/employees', async(req,res) => {
 
 router.post('/employees', async (req,res) => {
   try{
-       const {building,name,position,phoneNumber} = req.body;
-       const normalizedName = String(name || "").trim();
-       const normalizedPosition = String(position || "").trim();
-       const normalizedPhoneNumber = String(phoneNumber || "").trim();
+       const employeeData = normalizeEmployeePayload(req.body);
 
-       if(!building || !normalizedName || !normalizedPosition || !normalizedPhoneNumber){
+       if(!employeeData.building || !employeeData.name || !employeeData.position || !employeeData.phoneNumber){
         return res.status(400).json({error:"Please fill in all fields"});
        }
 
+       if(!isValidEmail(employeeData.email)){
+        return res.status(400).json({error:"Invalid email format"});
+       }
+
+       if(!Number.isFinite(employeeData.salary) || employeeData.salary < 0){
+        return res.status(400).json({error:"Salary must be a valid number"});
+       }
+
        const existingEmployee = await Employee.findOne({
-        building,
-        name: normalizedName,
-        position: normalizedPosition,
-        phoneNumber: normalizedPhoneNumber
+        building: employeeData.building,
+        name: employeeData.name,
+        position: employeeData.position,
+        phoneNumber: employeeData.phoneNumber
        }).collation({ locale: "en", strength: 2 });
 
        if(existingEmployee){
         return res.status(400).json({error:"employee already exists"});
        }
 
-       const employee = await Employee.create({
-        building,
-        name: normalizedName,
-        position: normalizedPosition,
-        phoneNumber: normalizedPhoneNumber
-       });
+       const employee = await Employee.create(employeeData);
        res.json({message:"employee created", employee})
   }catch(err){
     res.status(500).json({err:err.message});
@@ -51,20 +71,25 @@ router.post('/employees', async (req,res) => {
 
 router.put('/employees/:id', async (req,res) => {
   try {
-    const {building,name,position,phoneNumber} = req.body;
-    const normalizedName = String(name || "").trim();
-    const normalizedPosition = String(position || "").trim();
-    const normalizedPhoneNumber = String(phoneNumber || "").trim();
+    const employeeData = normalizeEmployeePayload(req.body);
 
-    if(!building || !normalizedName || !normalizedPosition || !normalizedPhoneNumber){
+    if(!employeeData.building || !employeeData.name || !employeeData.position || !employeeData.phoneNumber){
       return res.status(400).json({error:"Please fill in all fields"});
     }
 
+    if(!isValidEmail(employeeData.email)){
+      return res.status(400).json({error:"Invalid email format"});
+    }
+
+    if(!Number.isFinite(employeeData.salary) || employeeData.salary < 0){
+      return res.status(400).json({error:"Salary must be a valid number"});
+    }
+
     const existingEmployee = await Employee.findOne({
-      building,
-      name: normalizedName,
-      position: normalizedPosition,
-      phoneNumber: normalizedPhoneNumber,
+      building: employeeData.building,
+      name: employeeData.name,
+      position: employeeData.position,
+      phoneNumber: employeeData.phoneNumber,
       _id: { $ne: req.params.id }
     }).collation({ locale: "en", strength: 2 });
 
@@ -74,13 +99,8 @@ router.put('/employees/:id', async (req,res) => {
 
     const employee = await Employee.findByIdAndUpdate(
       req.params.id,
-      {
-        building,
-        name: normalizedName,
-        position: normalizedPosition,
-        phoneNumber: normalizedPhoneNumber
-      },
-      {new:true}
+      employeeData,
+      { returnDocument: "after" }
     );
 
     if(!employee){

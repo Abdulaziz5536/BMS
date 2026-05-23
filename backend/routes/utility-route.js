@@ -184,7 +184,7 @@ router.put("/utilities/:id", async (req, res) => {
         notes,
         utilityFile: normalizedUtilityFile
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!utility) {
@@ -208,7 +208,7 @@ router.patch("/utilities/:id/status", async (req, res) => {
     const utility = await Utility.findByIdAndUpdate(
       req.params.id,
       { status },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!utility) {

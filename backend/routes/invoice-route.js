@@ -6,7 +6,12 @@ const PaymentRecord = require('../models/payment-record-model');
 const Contract = require('../models/contract-model');
 const Tenant = require('../models/tenant-model');
 const { runDueDateReminders } = require('../services/due-reminder-service');
-const dueReminderService = require('../services/due-reminder-service');
+const {
+  getInvoiceFieldsForContractStatus,
+  setInvoiceStatusFields,
+  syncContractStatusFromInvoices
+} = require('../services/payment-status-sync-service');
+const { getNextInvoicePeriod } = require('../services/invoice-period-service');
 const { parseFlexibleDateInput } = require('../utils/date-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
@@ -35,41 +40,6 @@ const generateInvoiceNumber = () => {
 const calculateDueDate = (periodEnd) => {
   if (!periodEnd) return null;
   return parseFlexibleDateInput(periodEnd);
-};
-
-// Calculate period dates based on payment frequency
-const calculatePeriodDates = (contract, invoiceDate = new Date()) => {
-  const frequency = String(contract.paymentFrequency || 'monthly').toLowerCase();
-
-  let periodStart, periodEnd;
-
-  switch (frequency) {
-    case 'monthly':
-      const currentMonth = invoiceDate.getMonth();
-      const currentYear = invoiceDate.getFullYear();
-      periodStart = new Date(currentYear, currentMonth, 1);
-      periodEnd = new Date(currentYear, currentMonth + 1, 0);
-      break;
-    case 'quarterly':
-      const quarterStart = Math.floor(invoiceDate.getMonth() / 3) * 3;
-      periodStart = new Date(invoiceDate.getFullYear(), quarterStart, 1);
-      periodEnd = new Date(invoiceDate.getFullYear(), quarterStart + 3, 0);
-      break;
-    case 'every 6 months':
-      const halfYear = invoiceDate.getMonth() < 6 ? 0 : 6;
-      periodStart = new Date(invoiceDate.getFullYear(), halfYear, 1);
-      periodEnd = new Date(invoiceDate.getFullYear(), halfYear + 6, 0);
-      break;
-    case 'yearly':
-      periodStart = new Date(invoiceDate.getFullYear(), 0, 1);
-      periodEnd = new Date(invoiceDate.getFullYear(), 11, 31);
-      break;
-    default:
-      periodStart = new Date(invoiceDate.getFullYear(), invoiceDate.getMonth(), 1);
-      periodEnd = new Date(invoiceDate.getFullYear(), invoiceDate.getMonth() + 1, 0);
-  }
-
-  return { periodStart, periodEnd };
 };
 
 // Calculate late penalty (Ethiopian context - simple daily penalty)
@@ -138,11 +108,17 @@ router.post('/invoices/generate', async (req, res) => {
       return res.status(404).json({ error: "Tenant not found" });
     }
 
-    const invoiceDateObj = invoiceDate ? parseFlexibleDateInput(invoiceDate) : new Date();
+    const invoiceDateObj = invoiceDate ? parseFlexibleDateInput(invoiceDate) : null;
     if (invoiceDate && !invoiceDateObj) {
       return res.status(400).json({ error: "Invalid invoice date" });
     }
-    const { periodStart, periodEnd } = calculatePeriodDates(contract, invoiceDateObj);
+    const period = await getNextInvoicePeriod(Invoice, contract, invoiceDateObj);
+
+    if (!period?.periodStart || !period?.periodEnd) {
+      return res.status(400).json({ error: "Contract has ended or has invalid lease dates" });
+    }
+
+    const { periodStart, periodEnd } = period;
     const dueDate = calculateDueDate(periodEnd);
 
     // Check if invoice already exists for this period
@@ -167,9 +143,7 @@ router.post('/invoices/generate', async (req, res) => {
       dueDate,
       rentAmount: contract.amount,
       totalAmount: contract.amount,
-      amountPaid: 0,
-      outstandingBalance: contract.amount,
-      status: 'pending'
+      ...getInvoiceFieldsForContractStatus(contract, contract.amount)
     });
 
     res.json({ message: "Invoice generated successfully", invoice });
@@ -182,7 +156,7 @@ router.post('/invoices/generate', async (req, res) => {
 router.post('/invoices/auto-generate', async (req, res) => {
   try {
     const { buildingId, targetDate } = req.body;
-    const targetDateObj = targetDate ? parseFlexibleDateInput(targetDate) : new Date();
+    const targetDateObj = targetDate ? parseFlexibleDateInput(targetDate) : null;
     if (targetDate && !targetDateObj) {
       return res.status(400).json({ error: "Invalid target date" });
     }
@@ -203,7 +177,13 @@ router.post('/invoices/auto-generate', async (req, res) => {
           throw new Error("Contract has no tenant");
         }
 
-        const { periodStart, periodEnd } = calculatePeriodDates(contract, targetDateObj);
+        const period = await getNextInvoicePeriod(Invoice, contract, targetDateObj);
+
+        if (!period?.periodStart || !period?.periodEnd) {
+          throw new Error("Contract has ended or has invalid lease dates");
+        }
+
+        const { periodStart, periodEnd } = period;
 
         // Check if invoice already exists
         const existingInvoice = await Invoice.findOne({
@@ -226,8 +206,7 @@ router.post('/invoices/auto-generate', async (req, res) => {
             dueDate,
             rentAmount: contract.amount,
             totalAmount: contract.amount,
-            outstandingBalance: contract.amount,
-            status: 'pending'
+            ...getInvoiceFieldsForContractStatus(contract, contract.amount)
           });
 
           generatedInvoices.push(invoice);
@@ -258,7 +237,6 @@ router.post('/invoices/reminders/send', async (req, res) => {
 
     const result = await runDueDateReminders({
       daysAhead: req.body.daysAhead,
-      dryRun: req.body.dryRun === true,
       sendSms: req.body.sendSms,
       sendEmail: req.body.sendEmail,
       buildingId
@@ -269,42 +247,6 @@ router.post('/invoices/reminders/send', async (req, res) => {
       message: `Sent ${result.sent} due date reminder${result.sent === 1 ? '' : 's'}`,
       ...result
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Admin: run reminders for a specific invoice or tenant (or fallback to normal run)
-router.post('/invoices/reminders/run', async (req, res) => {
-  try {
-    const { invoiceId, tenantId, buildingId, dryRun, sendSms, sendEmail, force } = req.body;
-
-    if (invoiceId) {
-      if (!mongoose.Types.ObjectId.isValid(invoiceId)) {
-        return res.status(400).json({ error: 'Invalid invoice id' });
-      }
-
-      const result = await (dueReminderService.runReminderForInvoice
-        ? await dueReminderService.runReminderForInvoice(invoiceId, { dryRun, sendSms, sendEmail, force })
-        : await runDueDateReminders({ dryRun, sendSms, sendEmail, buildingId }));
-
-      return res.json(result);
-    }
-
-    if (tenantId) {
-      if (!mongoose.Types.ObjectId.isValid(tenantId)) {
-        return res.status(400).json({ error: 'Invalid tenant id' });
-      }
-
-      const result = await (dueReminderService.runRemindersForTenant
-        ? await dueReminderService.runRemindersForTenant(tenantId, { dryRun, sendSms, sendEmail, force })
-        : await runDueDateReminders({ dryRun, sendSms, sendEmail, buildingId }));
-
-      return res.json(result);
-    }
-
-    const result = await runDueDateReminders({ daysAhead: req.body.daysAhead, dryRun, sendSms, sendEmail, buildingId });
-    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -363,6 +305,7 @@ router.post('/invoices/:id/pay', async (req, res) => {
     invoice.outstandingBalance = Math.max(0, totalDue - invoice.amountPaid);
     invoice.status = invoice.outstandingBalance <= 0 ? 'paid' : 'pending';
     await invoice.save();
+    await syncContractStatusFromInvoices(invoice.contract);
 
     res.json({
       message: "Payment recorded successfully",
@@ -664,6 +607,8 @@ router.patch('/invoices/:id', async (req, res) => {
       return res.status(400).json({ error: "Period end cannot be before period start" });
     }
 
+    const previousStatus = invoice.status;
+
     if (totalAmount !== undefined) {
       const normalizedTotal = Number(totalAmount);
 
@@ -677,7 +622,9 @@ router.patch('/invoices/:id', async (req, res) => {
     }
 
     if (status) {
-      invoice.status = status;
+      setInvoiceStatusFields(invoice, status, {
+        resetPaidAmount: previousStatus === "paid" && status === "pending"
+      });
     }
 
     if (notes !== undefined) {
@@ -685,6 +632,7 @@ router.patch('/invoices/:id', async (req, res) => {
     }
 
     await invoice.save();
+    await syncContractStatusFromInvoices(invoice.contract);
     await invoice.populate('tenant');
     await invoice.populate('contract');
     res.json({ message: "Invoice updated", invoice });
@@ -695,10 +643,10 @@ router.patch('/invoices/:id', async (req, res) => {
       try {
         const buildingId = invoice.building ? String(invoice.building) : undefined;
         console.log(`Scheduling due-date reminder run for building ${buildingId || 'all'} (invoice ${invoice._id})`);
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
             // run due date reminders for this building only
-            runDueDateReminders({ buildingId });
+            await runDueDateReminders({ buildingId });
           } catch (err) {
             console.error('Failed to run due date reminders after invoice update:', err);
           }
@@ -723,6 +671,7 @@ router.delete('/invoices/:id', async (req, res) => {
 
     // Delete associated payment records
     await PaymentRecord.deleteMany({ invoice: req.params.id });
+    await syncContractStatusFromInvoices(invoice.contract);
 
     res.json({ message: "Invoice deleted successfully" });
   } catch (error) {

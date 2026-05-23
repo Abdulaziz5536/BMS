@@ -5,6 +5,7 @@ import {
   CheckIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
   getSelectedBuildingId,
@@ -121,9 +122,12 @@ export default function Buildings() {
   };
 
   const deleteBuilding = async (buildingId) => {
-    const shouldDelete = window.confirm(
-      "Delete this building and all of its floors, units, tenants, contracts, employees, and utilities?"
-    );
+    const shouldDelete = await confirmAction({
+      title: "Delete building?",
+      message: "Delete this building and all of its floors, units, tenants, contracts, employees, and utilities?",
+      confirmText: "Yes",
+      cancelText: "No"
+    });
 
     if (!shouldDelete) {
       return;

@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import {
   PencilSquareIcon,
   TrashIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
   invalidateCache,
@@ -26,15 +27,15 @@ function Unit() {
   const [editingId, setEditingId] = useState(null);
   const unitFormRef = useRef(null);
 
-  const clearForm = () => {
+  const clearForm = useCallback(() => {
     setUnitId("");
     setArea("");
     setType("");
     setFloor("");
     setEditingId(null);
-  };
+  }, []);
 
-  const fetchUnits = async (useCache = true) => {
+  const fetchUnits = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setUnits([]);
       return;
@@ -47,9 +48,9 @@ function Unit() {
       "Failed to load units",
       { useCache }
     );
-  };
+  }, [selectedBuildingId]);
 
-  const fetchFloors = async (useCache = true) => {
+  const fetchFloors = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setFloors([]);
       return;
@@ -62,7 +63,7 @@ function Unit() {
       "Failed to load floors",
       { useCache }
     );
-  };
+  }, [selectedBuildingId]);
 
   useEffect(() => {
     clearForm();
@@ -70,7 +71,7 @@ function Unit() {
     setError("");
     fetchUnits();
     fetchFloors();
-  }, [selectedBuildingId]);
+  }, [clearForm, fetchFloors, fetchUnits, selectedBuildingId]);
 
   useEffect(() => {
     if (editingId) {
@@ -139,6 +140,17 @@ function Unit() {
   };
 
   const removeUnit = async (id) => {
+    const shouldDelete = await confirmAction({
+      title: "Delete unit?",
+      message: "Are you sure you want to delete this unit?",
+      confirmText: "Yes",
+      cancelText: "No"
+    });
+
+    if (!shouldDelete) {
+      return;
+    }
+
     try {
       setMessage("");
       setError("");

@@ -10,6 +10,25 @@ const employeesSchema = new mongoose.Schema({
      name:String,
      position:String,
      phoneNumber:String,
+     email:{
+          type:String,
+          trim:true,
+          default:""
+     },
+     salary:{
+          type:Number,
+          default:0
+     },
+     emergencyContactName:{
+          type:String,
+          trim:true,
+          default:""
+     },
+     emergencyContactPhone:{
+          type:String,
+          trim:true,
+          default:""
+     },
 
 });
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE, readResponse } from "../buildingSelection";
 import "../style.css";
 
 export default function Signup() {
@@ -23,13 +24,13 @@ export default function Signup() {
       return;
     }
 
-    if (!email.includes("@")) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Enter a valid email");
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+    if (!/^\d{6}$/.test(password)) {
+      setError("Password must be exactly 6 digits");
       return;
     }
 
@@ -37,7 +38,7 @@ export default function Signup() {
 
     try {
 
-      const res = await fetch("http://localhost:3000/signup", {
+      const res = await fetch(`${API_BASE}/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -45,7 +46,7 @@ export default function Signup() {
         body: JSON.stringify({ name, email, password })
       });
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
 
@@ -61,7 +62,7 @@ export default function Signup() {
 
       }
 
-    } catch (error) {
+    } catch {
 
       setError("Server error. Please try again.");
 
