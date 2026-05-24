@@ -90,6 +90,7 @@ export default function Announcements() {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState(initialFormData);
   const [notificationMethod, setNotificationMethod] = useState("email");
+  const [tenantSearchTerm, setTenantSearchTerm] = useState("");
   const [loadingAction, setLoadingAction] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -108,9 +109,25 @@ export default function Announcements() {
     return tenants.length;
   }, [formData, tenants.length]);
 
+  const filteredTenants = useMemo(() => {
+    const query = tenantSearchTerm.trim().toLowerCase();
+
+    if (!query) {
+      return tenants;
+    }
+
+    return tenants.filter((tenant) => [
+      tenant.tenantName,
+      tenant.tenantId,
+      tenant.email,
+      tenant.phone
+    ].some((value) => String(value || "").toLowerCase().includes(query)));
+  }, [tenantSearchTerm, tenants]);
+
   const resetForm = useCallback(() => {
     setFormData(initialFormData);
     setNotificationMethod("email");
+    setTenantSearchTerm("");
   }, []);
 
   const fetchAnnouncements = useCallback(async (useCache = true) => {
@@ -180,6 +197,7 @@ export default function Announcements() {
         next.selectedFloors = [];
         next.selectedUnits = [];
         next.tenantIds = [];
+        setTenantSearchTerm("");
       }
 
       return next;
@@ -423,31 +441,44 @@ export default function Announcements() {
 
     if (formData.targetType === "specific_tenants") {
       return (
-        <div className="announcement-picker">
-          {tenants.length === 0 ? (
-            <p className="empty-state compact">No tenants found for this building.</p>
-          ) : (
-            tenants.map((tenant) => {
-              const selected = formData.tenantIds.includes(tenant._id);
+        <div className="announcement-target-group">
+          <input
+            type="search"
+            className="announcement-tenant-search"
+            placeholder="Search tenants..."
+            value={tenantSearchTerm}
+            onChange={(event) => setTenantSearchTerm(event.target.value)}
+            disabled={!selectedBuildingId || tenants.length === 0}
+          />
 
-              return (
-                <label
-                  key={tenant._id}
-                  className={`picker-row ${selected ? "selected" : ""}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={() => toggleSelection("tenantIds", tenant._id)}
-                  />
-                  <span>
-                    <strong>{tenant.tenantName}</strong>
-                    <small>{tenant.email || "No email"} / {tenant.phone || "No phone"}</small>
-                  </span>
-                </label>
-              );
-            })
-          )}
+          <div className="announcement-picker">
+            {tenants.length === 0 ? (
+              <p className="empty-state compact">No tenants found for this building.</p>
+            ) : filteredTenants.length === 0 ? (
+              <p className="empty-state compact">No tenants match your search.</p>
+            ) : (
+              filteredTenants.map((tenant) => {
+                const selected = formData.tenantIds.includes(tenant._id);
+
+                return (
+                  <label
+                    key={tenant._id}
+                    className={`picker-row ${selected ? "selected" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleSelection("tenantIds", tenant._id)}
+                    />
+                    <span>
+                      <strong>{tenant.tenantName}</strong>
+                      <small>{tenant.email || "No email"} / {tenant.phone || "No phone"}</small>
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </div>
         </div>
       );
     }

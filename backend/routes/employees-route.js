@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const Employee = require('../models/employees-model');
 const { recordAuditLog } = require('../services/audit-log-service');
+const {
+  ETHIOPIAN_PHONE_ERROR,
+  normalizeEthiopianPhone
+} = require('../utils/phone-utils');
 
 const normalizeEmployeePayload = (body) => {
   const salary = Number(body.salary || 0);
@@ -10,11 +14,11 @@ const normalizeEmployeePayload = (body) => {
     building: body.building,
     name: String(body.name || "").trim(),
     position: String(body.position || "").trim(),
-    phoneNumber: String(body.phoneNumber || "").trim(),
+    phoneNumber: normalizeEthiopianPhone(body.phoneNumber, { required: false }),
     email: String(body.email || "").trim().toLowerCase(),
     salary: Number.isFinite(salary) ? salary : NaN,
     emergencyContactName: String(body.emergencyContactName || "").trim(),
-    emergencyContactPhone: String(body.emergencyContactPhone || "").trim()
+    emergencyContactPhone: normalizeEthiopianPhone(body.emergencyContactPhone, { required: false })
   };
 };
 
@@ -36,9 +40,15 @@ router.get('/employees', async(req,res) => {
 
 router.post('/employees', async (req,res) => {
   try{
-       const employeeData = normalizeEmployeePayload(req.body);
+       let employeeData;
 
-       if(!employeeData.building || !employeeData.name || !employeeData.position || !employeeData.phoneNumber){
+       try {
+        employeeData = normalizeEmployeePayload(req.body);
+       } catch {
+        return res.status(400).json({error: ETHIOPIAN_PHONE_ERROR});
+       }
+
+       if(!employeeData.building || !employeeData.name || !employeeData.position){
         return res.status(400).json({error:"Please fill in all fields"});
        }
 
@@ -80,9 +90,15 @@ router.post('/employees', async (req,res) => {
 
 router.put('/employees/:id', async (req,res) => {
   try {
-    const employeeData = normalizeEmployeePayload(req.body);
+    let employeeData;
 
-    if(!employeeData.building || !employeeData.name || !employeeData.position || !employeeData.phoneNumber){
+    try {
+      employeeData = normalizeEmployeePayload(req.body);
+    } catch {
+      return res.status(400).json({error: ETHIOPIAN_PHONE_ERROR});
+    }
+
+    if(!employeeData.building || !employeeData.name || !employeeData.position){
       return res.status(400).json({error:"Please fill in all fields"});
     }
 

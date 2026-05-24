@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const { normalizeEthiopianPhone } = require("../utils/phone-utils");
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
@@ -80,26 +81,11 @@ const isSmsConfigured = () =>
   Boolean(process.env.SMS_API_URL && process.env.SMS_API_KEY && process.env.SMS_SENDER_ID);
 
 const formatSmsNumber = (phoneNumber) => {
-  let number = String(phoneNumber || "").replace(/[^\d+]/g, "");
-  const countryCode = process.env.SMS_DEFAULT_COUNTRY_CODE || "251";
-
-  if (!number) {
+  try {
+    return normalizeEthiopianPhone(phoneNumber);
+  } catch {
     return "";
   }
-
-  if (number.startsWith("+")) {
-    return number;
-  }
-
-  if (number.startsWith(countryCode)) {
-    return `+${number}`;
-  }
-
-  if (number.startsWith("0")) {
-    return `+${countryCode}${number.slice(1)}`;
-  }
-
-  return `+${countryCode}${number}`;
 };
 
 const getSmsApiKeyHeaderValue = () => {

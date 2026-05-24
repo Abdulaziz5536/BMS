@@ -69,8 +69,8 @@ export default function Contracts() {
   const [error, setError] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState("tenant");
-  const [sortDirection, setSortDirection] = useState("asc");
+  const [sortField, setSortField] = useState("status");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   const clearForm = () => {
     setTenantId("");
@@ -424,7 +424,9 @@ export default function Contracts() {
               <th onClick={() => handleSort("paymentFrequency")} className="sortable-header">
                 Payment {sortField === "paymentFrequency" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
-              <th>Status</th>
+              <th onClick={() => handleSort("status")} className="sortable-header">
+                Status {sortField === "status" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th>File</th>
               <th>Actions</th>
             </tr>

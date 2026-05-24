@@ -279,19 +279,19 @@ function Unit() {
         <table className="floors-table">
           <thead>
             <tr>
-              <th onClick={() => handleSort("unitId")}>
+              <th onClick={() => handleSort("unitId")} className="sortable-header">
                 Unit ID {sortField === "unitId" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
-              <th onClick={() => handleSort("area")}>
+              <th onClick={() => handleSort("area")} className="sortable-header">
                 Area {sortField === "area" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
-              <th onClick={() => handleSort("type")}>
+              <th onClick={() => handleSort("type")} className="sortable-header">
                 Type {sortField === "type" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
-              <th onClick={() => handleSort("floor")}>
+              <th onClick={() => handleSort("floor")} className="sortable-header">
                 Floor {sortField === "floor" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
-              <th onClick={() => handleSort("status")}>
+              <th onClick={() => handleSort("status")} className="sortable-header">
                 Status {sortField === "status" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
               <th>Actions</th>

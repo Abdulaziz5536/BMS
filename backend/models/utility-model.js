@@ -1,5 +1,14 @@
 const mongoose = require("mongoose");
 
+const utilityFileSchema = new mongoose.Schema(
+  {
+    name: String,
+    type: String,
+    data: String
+  },
+  { _id: false }
+);
+
 const utilitySchema = new mongoose.Schema(
   {
     building: {
@@ -44,11 +53,7 @@ const utilitySchema = new mongoose.Schema(
     },
 
     // attachment (photo or pdf)
-    utilityFile: {
-      name: String,
-      type: String,
-      data: String
-    }
+    utilityFile: utilityFileSchema
   },
   { timestamps: true }
 );

@@ -15,6 +15,14 @@ import {
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import { compareSortValues, nextSortDirection } from "../utils/sortUtils";
+import {
+  ETHIOPIAN_PHONE_ERROR,
+  formatEthiopianPhoneDisplay,
+  formatEthiopianPhoneInput,
+  isValidEthiopianPhone,
+  normalizeEthiopianPhone,
+  phoneInputProps
+} from "../utils/phoneUtils";
 import "../style.css";
 
 const TAX_BRACKETS = [
@@ -185,12 +193,24 @@ export default function Employees() {
       return;
     }
 
-    if (!name || !position || !phoneNumber || salary === "") {
+    if (!name || !position || salary === "") {
       setError("Please fill in all fields");
       return;
     }
 
+    if (phoneNumber && !isValidEthiopianPhone(phoneNumber, { required: false })) {
+      setError(ETHIOPIAN_PHONE_ERROR);
+      return;
+    }
+
+    if (emergencyContactPhone && !isValidEthiopianPhone(emergencyContactPhone, { required: false })) {
+      setError(ETHIOPIAN_PHONE_ERROR);
+      return;
+    }
+
     try {
+      const normalizedPhone = normalizeEthiopianPhone(phoneNumber, { required: false });
+      const normalizedEmergencyPhone = normalizeEthiopianPhone(emergencyContactPhone, { required: false });
       const res = await fetch(
         editingId ? `${API_BASE}/employees/${editingId}` : `${API_BASE}/employees`,
         {
@@ -202,11 +222,11 @@ export default function Employees() {
             building: selectedBuildingId,
             name,
             position,
-            phoneNumber,
+            phoneNumber: normalizedPhone,
             email,
             salary: Number(salary),
             emergencyContactName,
-            emergencyContactPhone
+            emergencyContactPhone: normalizedEmergencyPhone
           })
         }
       );
@@ -229,11 +249,11 @@ export default function Employees() {
   const editEmployee = (employee) => {
     setName(employee.name || "");
     setPosition(employee.position || "");
-    setPhoneNumber(employee.phoneNumber || "");
+    setPhoneNumber(formatEthiopianPhoneInput(employee.phoneNumber || ""));
     setEmail(employee.email || "");
     setSalary(employee.salary ?? "");
     setEmergencyContactName(employee.emergencyContactName || "");
-    setEmergencyContactPhone(employee.emergencyContactPhone || "");
+    setEmergencyContactPhone(formatEthiopianPhoneInput(employee.emergencyContactPhone || ""));
     setEditingId(employee._id);
     setMessage("");
     setError("");
@@ -314,10 +334,10 @@ export default function Employees() {
             />
 
             <input
-              type="tel"
-              placeholder="Phone Number"
+              {...phoneInputProps}
+              placeholder="Phone Number (+2519XXXXXXXX)"
               value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
+              onChange={(e) => setPhoneNumber(formatEthiopianPhoneInput(e.target.value))}
               disabled={!selectedBuildingId}
             />
 
@@ -347,10 +367,10 @@ export default function Employees() {
             />
 
             <input
-              type="tel"
-              placeholder="Emergency Contact Phone"
+              {...phoneInputProps}
+              placeholder="Emergency Contact Phone (+2519XXXXXXXX)"
               value={emergencyContactPhone}
-              onChange={(e) => setEmergencyContactPhone(e.target.value)}
+              onChange={(e) => setEmergencyContactPhone(formatEthiopianPhoneInput(e.target.value))}
               disabled={!selectedBuildingId}
             />
           </div>
@@ -405,12 +425,12 @@ export default function Employees() {
                 <tr key={employee._id}>
                   <td>{employee.name}</td>
                   <td>{employee.position}</td>
-                  <td>{employee.phoneNumber || "-"}</td>
+                  <td>{formatEthiopianPhoneDisplay(employee.phoneNumber) || "-"}</td>
                   <td>{employee.email || "-"}</td>
                   <td>{formatCurrency(employee.salary)}</td>
                   <td>
                     {employee.emergencyContactName || employee.emergencyContactPhone
-                      ? `${employee.emergencyContactName || "-"} / ${employee.emergencyContactPhone || "-"}`
+                      ? `${employee.emergencyContactName || "-"} / ${formatEthiopianPhoneDisplay(employee.emergencyContactPhone) || "-"}`
                       : "-"}
                   </td>
                   <td>

@@ -12,13 +12,17 @@ const {
   normalizeDateOnlyString,
   parseFlexibleDateInput
 } = require('../utils/date-utils');
+const {
+  ETHIOPIAN_PHONE_ERROR,
+  normalizeEthiopianPhone
+} = require('../utils/phone-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
 const normalizeTenantPayload = (body) => ({
   email: String(body.email || "").trim(),
   emergencyContactName: String(body.emergencyContactName || "").trim(),
-  emergencyContactPhone: String(body.emergencyContactPhone || "").trim(),
+  emergencyContactPhone: normalizeEthiopianPhone(body.emergencyContactPhone, { required: false }),
   emergencyContactRelation: String(body.emergencyContactRelation || "").trim(),
   moveInDate: normalizeDateOnlyString(body.moveInDate),
   moveOutDate: normalizeDateOnlyString(body.moveOutDate),
@@ -71,15 +75,22 @@ router.post('/tenants', async (req,res) => {
     const {building, tenantId,tenantName,phone,unit} = req.body;
     const normalizedTenantId = Number(tenantId);
     const normalizedTenantName = String(tenantName || "").trim();
-    const normalizedPhone = Number(phone);
-    const extraTenantData = normalizeTenantPayload(req.body);
+    let normalizedPhone;
+    let extraTenantData;
 
-    if(!building || !tenantId || !normalizedTenantName || !phone || !unit){
+    if(!building || !tenantId || !normalizedTenantName || !unit){
       return res.status(400).json({error:"fields should not be empty"});
     }
 
-    if(!Number.isFinite(normalizedTenantId) || !Number.isFinite(normalizedPhone)){
-      return res.status(400).json({error:"Tenant ID and phone must be valid numbers"});
+    try {
+      normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
+      extraTenantData = normalizeTenantPayload(req.body);
+    } catch {
+      return res.status(400).json({error: ETHIOPIAN_PHONE_ERROR});
+    }
+
+    if(!Number.isFinite(normalizedTenantId)){
+      return res.status(400).json({error:"Tenant ID must be a valid number"});
     }
 
     if(!isValidEmail(extraTenantData.email)){
@@ -158,15 +169,22 @@ router.put('/tenants/:id', async (req,res) => {
     const {building, tenantId,tenantName,phone,unit} = req.body;
     const normalizedTenantId = Number(tenantId);
     const normalizedTenantName = String(tenantName || "").trim();
-    const normalizedPhone = Number(phone);
-    const extraTenantData = normalizeTenantPayload(req.body);
+    let normalizedPhone;
+    let extraTenantData;
 
-    if(!building || !tenantId || !normalizedTenantName || !phone || !unit){
+    if(!building || !tenantId || !normalizedTenantName || !unit){
       return res.status(400).json({error:"fields should not be empty"});
     }
 
-    if(!Number.isFinite(normalizedTenantId) || !Number.isFinite(normalizedPhone)){
-      return res.status(400).json({error:"Tenant ID and phone must be valid numbers"});
+    try {
+      normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
+      extraTenantData = normalizeTenantPayload(req.body);
+    } catch {
+      return res.status(400).json({error: ETHIOPIAN_PHONE_ERROR});
+    }
+
+    if(!Number.isFinite(normalizedTenantId)){
+      return res.status(400).json({error:"Tenant ID must be a valid number"});
     }
 
     if(!isValidEmail(extraTenantData.email)){

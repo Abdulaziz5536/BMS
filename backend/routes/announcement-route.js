@@ -16,6 +16,125 @@ const router = express.Router();
 
 const toBoolean = (value) => value === true || value === "true";
 
+const escapeHtml = (value = "") =>
+  String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[char]));
+
+const textToHtml = (value = "") =>
+  escapeHtml(value)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `<p style="margin: 0 0 14px; line-height: 1.7;">${line}</p>`)
+    .join("");
+
+const announcementTypeLabels = {
+  announcement: "Announcement",
+  emergency: "Emergency Alert",
+  rent_reminder: "Rent Reminder"
+};
+
+const priorityLabels = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent"
+};
+
+const getAnnouncementTheme = (announcement) => {
+  if (announcement.type === "emergency" || announcement.priority === "urgent") {
+    return {
+      accentColor: "#dc2626",
+      headerColor: "#7f1d1d",
+      panelColor: "#fff1f2",
+      panelBorder: "#fecdd3"
+    };
+  }
+
+  if (announcement.type === "rent_reminder") {
+    return {
+      accentColor: "#ca8a04",
+      headerColor: "#854d0e",
+      panelColor: "#fffbeb",
+      panelBorder: "#fde68a"
+    };
+  }
+
+  return {
+    accentColor: "#2563eb",
+    headerColor: "#0f4c81",
+    panelColor: "#f8fbff",
+    panelBorder: "#bfdbfe"
+  };
+};
+
+const buildAnnouncementEmailText = (announcement, tenant) => {
+  const tenantName = tenant?.tenantName || "Tenant";
+
+  return [
+    "BHA MALL",
+    "",
+    `Hello ${tenantName},`,
+    "",
+    announcement.title,
+    "",
+    announcement.message,
+    "",
+    `Type: ${announcementTypeLabels[announcement.type] || "Announcement"}`,
+    `Priority: ${priorityLabels[announcement.priority] || announcement.priority || "Medium"}`,
+    "",
+    "Thank you for your attention."
+  ].join("\n");
+};
+
+const buildAnnouncementEmailHtml = (announcement, tenant) => {
+  const tenantName = tenant?.tenantName || "Tenant";
+  const typeLabel = announcementTypeLabels[announcement.type] || "Announcement";
+  const priorityLabel = priorityLabels[announcement.priority] || announcement.priority || "Medium";
+  const theme = getAnnouncementTheme(announcement);
+  const preheader = `${typeLabel}: ${announcement.title}`;
+
+  return `
+    <div style="background: #f3f6fb; padding: 28px 14px; font-family: Arial, sans-serif; color: #1f2937;">
+      <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent;">
+        ${escapeHtml(preheader)}
+      </div>
+
+      <div style="max-width: 680px; margin: auto; background: #ffffff; border: 1px solid #dbe4f0; border-radius: 12px; overflow: hidden;">
+        <div style="background: ${theme.headerColor}; color: #ffffff; padding: 24px 28px;">
+          <p style="margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 1px;">BHA MALL</p>
+          <h1 style="margin: 0; font-size: 24px; font-weight: 700;">${escapeHtml(announcement.title)}</h1>
+        </div>
+
+        <div style="padding: 26px 28px;">
+          <p style="font-size: 16px; margin: 0 0 18px;">Hello ${escapeHtml(tenantName)},</p>
+
+          <div style="background: ${theme.panelColor}; border: 1px solid ${theme.panelBorder}; border-left: 4px solid ${theme.accentColor}; border-radius: 10px; padding: 16px 18px; margin-bottom: 22px;">
+            <p style="margin: 0; font-size: 13px; font-weight: 700; color: ${theme.headerColor};">${escapeHtml(typeLabel)}</p>
+            <p style="margin: 8px 0 0; font-size: 14px; color: #475569;">Priority: ${escapeHtml(priorityLabel)}</p>
+          </div>
+
+          <div style="font-size: 15px; color: #111827; margin-bottom: 24px;">
+            ${textToHtml(announcement.message)}
+          </div>
+
+          <p style="margin: 0; font-size: 14px; color: #475569;">Thank you for your attention.</p>
+          <p style="margin: 8px 0 0; font-size: 14px; color: #475569;">BHA MALL</p>
+        </div>
+
+        <div style="background: #f8fafc; text-align: center; font-size: 12px; color: #94a3b8; padding: 15px 20px;">
+          This announcement was sent by BHA MALL.
+        </div>
+      </div>
+    </div>
+  `;
+};
+
 const validateObjectId = (id, label) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw createHttpError(400, `Invalid ${label}: ${id}`);
@@ -343,7 +462,9 @@ router.post("/:id/send", async (req, res) => {
         const email = String(tenant.email || "").trim();
 
         if (email) {
-          const emailResult = await sendEmail(email, subject, announcement.message);
+          const emailText = buildAnnouncementEmailText(announcement, tenant);
+          const emailHtml = buildAnnouncementEmailHtml(announcement, tenant);
+          const emailResult = await sendEmail(email, subject, emailText, emailHtml);
 
           if (emailResult.success) {
             delivery.emailSent += 1;

@@ -42,6 +42,7 @@ const parseParts = (value) => {
     raw,
     cleaned,
     isExplicitEthiopian,
+    isYearFirst,
     year: isYearFirst ? first : third,
     month: second,
     day: isYearFirst ? third : first
@@ -51,6 +52,7 @@ const parseParts = (value) => {
 const shouldTreatAsEthiopian = (parts) => {
   if (!parts || !parts.year) return false;
   if (parts.isExplicitEthiopian || parts.month === 13) return true;
+  if (parts.isYearFirst) return false;
 
   const currentGregorianYear = new Date().getUTCFullYear();
   return parts.year >= 1300 && parts.year <= currentGregorianYear - 4;

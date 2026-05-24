@@ -449,6 +449,9 @@ router.get('/invoices/reminders', async (req, res) => {
 // Get overdue invoices
 router.get('/invoices/overdue', async (req, res) => {
   try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const filter = {};
     if (req.query.building) {
       if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
@@ -457,7 +460,7 @@ router.get('/invoices/overdue', async (req, res) => {
       filter.building = new mongoose.Types.ObjectId(req.query.building);
     }
     filter.status = 'pending';
-    filter.dueDate = { $lt: new Date() };
+    filter.dueDate = { $lt: today };
 
     const invoices = await Invoice.find(filter)
       .populate({
@@ -468,8 +471,8 @@ router.get('/invoices/overdue', async (req, res) => {
       .sort({ dueDate: 1 });
 
     const overdue = invoices.map(invoice => {
-      const daysOverdue = Math.ceil((new Date() - invoice.dueDate) / (1000 * 60 * 60 * 24));
-      const latePenalty = calculateLatePenalty(invoice.dueDate, new Date(), invoice.rentAmount);
+      const daysOverdue = Math.ceil((today - invoice.dueDate) / (1000 * 60 * 60 * 24));
+      const latePenalty = calculateLatePenalty(invoice.dueDate, today, invoice.rentAmount);
 
       return {
         invoiceId: invoice._id,

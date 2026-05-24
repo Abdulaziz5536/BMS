@@ -24,8 +24,9 @@ const tenantSchema = new mongoose.Schema({
     required:true
   },
   phone:{
-    type:Number,
-    required:true
+    type:String,
+    trim:true,
+    default:""
   },
   email:{
     type:String,

@@ -317,9 +317,12 @@ router.get('/rent-invoices/reminders', async (req, res) => {
 
 router.get('/rent-invoices/overdue', async (req, res) => {
   try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const filter = req.query.building ? { building: req.query.building } : {};
     filter.status = 'pending';
-    filter.dueDate = { $lt: new Date() };
+    filter.dueDate = { $lt: today };
 
     const invoices = await RentInvoice.find(filter)
       .populate('tenant')
@@ -327,8 +330,8 @@ router.get('/rent-invoices/overdue', async (req, res) => {
       .sort({ dueDate: 1 });
 
     const overdue = invoices.map(invoice => {
-      const daysOverdue = Math.ceil((new Date() - invoice.dueDate) / (1000 * 60 * 60 * 24));
-      const latePenalty = calculateLatePenalty(invoice.dueDate, new Date(), invoice.rentAmount);
+      const daysOverdue = Math.ceil((today - invoice.dueDate) / (1000 * 60 * 60 * 24));
+      const latePenalty = calculateLatePenalty(invoice.dueDate, today, invoice.rentAmount);
 
       return {
         invoiceId: invoice._id,

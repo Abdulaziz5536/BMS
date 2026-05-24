@@ -17,6 +17,14 @@ import {
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import { compareSortValues, nextSortDirection } from "../utils/sortUtils";
+import {
+  ETHIOPIAN_PHONE_ERROR,
+  formatEthiopianPhoneDisplay,
+  formatEthiopianPhoneInput,
+  isValidEthiopianPhone,
+  normalizeEthiopianPhone,
+  phoneInputProps
+} from "../utils/phoneUtils";
 import "../style.css";
 
 export default function Buildings() {
@@ -80,7 +88,13 @@ export default function Buildings() {
       return;
     }
 
+    if (phone && !isValidEthiopianPhone(phone, { required: false })) {
+      setError(ETHIOPIAN_PHONE_ERROR);
+      return;
+    }
+
     try {
+      const normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
       const res = await fetch(
         editingId ? `${API_BASE}/buildings/${editingId}` : `${API_BASE}/buildings`,
         {
@@ -88,7 +102,7 @@ export default function Buildings() {
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ name, address, managerName, phone, notes })
+          body: JSON.stringify({ name, address, managerName, phone: normalizedPhone, notes })
         }
       );
 
@@ -117,7 +131,7 @@ export default function Buildings() {
     setName(building.name || "");
     setAddress(building.address || "");
     setManagerName(building.managerName || "");
-    setPhone(building.phone || "");
+    setPhone(formatEthiopianPhoneInput(building.phone || ""));
     setNotes(building.notes || "");
     setEditingId(building._id);
     setMessage("");
@@ -204,10 +218,10 @@ export default function Buildings() {
             />
 
             <input
-              type="tel"
-              placeholder="Phone"
+              {...phoneInputProps}
+              placeholder="Phone (+2519XXXXXXXX)"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(formatEthiopianPhoneInput(e.target.value))}
             />
 
             <input
@@ -266,7 +280,7 @@ export default function Buildings() {
                   <td>{building.name}</td>
                   <td>{building.address || "-"}</td>
                   <td>{building.managerName || "-"}</td>
-                  <td>{building.phone || "-"}</td>
+                  <td>{formatEthiopianPhoneDisplay(building.phone) || "-"}</td>
                   <td>{selectedBuildingId === building._id ? "Selected" : "-"}</td>
                   <td>
                     <div className="table-action-stack">

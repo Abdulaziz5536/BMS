@@ -25,6 +25,14 @@ import {
   normalizeDateInputForApi
 } from "../utils/dateUtils";
 import { formatFloorLabel } from "../utils/floorUtils";
+import {
+  ETHIOPIAN_PHONE_ERROR,
+  formatEthiopianPhoneDisplay,
+  formatEthiopianPhoneInput,
+  isValidEthiopianPhone,
+  normalizeEthiopianPhone,
+  phoneInputProps
+} from "../utils/phoneUtils";
 import "../style.css";
 
 const MAX_UPLOAD_SIZE = 5 * 1024 * 1024;
@@ -202,7 +210,7 @@ export default function Tenant() {
       let aValue = a[sortField];
       let bValue = b[sortField];
 
-      if (sortField === "tenantId" || sortField === "phone") {
+      if (sortField === "tenantId") {
         aValue = Number(aValue) || 0;
         bValue = Number(bValue) || 0;
       }
@@ -250,12 +258,24 @@ export default function Tenant() {
       return;
     }
 
-    if (!tenantId || !tenantName || !phone || !unit) {
+    if (!tenantId || !tenantName || !unit) {
       setError("Please fill in all required fields");
       return;
     }
 
+    if (phone && !isValidEthiopianPhone(phone, { required: false })) {
+      setError(ETHIOPIAN_PHONE_ERROR);
+      return;
+    }
+
+    if (emergencyContactPhone && !isValidEthiopianPhone(emergencyContactPhone, { required: false })) {
+      setError(ETHIOPIAN_PHONE_ERROR);
+      return;
+    }
+
     try {
+      const normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
+      const normalizedEmergencyPhone = normalizeEthiopianPhone(emergencyContactPhone, { required: false });
       const res = await fetch(
         editingId ? `${API_BASE}/tenants/${editingId}` : `${API_BASE}/tenants`,
         {
@@ -267,13 +287,13 @@ export default function Tenant() {
             building: selectedBuildingId,
             tenantId,
             tenantName,
-            phone,
+            phone: normalizedPhone,
             email,
             unit,
             idLicenseFile,
             leaseAgreementFile,
             emergencyContactName,
-            emergencyContactPhone,
+            emergencyContactPhone: normalizedEmergencyPhone,
             emergencyContactRelation,
             moveInDate,
             moveOutDate
@@ -302,13 +322,13 @@ export default function Tenant() {
 
     setTenantId(tenant.tenantId || "");
     setTenantName(tenant.tenantName || "");
-    setPhone(tenant.phone || "");
+    setPhone(formatEthiopianPhoneInput(tenant.phone || ""));
     setEmail(tenant.email || "");
     setUnit(tenantUnit?._id || tenant.unit || "");
     setIdLicenseFile(tenant.idLicenseFile || null);
     setLeaseAgreementFile(tenant.leaseAgreementFile || null);
     setEmergencyContactName(tenant.emergencyContactName || "");
-    setEmergencyContactPhone(tenant.emergencyContactPhone || "");
+    setEmergencyContactPhone(formatEthiopianPhoneInput(tenant.emergencyContactPhone || ""));
     setEmergencyContactRelation(tenant.emergencyContactRelation || "");
     setMoveInDate(normalizeDateInputForApi(tenant.moveInDate));
     setMoveOutDate(normalizeDateInputForApi(tenant.moveOutDate));
@@ -441,10 +461,9 @@ export default function Tenant() {
             />
 
             <input
-              type="tel"
-              placeholder="Phone"
+              {...phoneInputProps}
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(formatEthiopianPhoneInput(e.target.value))}
               disabled={!selectedBuildingId}
             />
 
@@ -477,10 +496,10 @@ export default function Tenant() {
             />
 
             <input
-              type="tel"
-              placeholder="Emergency Contact Phone"
+              {...phoneInputProps}
+              placeholder="Emergency Contact Phone (+2519XXXXXXXX)"
               value={emergencyContactPhone}
-              onChange={(e) => setEmergencyContactPhone(e.target.value)}
+              onChange={(e) => setEmergencyContactPhone(formatEthiopianPhoneInput(e.target.value))}
               disabled={!selectedBuildingId}
             />
 
@@ -601,7 +620,7 @@ export default function Tenant() {
                   <tr key={tenant._id}>
                     <td>{tenant.tenantId}</td>
                     <td>{tenant.tenantName}</td>
-                    <td>{tenant.phone}</td>
+                    <td>{formatEthiopianPhoneDisplay(tenant.phone)}</td>
                     <td>{tenant.email || "-"}</td>
                     <td>{tenantUnit?.unitId || "Unassigned"}</td>
                     <td>{formatFloorLabel(tenantUnit?.floor?.floor)}</td>
@@ -609,7 +628,7 @@ export default function Tenant() {
                     <td>{formatEthiopianDate(tenant.moveOutDate)}</td>
                     <td>
                       {tenant.emergencyContactName || "-"}
-                      {tenant.emergencyContactPhone && <><br />{tenant.emergencyContactPhone}</>}
+                      {tenant.emergencyContactPhone && <><br />{formatEthiopianPhoneDisplay(tenant.emergencyContactPhone)}</>}
                       {tenant.emergencyContactRelation && <><br />{tenant.emergencyContactRelation}</>}
                     </td>
                     <td>

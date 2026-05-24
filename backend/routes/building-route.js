@@ -12,6 +12,10 @@ const RentInvoice = require("../models/rent-invoice-model");
 const PaymentRecord = require("../models/payment-record-model");
 const Utility = require("../models/utility-model");
 const { recordAuditLog } = require("../services/audit-log-service");
+const {
+  ETHIOPIAN_PHONE_ERROR,
+  normalizeEthiopianPhone
+} = require("../utils/phone-utils");
 
 router.get("/buildings", async (req, res) => {
   try {
@@ -30,11 +34,19 @@ router.post("/buildings", async (req, res) => {
       return res.status(400).json({ error: "Building name is required" });
     }
 
+    let normalizedPhone;
+
+    try {
+      normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
+    } catch {
+      return res.status(400).json({ error: ETHIOPIAN_PHONE_ERROR });
+    }
+
     const building = await Building.create({
       name,
       address,
       managerName,
-      phone,
+      phone: normalizedPhone,
       notes
     });
 
@@ -61,9 +73,17 @@ router.put("/buildings/:id", async (req, res) => {
       return res.status(400).json({ error: "Building name is required" });
     }
 
+    let normalizedPhone;
+
+    try {
+      normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
+    } catch {
+      return res.status(400).json({ error: ETHIOPIAN_PHONE_ERROR });
+    }
+
     const building = await Building.findByIdAndUpdate(
       req.params.id,
-      { name, address, managerName, phone, notes },
+      { name, address, managerName, phone: normalizedPhone, notes },
       { returnDocument: "after" }
     );
 

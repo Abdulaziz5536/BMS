@@ -58,6 +58,7 @@ const buildEmailHtml = ({
   summary,
   amharic,
   details,
+  preheader = "",
   extraTitle = "Important notice",
   extraLines = [],
   accentColor = "#2563eb",
@@ -67,6 +68,11 @@ const buildEmailHtml = ({
 
   return `
     <div style="background: #f3f6fb; padding: 28px 14px; font-family: Arial, sans-serif; color: #1f2937;">
+      ${preheader ? `
+        <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent;">
+          ${preheader}
+        </div>
+      ` : ''}
       <div style="max-width: 660px; margin: auto; background: #ffffff; border: 1px solid #dbe4f0; border-radius: 12px; overflow: hidden;">
         <div style="background: ${headerColor}; color: #ffffff; padding: 24px 28px;">
           <p style="margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 1px;">BHA MALL</p>
@@ -104,7 +110,7 @@ const buildEmailHtml = ({
         </div>
 
         <div style="background: #f8fafc; text-align: center; font-size: 12px; color: #94a3b8; padding: 15px 20px;">
-          This is an automated reminder from Good Stay Real Estate.
+          This is an automated reminder from BHA MALL.
         </div>
       </div>
     </div>
@@ -137,12 +143,12 @@ ${dueNoteAmharic}
 
 ${paidNote}
 ${paidNoteAmharic}`;
-  const sms = `${en}
-${am}`;
+  const sms = text;
   const html = buildEmailHtml({
     title: "Rent Payment Reminder",
     greeting: `Hello ${tenantName},`,
     summary: `Your rent payment of Br ${amount} is due ${timing} on ${dueDate}.`,
+    preheader: `${dueNote} ${paidNote}`,
     amharic: `የኪራይ ክፍያዎ ${amount} ብር ነው። ክፍያው በ ${timingAmharic} (${dueDate}) ነው።`,
     details: [
       { label: "Amount", value: `Br ${amount}` },
@@ -183,12 +189,12 @@ ${overdueNoteAmharic}
 
 ${helpNote}
 ${helpNoteAmharic}`;
-  const sms = `${en}
-${am}`;
+  const sms = text;
   const html = buildEmailHtml({
     title: "Overdue Rent Notice",
     greeting: `Hello ${tenantName},`,
     summary: `Your rent payment of Br ${amount} was due on ${dueDate} and is now ${overdueTiming} overdue.`,
+    preheader: `${overdueNote} ${helpNote}`,
     amharic: `የኪራይ ክፍያዎ ${amount} ብር ነው። ክፍያው በ ${dueDate} የተዘገየ ነው እና አሁን ከ ${overdueTimingAmharic} በላይ ነው።`,
     details: [
       { label: "Amount", value: `Br ${amount}` },
