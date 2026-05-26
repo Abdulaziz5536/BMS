@@ -11,10 +11,12 @@ const isImageFile = (file) =>
 const isPdfFile = (file) =>
   file?.type === "application/pdf" || /\.pdf$/i.test(file?.name || "");
 
+// Read-only file preview for stored base64 files, with fallback download for unsupported types.
 export default function FilePreviewLink({ file, label }) {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
+    // Escape closes the preview modal for keyboard users.
     if (!isOpen) {
       return undefined;
     }

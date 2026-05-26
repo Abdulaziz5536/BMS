@@ -11,10 +11,12 @@ import {
 import Sidebar from "./Sidebar";
 import {
   API_BASE,
+  apiFetch,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import { formatEthiopianDate } from "../utils/dateUtils";
 import { downloadFromUrl, downloadTextFile } from "../utils/downloadUtils";
 import "../style.css";
@@ -43,11 +45,13 @@ const testCoverage = [
   "CSV export escaping, date parsing, and system-check shape.",
   "Invoice period generation and contract date recalculation.",
   "Paid/pending invoice field transitions and contract-status invoice defaults.",
+  "Frontend utility tests for dates, floor labels, sorting, and short errors.",
   "Frontend lint and production build checks."
 ];
 
 const testCommands = [
   "npm.cmd test",
+  "npm.cmd --prefix frontend run test",
   "npm.cmd --prefix frontend run lint",
   "npm.cmd run build"
 ];
@@ -58,6 +62,9 @@ const tabs = [
   { id: "activity", label: "Activity" },
   { id: "exports", label: "Backup & Exports" }
 ];
+
+// SystemTools is the operator page for health checks, activity, backup, and exports.
+// It avoids changing business data; it only reports status or downloads data.
 
 const formatTime = (value) => {
   if (!value) return "-";
@@ -72,21 +79,29 @@ export default function SystemTools() {
   const [activeTab, setActiveTab] = useState("checks");
   const [checks, setChecks] = useState([]);
   const [checksOk, setChecksOk] = useState(false);
+  const [checksSummary, setChecksSummary] = useState({
+    total: 0,
+    required: 0,
+    requiredFailures: 0,
+    optionalWarnings: 0
+  });
+  const [checkedAt, setCheckedAt] = useState("");
   const [auditLogs, setAuditLogs] = useState([]);
   const [activitySearch, setActivitySearch] = useState("");
   const [activityPage, setActivityPage] = useState(1);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [loading, setLoading] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
   const activityPageSize = 8;
 
   const loadChecks = useCallback(async () => {
+    // Health checks come from the backend so deployment/env problems are visible in the UI.
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch(`${API_BASE}/system/checks`);
+      const res = await apiFetch(`${API_BASE}/system/checks`);
       const data = await readResponse(res);
 
       if (!res.ok) {
@@ -95,18 +110,26 @@ export default function SystemTools() {
 
       setChecks(data.checks || []);
       setChecksOk(Boolean(data.ok));
+      setChecksSummary(data.summary || {
+        total: (data.checks || []).length,
+        required: 0,
+        requiredFailures: 0,
+        optionalWarnings: 0
+      });
+      setCheckedAt(data.checkedAt || new Date().toISOString());
     } catch (error) {
       setError(error.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setError]);
 
   useEffect(() => {
     loadChecks();
   }, [loadChecks]);
 
   const loadAuditLogs = useCallback(async () => {
+    // Activity is scoped to the selected building and reset to page 1 after reload.
     if (!selectedBuildingId) {
       setAuditLogs([]);
       return;
@@ -115,7 +138,7 @@ export default function SystemTools() {
     setActivityLoading(true);
 
     try {
-      const res = await fetch(withBuilding("/audit-logs?limit=300", selectedBuildingId));
+      const res = await apiFetch(withBuilding("/audit-logs?limit=300", selectedBuildingId));
       const data = await readResponse(res);
 
       if (!res.ok) {
@@ -129,13 +152,14 @@ export default function SystemTools() {
     } finally {
       setActivityLoading(false);
     }
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   useEffect(() => {
     loadAuditLogs();
   }, [loadAuditLogs]);
 
   const downloadBackup = async () => {
+    // Backup downloads JSON for a full building snapshot.
     if (!selectedBuildingId) {
       setError("Select a building before downloading a backup.");
       return;
@@ -145,7 +169,7 @@ export default function SystemTools() {
     setError("");
 
     try {
-      const res = await fetch(withBuilding("/system/backup", selectedBuildingId));
+      const res = await apiFetch(withBuilding("/system/backup", selectedBuildingId));
       const data = await readResponse(res);
 
       if (!res.ok) {
@@ -157,13 +181,17 @@ export default function SystemTools() {
         `bms-backup-${new Date().toISOString().slice(0, 10)}.json`,
         "application/json"
       );
-      setMessage("Backup downloaded.");
+      const recordCount = data.counts
+        ? Object.values(data.counts).reduce((sum, count) => sum + Number(count || 0), 0)
+        : 0;
+      setMessage(`Backup downloaded${recordCount ? ` with ${recordCount} records` : ""}.`);
     } catch (error) {
       setError(error.message);
     }
   };
 
   const downloadExport = async (resource) => {
+    // CSV exports are smaller targeted downloads for spreadsheets/accounting.
     if (!selectedBuildingId) {
       setError("Select a building before exporting data.");
       return;
@@ -183,6 +211,7 @@ export default function SystemTools() {
     }
   };
 
+  // Activity search is client-side because only the latest 300 records are loaded.
   const filteredAuditLogs = auditLogs.filter((log) => {
     const search = activitySearch.toLowerCase();
     return (
@@ -239,6 +268,21 @@ export default function SystemTools() {
               <div>
                 <h2>Deployment Checks</h2>
                 <p>{checksOk ? "System checks are passing." : "Some checks need attention."}</p>
+              </div>
+            </div>
+
+            <div className="system-health-summary">
+              <div className={`system-health-card ${checksSummary.requiredFailures > 0 ? "warn" : "ok"}`}>
+                <span>Required Issues</span>
+                <strong>{checksSummary.requiredFailures}</strong>
+              </div>
+              <div className={checksSummary.optionalWarnings > 0 ? "system-health-card warn" : "system-health-card ok"}>
+                <span>Optional Warnings</span>
+                <strong>{checksSummary.optionalWarnings}</strong>
+              </div>
+              <div className="system-health-card">
+                <span>Last Checked</span>
+                <strong>{checkedAt ? `${formatEthiopianDate(checkedAt)} ${formatTime(checkedAt)}` : "-"}</strong>
               </div>
             </div>
 
@@ -385,6 +429,16 @@ export default function SystemTools() {
           <>
             <section className="panel">
               <h2>Backup</h2>
+              <div className="backup-readiness-grid">
+                <div>
+                  <strong>JSON backup</strong>
+                  <span>Includes selected building data, record counts, schema version, and current system-check snapshot.</span>
+                </div>
+                <div>
+                  <strong>CSV exports</strong>
+                  <span>Use focused files when finance, tenants, employees, or contracts need review outside the app.</span>
+                </div>
+              </div>
               <div className="form-actions">
                 <button className="compact-action-btn" onClick={downloadBackup} disabled={!selectedBuildingId}>
                   <ArrowDownTrayIcon />

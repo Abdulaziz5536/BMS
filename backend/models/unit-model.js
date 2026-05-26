@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+// Unit is a rentable space inside one floor/building. Occupancy is derived from tenants.
 const unitSchema = new mongoose.Schema({
 
   building: {

@@ -1,5 +1,8 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Frontend date utilities mirror backend parsing so forms, tables, and API payloads agree.
+// User-facing date strings can be Ethiopian-style or ISO Gregorian.
+
 const isGregorianLeapYear = (year) =>
   year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 
@@ -50,6 +53,7 @@ const parseParts = (value) => {
 };
 
 const shouldTreatAsEthiopian = (parts) => {
+  // Day-first years like 2018 are interpreted as Ethiopian unless written year-first.
   if (!parts || !parts.year) return false;
   if (parts.isExplicitEthiopian || parts.month === 13) return true;
   if (parts.isYearFirst) return false;
@@ -89,6 +93,7 @@ const parseGregorianParts = (year, month, day) => {
 };
 
 export const parseFlexibleDateInput = (value) => {
+  // Main parser used by forms and display helpers. Invalid input returns null.
   if (!value) return null;
 
   if (value instanceof Date) {

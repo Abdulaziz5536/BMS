@@ -1,6 +1,7 @@
 const ETHIOPIAN_PHONE_PREFIX = "+251";
 const ETHIOPIAN_PHONE_ERROR = "Phone must be a valid Ethiopian mobile number like +2519XXXXXXXX or +2517XXXXXXXX";
 
+// Phone normalization stores Ethiopian mobile numbers in one international format.
 const getDigits = (value) => String(value || "").replace(/\D/g, "");
 
 const normalizeEthiopianPhone = (value, options = {}) => {

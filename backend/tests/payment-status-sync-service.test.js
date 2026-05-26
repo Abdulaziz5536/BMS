@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
-  getInvoiceFieldsForContractStatus,
+  getNewInvoicePaymentFields,
   setInvoiceStatusFields
 } = require("../services/payment-status-sync-service");
 
@@ -55,9 +55,9 @@ test("setInvoiceStatusFields keeps partial payment balance when pending is not r
   assert.equal(invoice.outstandingBalance, 50000);
 });
 
-test("getInvoiceFieldsForContractStatus mirrors paid and pending contract state", () => {
+test("getNewInvoicePaymentFields starts fresh invoices pending", () => {
   assert.deepEqual(
-    getInvoiceFieldsForContractStatus({ status: "pending" }, 80000),
+    getNewInvoicePaymentFields(80000),
     {
       amountPaid: 0,
       outstandingBalance: 80000,
@@ -65,10 +65,9 @@ test("getInvoiceFieldsForContractStatus mirrors paid and pending contract state"
     }
   );
 
-  const paidFields = getInvoiceFieldsForContractStatus({ status: "paid" }, 80000);
-
-  assert.equal(paidFields.amountPaid, 80000);
-  assert.equal(paidFields.outstandingBalance, 0);
-  assert.equal(paidFields.status, "paid");
-  assert.ok(paidFields.paymentDate instanceof Date);
+  assert.deepEqual(getNewInvoicePaymentFields(0), {
+    amountPaid: 0,
+    outstandingBalance: 0,
+    status: "pending"
+  });
 });

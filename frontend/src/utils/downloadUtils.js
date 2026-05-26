@@ -1,3 +1,7 @@
+import { formatErrorMessage, getApiErrorMessage } from "./errorUtils";
+import { apiFetch } from "../buildingSelection";
+
+// Download helpers create browser downloads for backup JSON and CSV exports.
 export const downloadTextFile = (content, filename, type = "text/plain") => {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -12,11 +16,20 @@ export const downloadTextFile = (content, filename, type = "text/plain") => {
 };
 
 export const downloadFromUrl = async (url, filename) => {
-  const res = await fetch(url);
+  // Fetch first so API errors can be shown instead of downloading an error page.
+  const res = await apiFetch(url);
   const text = await res.text();
 
   if (!res.ok) {
-    throw new Error(text || "Download failed");
+    let message = text || "Download failed";
+
+    try {
+      message = getApiErrorMessage(JSON.parse(text), "Download failed");
+    } catch {
+      message = formatErrorMessage(message, "Download failed");
+    }
+
+    throw new Error(message);
   }
 
   downloadTextFile(text, filename, res.headers.get("content-type") || "text/plain");

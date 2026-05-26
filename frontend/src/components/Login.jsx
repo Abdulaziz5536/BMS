@@ -1,19 +1,23 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE, readResponse } from "../buildingSelection";
+import { API_BASE, apiFetch, readResponse } from "../buildingSelection";
+import { SIGNUP_ENABLED } from "../config";
+import useShortError from "../hooks/useShortError";
 import "../style.css";
 
+// Login page exchanges email/password for a JWT token stored in localStorage.
 export default function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
 
   const login = async () => {
+    // Backend validates credentials; frontend handles friendly login-specific messages.
 
     setMessage("");
     setError("");
@@ -27,7 +31,7 @@ export default function Login() {
 
     try {
 
-      const res = await fetch(`${API_BASE}/login`, {
+      const res = await apiFetch(`${API_BASE}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -51,7 +55,7 @@ export default function Login() {
       } else {
 
         if (data.error === "User does not exist") {
-          setError("Account does not exist. Please sign up.");
+          setError(SIGNUP_ENABLED ? "Account does not exist. Please sign up." : "Account does not exist.");
         } 
         else if (data.error === "Invalid credentials") {
           setError("Incorrect password. Try again.");
@@ -104,12 +108,14 @@ export default function Login() {
 
       <br />
 
-      <button
-        id="signup-button"
-        onClick={() => navigate("/signup")}
-      >
-        Don't have an account? Sign Up
-      </button>
+      {SIGNUP_ENABLED && (
+        <button
+          id="signup-button"
+          onClick={() => navigate("/signup")}
+        >
+          Don't have an account? Sign Up
+        </button>
+      )}
       <h2 className="message">{message}</h2>
       <h2 className="error">{error}</h2>
 

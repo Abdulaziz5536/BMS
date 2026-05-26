@@ -1,5 +1,6 @@
 const CONFIRM_ACTION_EVENT = "bms:confirm-action";
 
+// Opens the shared confirm dialog from anywhere without passing modal state through every page.
 export const confirmAction = (options = {}) => {
   if (typeof window === "undefined") {
     return Promise.resolve(false);

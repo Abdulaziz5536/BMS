@@ -10,6 +10,7 @@ import {
   setSelectedBuildingId
 } from "../buildingSelection";
 
+// Sidebar owns navigation and the active-building selector used by every protected page.
 export default function Sidebar({ persistent = false }) {
   const suppressNestedSidebar = useContext(SidebarSuppressContext);
   const isSuppressed = suppressNestedSidebar && !persistent;
@@ -17,6 +18,7 @@ export default function Sidebar({ persistent = false }) {
   const [selectedBuilding, setSelectedBuilding] = useState(getSelectedBuildingId());
 
   const loadBuildings = useCallback(async () => {
+    // Load buildings once, select a default if needed, then prefetch common building data.
     if (isSuppressed) {
       return;
     }
@@ -66,6 +68,7 @@ export default function Sidebar({ persistent = false }) {
   }
 
   const changeBuilding = (buildingId) => {
+    // Changing buildings notifies all hooks/pages through buildingSelection events.
     setSelectedBuilding(buildingId);
     setSelectedBuildingId(buildingId);
     prefetchBuildingData(buildingId);

@@ -1,4 +1,9 @@
-const configuredApiBase = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+import { getApiErrorMessage, formatErrorMessage } from "./utils/errorUtils";
+
+const defaultApiBase = import.meta.env.PROD
+  ? (typeof window === "undefined" ? "" : window.location.origin)
+  : "http://localhost:3000";
+const configuredApiBase = import.meta.env.VITE_API_BASE || defaultApiBase;
 export const API_BASE = configuredApiBase.replace(/\/$/, "");
 
 const BUILDING_STORAGE_KEY = "selectedBuildingId";
@@ -9,9 +14,13 @@ const prefetchedBuildings = new Map();
 const RESPONSE_CACHE_TTL = 45000;
 const PREFETCH_TTL = 30000;
 
+// Shared building-selection and API helpers.
+// Pages use this file so selected-building filtering and response parsing work the same everywhere.
+
 export const getSelectedBuildingId = () => localStorage.getItem(BUILDING_STORAGE_KEY) || "";
 
 export const setSelectedBuildingId = (buildingId) => {
+  // Store the active building and notify hooks/pages that depend on it.
   if (buildingId) {
     localStorage.setItem(BUILDING_STORAGE_KEY, buildingId);
   } else {
@@ -31,7 +40,9 @@ export const buildingChangedEvent = BUILDING_CHANGED_EVENT;
 export const buildingsUpdatedEvent = BUILDINGS_UPDATED_EVENT;
 
 export const withBuilding = (path, buildingId = getSelectedBuildingId()) => {
-  const url = new URL(`${API_BASE}${path}`);
+  // Add ?building=<id> to API paths so backend queries stay scoped.
+  const browserOrigin = typeof window === "undefined" ? "http://localhost" : window.location.origin;
+  const url = new URL(`${API_BASE}${path}`, browserOrigin);
 
   if (buildingId) {
     url.searchParams.set("building", buildingId);
@@ -40,7 +51,23 @@ export const withBuilding = (path, buildingId = getSelectedBuildingId()) => {
   return url.toString();
 };
 
+export const apiFetch = (url, options = {}) => {
+  // Add the login token to private API calls. Login/signup still work because no token is required there.
+  const token = typeof localStorage === "undefined" ? "" : localStorage.getItem("token");
+  const headers = new Headers(options.headers || {});
+
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return fetch(url, {
+    ...options,
+    headers
+  });
+};
+
 export const readResponse = async (res) => {
+  // Backend should return JSON; this catches HTML error pages from crashed/dev servers.
   const text = await res.text();
   const contentType = res.headers.get("content-type") || "";
 
@@ -65,6 +92,7 @@ export const setCachedData = (url, data) => {
 };
 
 export const invalidateCache = (match) => {
+  // After create/update/delete, clear matching cached responses so pages reload fresh data.
   if (!match) {
     responseCache.clear();
     prefetchedBuildings.clear();
@@ -86,11 +114,11 @@ export const invalidateCache = (match) => {
 };
 
 export const fetchJsonData = async (url, fallbackMessage = "Request failed") => {
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   const data = await readResponse(res);
 
   if (!res.ok) {
-    throw new Error(data.error || data.err || fallbackMessage);
+    throw new Error(getApiErrorMessage(data, fallbackMessage));
   }
 
   setCachedData(url, data);
@@ -104,6 +132,7 @@ export const loadCachedJson = async (
   fallbackMessage = "Failed to load data",
   options = {}
 ) => {
+  // Show cached data immediately, then refresh if it is stale or revalidation is requested.
   const cachedEntry = options.useCache === false ? undefined : responseCache.get(url);
   const cachedData = cachedEntry?.data;
   const cacheIsFresh =
@@ -133,7 +162,7 @@ export const loadCachedJson = async (
     return data;
   } catch (error) {
     if (setError && cachedData === undefined) {
-      setError(error.message);
+      setError(formatErrorMessage(error, fallbackMessage));
     }
 
     return cachedData;
@@ -141,6 +170,7 @@ export const loadCachedJson = async (
 };
 
 export const prefetchBuildingData = (buildingId = getSelectedBuildingId()) => {
+  // Warm common building-scoped pages after selection changes to make navigation feel faster.
   if (!buildingId) {
     return;
   }

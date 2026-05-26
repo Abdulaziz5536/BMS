@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+// PaymentRecord is the immutable history of money received.
+// It can point to a rent invoice, a contract payment action, or a utility bill.
 const paymentRecordSchema = new mongoose.Schema({
   building: {
     type: mongoose.Schema.Types.ObjectId,
@@ -63,7 +65,7 @@ const paymentRecordSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-// Index for efficient queries
+// Indexes support tenant payment history and deleting checks for linked records.
 paymentRecordSchema.index({ tenant: 1, paymentDate: -1 });
 paymentRecordSchema.index({ invoice: 1 });
 paymentRecordSchema.index({ contract: 1 });

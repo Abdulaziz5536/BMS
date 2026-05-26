@@ -7,15 +7,19 @@ import Sidebar from "./Sidebar";
 import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import { formatFloorLabel } from "../utils/floorUtils";
 import { compareSortValues, nextSortDirection } from "../utils/sortUtils";
 import "../style.css";
+
+// Floors page manages building floors, including basement labels like B1..B4.
 
 export default function Floors() {
   const selectedBuildingId = useSelectedBuilding();
@@ -24,7 +28,7 @@ export default function Floors() {
   const [sqm, setSqm] = useState("");
   const [floors, setFloors] = useState([]);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [editingId, setEditingId] = useState(null);
   const [sortField, setSortField] = useState("floor");
   const [sortDirection, setSortDirection] = useState("asc");
@@ -38,6 +42,7 @@ export default function Floors() {
   }, []);
 
   const loadFloors = useCallback(async (useCache = true) => {
+    // Floors are loaded per building because floor numbers can repeat in different buildings.
     if (!selectedBuildingId) {
       setFloors([]);
       return;
@@ -50,14 +55,14 @@ export default function Floors() {
       "Failed to load floors",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   useEffect(() => {
     clearForm();
     setMessage("");
     setError("");
     loadFloors();
-  }, [clearForm, loadFloors, selectedBuildingId]);
+  }, [clearForm, loadFloors, selectedBuildingId, setError]);
 
   useEffect(() => {
     if (editingId) {
@@ -69,6 +74,7 @@ export default function Floors() {
   }, [editingId]);
 
   const saveFloor = async () => {
+    // Validate numeric floor/unit/area values before the backend duplicate check.
     setMessage("");
     setError("");
 
@@ -82,15 +88,44 @@ export default function Floors() {
       return;
     }
 
+    const floorNumber = Number(floor);
+    const unitCount = Number(units);
+    const totalArea = Number(sqm);
+
+    if (!Number.isFinite(floorNumber) || !Number.isFinite(unitCount) || !Number.isFinite(totalArea)) {
+      setError("Floor, units, and total SQM must be valid numbers");
+      return;
+    }
+
+    if (!Number.isInteger(floorNumber)) {
+      setError("Floor must be a whole number");
+      return;
+    }
+
+    if (floorNumber < -4) {
+      setError("Basement floor cannot be below B4");
+      return;
+    }
+
+    if (!Number.isInteger(unitCount)) {
+      setError("Units must be a whole number");
+      return;
+    }
+
+    if (unitCount < 0 || totalArea < 0) {
+      setError("Units and total SQM cannot be negative");
+      return;
+    }
+
     try {
       const bodyData = {
         building: selectedBuildingId,
-        floor: Number(floor),
-        units: Number(units),
-        totalSqm: Number(sqm)
+        floor: floorNumber,
+        units: unitCount,
+        totalSqm: totalArea
       };
 
-      const res = await fetch(
+      const res = await apiFetch(
         editingId ? `${API_BASE}/floors/${editingId}` : `${API_BASE}/floors`,
         {
           method: editingId ? "PUT" : "POST",
@@ -128,6 +163,7 @@ export default function Floors() {
   };
 
   const deleteFloor = async (id) => {
+    // Backend blocks deletion when units are assigned to the floor.
     const shouldDelete = await confirmAction({
       title: "Delete floor?",
       message: "Are you sure you want to delete this floor?",
@@ -143,7 +179,7 @@ export default function Floors() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API_BASE}/floors/${id}`, {
+      const res = await apiFetch(`${API_BASE}/floors/${id}`, {
         method: "DELETE"
       });
 
@@ -184,6 +220,8 @@ export default function Floors() {
         <div className="floors-form" ref={floorFormRef}>
           <input
             type="number"
+            min="-4"
+            step="1"
             placeholder="Floor Number"
             value={floor}
             onChange={(e) => setFloor(e.target.value)}

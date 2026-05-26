@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+// Utility stores non-rent charges for a tenant, such as water, light, and generator gas.
 const utilityFileSchema = new mongoose.Schema(
   {
     name: String,

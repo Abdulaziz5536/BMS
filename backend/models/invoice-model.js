@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+// Invoice stores one rent bill for one contract period.
+// Reminder history lives here so each invoice knows which due/overdue notices were sent.
 const invoiceSchema = new mongoose.Schema({
   building: {
     type: mongoose.Schema.Types.ObjectId,
@@ -92,8 +94,9 @@ const invoiceSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-// Compound index for efficient queries
+// Compound indexes keep tenant/contract period lookups fast and prevent duplicate period invoices.
 invoiceSchema.index({ tenant: 1, periodStart: 1, periodEnd: 1 });
+invoiceSchema.index({ contract: 1, periodStart: 1, periodEnd: 1 }, { unique: true });
 invoiceSchema.index({ dueDate: 1, status: 1 });
 
 module.exports = mongoose.model("Invoice", invoiceSchema);

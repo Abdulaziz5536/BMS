@@ -12,15 +12,20 @@ import Sidebar from "./Sidebar";
 import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import { formatEthiopianDateTime } from "../utils/dateUtils";
 import { formatFloorLabel } from "../utils/floorUtils";
 import "../style.css";
+
+// Announcements page creates targeted email/SMS notices for a building.
+// The backend resolves recipients and sends messages, while this page manages targeting choices.
 
 const initialFormData = {
   title: "",
@@ -93,7 +98,7 @@ export default function Announcements() {
   const [tenantSearchTerm, setTenantSearchTerm] = useState("");
   const [loadingAction, setLoadingAction] = useState("");
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
 
   const stats = useMemo(() => ({
     total: announcements.length,
@@ -103,6 +108,7 @@ export default function Announcements() {
   }), [announcements]);
 
   const selectedTargetCount = useMemo(() => {
+    // Shows how many people/floors/units are currently selected before sending.
     if (formData.targetType === "selected_floors") return formData.selectedFloors.length;
     if (formData.targetType === "selected_units") return formData.selectedUnits.length;
     if (formData.targetType === "specific_tenants") return formData.tenantIds.length;
@@ -143,9 +149,10 @@ export default function Announcements() {
       "Failed to load announcements",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   const fetchBuildingData = useCallback(async (useCache = true) => {
+    // Audience builders need floors, units, and tenants for the selected building.
     if (!selectedBuildingId) {
       setFloors([]);
       setUnits([]);
@@ -178,14 +185,14 @@ export default function Announcements() {
       ),
       fetchAnnouncements(useCache)
     ]);
-  }, [fetchAnnouncements, selectedBuildingId]);
+  }, [fetchAnnouncements, selectedBuildingId, setError]);
 
   useEffect(() => {
     setMessage("");
     setError("");
     resetForm();
     fetchBuildingData();
-  }, [fetchBuildingData, resetForm, selectedBuildingId]);
+  }, [fetchBuildingData, resetForm, selectedBuildingId, setError]);
 
   const updateFormData = (event) => {
     const { name, value } = event.target;
@@ -194,6 +201,7 @@ export default function Announcements() {
       const next = { ...current, [name]: value };
 
       if (name === "targetType") {
+        // Changing audience type clears old selections so the payload cannot mix target modes.
         next.selectedFloors = [];
         next.selectedUnits = [];
         next.tenantIds = [];
@@ -214,6 +222,7 @@ export default function Announcements() {
   };
 
   const buildPayload = () => {
+    // Convert the UI form into the backend announcement shape.
     const payload = {
       title: formData.title.trim(),
       message: formData.message.trim(),
@@ -260,6 +269,7 @@ export default function Announcements() {
   };
 
   const handleSubmit = async (event) => {
+    // Save as a draft/scheduled announcement first; sending is a separate explicit action.
     event.preventDefault();
     setMessage("");
     setError("");
@@ -274,7 +284,7 @@ export default function Announcements() {
     try {
       setLoadingAction("create");
 
-      const response = await fetch(`${API_BASE}/announcements`, {
+      const response = await apiFetch(`${API_BASE}/announcements`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -300,13 +310,14 @@ export default function Announcements() {
   };
 
   const handleSend = async (id) => {
+    // Send uses the backend delivery engine so errors include per-channel failures.
     setMessage("");
     setError("");
 
     try {
       setLoadingAction(`send-${id}`);
 
-      const response = await fetch(`${API_BASE}/announcements/${id}/send`, {
+      const response = await apiFetch(`${API_BASE}/announcements/${id}/send`, {
         method: "POST"
       });
       const result = await readResponse(response);
@@ -332,6 +343,7 @@ export default function Announcements() {
   };
 
   const handleDelete = async (id) => {
+    // Confirm before deleting because announcement delivery history is useful for audits.
     const shouldDelete = await confirmAction({
       title: "Delete announcement?",
       message: "Are you sure you want to delete this announcement?",
@@ -349,7 +361,7 @@ export default function Announcements() {
     try {
       setLoadingAction(`delete-${id}`);
 
-      const response = await fetch(`${API_BASE}/announcements/${id}`, {
+      const response = await apiFetch(`${API_BASE}/announcements/${id}`, {
         method: "DELETE"
       });
       const result = await readResponse(response);

@@ -10,26 +10,50 @@ import { confirmAction } from "../components/confirmAction";
 import FilePreviewLink from "../components/FilePreviewLink";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useSelectedBuildingName from "../hooks/useSelectedBuildingName";
+import useShortError from "../hooks/useShortError";
 import {
   dateInputProps,
   formatEthiopianDate,
   normalizeDateInputForApi,
   todayEthiopianDateInputValue
 } from "../utils/dateUtils";
+import { calculateVatBreakdown, VAT_RATE_LABEL } from "../utils/taxUtils";
 import "../style.css";
+
+// Invoice page is the main rent billing screen.
+// It loads invoices/contracts/tenants for the selected building and manages payments, receipts, and reminders.
 
 const formatCurrency = (amount) => {
   return `Br ${Number(amount || 0).toLocaleString()}`;
 };
 
+const escapeReceiptHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;"
+}[char]));
+
+const formatReceiptValue = (value, fallback = "-") =>
+  escapeReceiptHtml(value === null || value === undefined || value === "" ? fallback : value);
+
+const formatReceiptNumber = (payment) => {
+  const id = String(payment?._id || Date.now());
+  return `RCT-${id.slice(-8).toUpperCase()}`;
+};
+
 export default function Invoice() {
   const selectedBuildingId = useSelectedBuilding();
+  const buildingName = useSelectedBuildingName();
   const [invoices, setInvoices] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -66,10 +90,10 @@ export default function Invoice() {
   const [sortField, setSortField] = useState("dueDate");
   const [sortDirection, setSortDirection] = useState("asc");
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [loading, setLoading] = useState(false);
 
-  // Fetch data
+  // Fetch the core invoice table for the selected building.
   const fetchInvoices = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
       setInvoices([]);
@@ -83,7 +107,7 @@ export default function Invoice() {
       "Failed to load invoices",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   const fetchContracts = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
@@ -98,7 +122,7 @@ export default function Invoice() {
       "Failed to load contracts",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   const fetchTenants = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
@@ -113,7 +137,7 @@ export default function Invoice() {
       "Failed to load tenants",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   const fetchReminders = useCallback(async () => {
     if (!selectedBuildingId) {
@@ -122,7 +146,8 @@ export default function Invoice() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/invoices/reminders?building=${selectedBuildingId}`);
+      // Due reminders and overdue invoices are loaded separately because the UI shows them in different tabs.
+      const res = await apiFetch(`${API_BASE}/invoices/reminders?building=${selectedBuildingId}`);
       const data = await readResponse(res);
       if (!res.ok) {
         throw new Error(data.error || "Failed to load reminders");
@@ -140,7 +165,7 @@ export default function Invoice() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/invoices/overdue?building=${selectedBuildingId}`);
+      const res = await apiFetch(`${API_BASE}/invoices/overdue?building=${selectedBuildingId}`);
       const data = await readResponse(res);
       if (!res.ok) {
         throw new Error(data.error || "Failed to load overdue invoices");
@@ -158,7 +183,7 @@ export default function Invoice() {
     }
 
     try {
-      const res = await fetch(withBuilding("/payment-records", selectedBuildingId));
+      const res = await apiFetch(withBuilding("/payment-records", selectedBuildingId));
       const data = await readResponse(res);
       if (!res.ok) {
         throw new Error(data.error || "Failed to load payment records");
@@ -176,7 +201,7 @@ export default function Invoice() {
     }
 
     try {
-      const res = await fetch(withBuilding("/invoices/reminders/history", selectedBuildingId));
+      const res = await apiFetch(withBuilding("/invoices/reminders/history", selectedBuildingId));
       const data = await readResponse(res);
       if (!res.ok) {
         throw new Error(data.error || "Failed to load reminder history");
@@ -188,6 +213,7 @@ export default function Invoice() {
   }, [selectedBuildingId]);
 
   useEffect(() => {
+    // Changing buildings resets messages and reloads every building-scoped list.
     setMessage("");
     setError("");
     fetchInvoices();
@@ -197,7 +223,7 @@ export default function Invoice() {
     fetchOverdue();
     fetchPaymentRecords();
     fetchReminderHistory();
-  }, [fetchContracts, fetchInvoices, fetchOverdue, fetchPaymentRecords, fetchReminderHistory, fetchReminders, fetchTenants, selectedBuildingId]);
+  }, [fetchContracts, fetchInvoices, fetchOverdue, fetchPaymentRecords, fetchReminderHistory, fetchReminders, fetchTenants, selectedBuildingId, setError]);
 
   useEffect(() => {
     if (editingInvoiceId) {
@@ -257,6 +283,7 @@ export default function Invoice() {
 
   // Generate invoice for selected tenant/contract
   const generateInvoice = async () => {
+    // Backend prevents duplicate invoices for the same contract period.
     if (!selectedTenant || !selectedContract) {
       setError("Please select both tenant and contract");
       return;
@@ -264,7 +291,7 @@ export default function Invoice() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/invoices/generate`, {
+      const res = await apiFetch(`${API_BASE}/invoices/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -293,9 +320,10 @@ export default function Invoice() {
 
   // Auto-generate invoices for all active contracts
   const autoGenerateInvoices = async () => {
+    // Auto-generate skips already-created periods instead of overwriting them.
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/invoices/auto-generate`, {
+      const res = await apiFetch(`${API_BASE}/invoices/auto-generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -338,6 +366,7 @@ export default function Invoice() {
 
   // Record payment
   const recordPayment = async (invoiceId) => {
+    // Payment amount/date/receipt are sent to the backend, which recalculates balances safely.
     if (!invoiceId) {
       setError("Invoice ID is missing");
       return;
@@ -360,7 +389,7 @@ export default function Invoice() {
         };
       }
 
-      const res = await fetch(`${API_BASE}/invoices/${invoiceId}/pay`, {
+      const res = await apiFetch(`${API_BASE}/invoices/${invoiceId}/pay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -399,6 +428,7 @@ export default function Invoice() {
   };
 
   const startEditingInvoice = (invoice) => {
+    // Edit form stores date strings for inputs, then normalizes them again before saving.
     setMessage("");
     setError("");
     setCurrentInvoiceId(null);
@@ -426,6 +456,7 @@ export default function Invoice() {
   };
 
   const updateInvoice = async () => {
+    // Updating due dates does not send reminders; reminders run on schedule or manual button.
     setMessage("");
     setError("");
 
@@ -441,7 +472,7 @@ export default function Invoice() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/invoices/${editingInvoiceId}`, {
+      const res = await apiFetch(`${API_BASE}/invoices/${editingInvoiceId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -475,6 +506,7 @@ export default function Invoice() {
   };
 
   const deleteInvoice = async (invoice) => {
+    // Deleting an invoice also removes linked payment records on the backend.
     const shouldDelete = await confirmAction({
       title: "Delete invoice?",
       message: `Are you sure you want to delete invoice ${invoice.invoiceNumber}? This also removes its payment records.`,
@@ -491,7 +523,7 @@ export default function Invoice() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/invoices/${invoice._id}`, {
+      const res = await apiFetch(`${API_BASE}/invoices/${invoice._id}`, {
         method: "DELETE"
       });
       const data = await readResponse(res);
@@ -552,6 +584,7 @@ export default function Invoice() {
     payment.invoice || invoices.find((invoice) => String(invoice._id) === String(payment.invoice));
 
   const printReceipt = (payment) => {
+    // Receipt HTML is generated in a print window so it can be saved as PDF or printed.
     const invoice = findInvoiceForPayment(payment);
     const tenant = payment.tenant || invoice?.tenant;
     const receiptWindow = window.open("", "_blank", "width=860,height=720");
@@ -561,48 +594,254 @@ export default function Invoice() {
       return;
     }
 
+    const period = invoice?.periodStart || invoice?.periodEnd
+      ? `${formatEthiopianDate(invoice.periodStart)} to ${formatEthiopianDate(invoice.periodEnd)}`
+      : "-";
+    const invoiceTotal = invoice?.totalAmount ?? invoice?.rentAmount;
+    const balanceAfter = invoice
+      ? invoice.outstandingBalance ?? ((invoice.totalAmount || 0) - (invoice.amountPaid || 0))
+      : null;
+    // VAT is only added to the generated receipt display; it does not rewrite invoice/payment records.
+    const receiptVat = calculateVatBreakdown(payment.amount);
+    const generatedAt = new Date().toLocaleString([], {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+    const receiptBrandName = formatReceiptValue(buildingName);
+
     receiptWindow.document.write(`
       <!doctype html>
       <html>
         <head>
-          <title>BHA MALL Receipt</title>
+          <title>${receiptBrandName} Receipt</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 0; color: #111827; background: #f3f4f6; }
-            .receipt { max-width: 720px; margin: 32px auto; background: #fff; border: 1px solid #d1d5db; }
-            .header { background: #0f4c81; color: white; padding: 24px 28px; }
-            .brand { margin: 0 0 6px; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
-            h1 { margin: 0; font-size: 26px; }
-            .body { padding: 28px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            td { padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
-            td:first-child { color: #64748b; width: 190px; }
-            .total { font-size: 22px; font-weight: 700; color: #0f4c81; }
-            .footer { color: #64748b; font-size: 13px; padding-top: 22px; }
-            @media print { body { background: white; } .receipt { margin: 0; border: none; } }
+            @page { size: A4; margin: 14mm; }
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              color: #172033;
+              background: #eef3f8;
+              font-family: Arial, Helvetica, sans-serif;
+              line-height: 1.45;
+            }
+            .receipt {
+              width: min(760px, calc(100% - 32px));
+              margin: 24px auto;
+              background: #ffffff;
+              border: 1px solid #cbd7e5;
+              box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+            }
+            .topbar {
+              display: grid;
+              grid-template-columns: 1fr auto;
+              gap: 24px;
+              align-items: start;
+              padding: 26px 30px;
+              color: #ffffff;
+              background: #123b5d;
+            }
+            .brand { margin: 0 0 6px; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+            h1 { margin: 0; font-size: 29px; line-height: 1.05; letter-spacing: 0; }
+            .receipt-meta { text-align: right; font-size: 12px; color: #dbeafe; }
+            .receipt-meta strong { display: block; margin-top: 5px; color: #ffffff; font-size: 16px; }
+            .status {
+              display: inline-flex;
+              margin-top: 12px;
+              padding: 5px 10px;
+              color: #14532d;
+              background: #dcfce7;
+              border: 1px solid #86efac;
+              border-radius: 999px;
+              font-size: 12px;
+              font-weight: 800;
+            }
+            .body { padding: 28px 30px 30px; }
+            .amount-panel {
+              display: grid;
+              grid-template-columns: 1fr auto;
+              gap: 16px;
+              align-items: center;
+              padding: 18px 20px;
+              margin-bottom: 22px;
+              border: 1px solid #bfd4e8;
+              border-left: 5px solid #15803d;
+              background: #f7fbff;
+            }
+            .amount-panel span,
+            .section-label,
+            .detail-label {
+              display: block;
+              color: #64748b;
+              font-size: 11px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.08em;
+            }
+            .amount-panel strong { color: #0f172a; font-size: 28px; line-height: 1; }
+            .amount-panel p { margin: 6px 0 0; color: #334155; }
+            .detail-grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 12px;
+              margin-bottom: 22px;
+            }
+            .detail-card {
+              min-height: 76px;
+              padding: 13px 14px;
+              border: 1px solid #e2e8f0;
+              background: #ffffff;
+            }
+            .detail-card strong { display: block; margin-top: 5px; color: #172033; font-size: 14px; overflow-wrap: anywhere; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #dbe4f0; }
+            .summary-total td {
+              color: #0f172a;
+              background: #f1f8f4;
+              border-top: 2px solid #b7d8c4;
+              font-size: 14px;
+              font-weight: 800;
+            }
+            th {
+              padding: 10px 12px;
+              color: #334155;
+              background: #edf4fa;
+              border-bottom: 1px solid #dbe4f0;
+              font-size: 11px;
+              text-align: left;
+              text-transform: uppercase;
+              letter-spacing: 0.06em;
+            }
+            td { padding: 12px; border-bottom: 1px solid #edf2f7; font-size: 13px; vertical-align: top; }
+            td:last-child, th:last-child { text-align: right; }
+            .notes {
+              min-height: 52px;
+              margin-top: 18px;
+              padding: 13px 14px;
+              border: 1px solid #e2e8f0;
+              color: #334155;
+              background: #fbfdff;
+              white-space: pre-wrap;
+              overflow-wrap: anywhere;
+            }
+            .signature-grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 32px;
+              margin-top: 36px;
+            }
+            .signature-line { border-top: 1px solid #94a3b8; padding-top: 8px; color: #475569; font-size: 12px; }
+            .footer {
+              display: flex;
+              justify-content: space-between;
+              gap: 16px;
+              margin-top: 28px;
+              padding-top: 15px;
+              border-top: 1px solid #e2e8f0;
+              color: #64748b;
+              font-size: 12px;
+            }
+            @media (max-width: 640px) {
+              .topbar,
+              .amount-panel,
+              .detail-grid,
+              .signature-grid,
+              .footer { grid-template-columns: 1fr; display: grid; text-align: left; }
+              .receipt-meta, td:last-child, th:last-child { text-align: left; }
+            }
+            @media print {
+              body { background: #ffffff; }
+              .receipt { width: 100%; margin: 0; border: 0; box-shadow: none; }
+              .topbar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            }
           </style>
         </head>
         <body>
           <div class="receipt">
-            <div class="header">
-              <p class="brand">BHA MALL</p>
+            <div class="topbar">
+              <div>
+              <p class="brand">${receiptBrandName}</p>
               <h1>Payment Receipt</h1>
+                <span class="status">PAID</span>
+              </div>
+              <div class="receipt-meta">
+                Receipt No.
+                <strong>${formatReceiptValue(formatReceiptNumber(payment))}</strong>
+                Generated ${formatReceiptValue(generatedAt)}
+              </div>
             </div>
             <div class="body">
-              <p>This confirms payment received from <strong>${tenant?.tenantName || "Tenant"}</strong>.</p>
+              <div class="amount-panel">
+                <div>
+                  <span>Amount Paid Before VAT</span>
+                  <p>Payment received from <strong>${formatReceiptValue(tenant?.tenantName, "Tenant")}</strong></p>
+                </div>
+                <strong>${formatReceiptValue(formatCurrency(payment.amount))}</strong>
+              </div>
+
+              <div class="detail-grid">
+                <div class="detail-card">
+                  <span class="detail-label">Payment Date</span>
+                  <strong>${formatReceiptValue(formatEthiopianDate(payment.paymentDate))}</strong>
+                </div>
+                <div class="detail-card">
+                  <span class="detail-label">Invoice</span>
+                  <strong>${formatReceiptValue(invoice?.invoiceNumber || payment.contract?.paymentFrequency || "Payment record")}</strong>
+                </div>
+                <div class="detail-card">
+                  <span class="detail-label">Tenant</span>
+                  <strong>${formatReceiptValue(tenant?.tenantName)}</strong>
+                </div>
+                <div class="detail-card">
+                  <span class="detail-label">Unit</span>
+                  <strong>${formatReceiptValue(tenant?.unit?.unitId)}</strong>
+                </div>
+                <div class="detail-card">
+                  <span class="detail-label">Method</span>
+                  <strong>${formatReceiptValue(payment.paymentMethod)}</strong>
+                </div>
+                <div class="detail-card">
+                  <span class="detail-label">Reference</span>
+                  <strong>${formatReceiptValue(payment.reference)}</strong>
+                </div>
+              </div>
+
+              <span class="section-label">Payment Summary</span>
               <table>
-                <tr><td>Receipt Date</td><td>${formatEthiopianDate(payment.paymentDate)}</td></tr>
-                <tr><td>Invoice</td><td>${invoice?.invoiceNumber || payment.contract?.paymentFrequency || "Payment record"}</td></tr>
-                <tr><td>Tenant</td><td>${tenant?.tenantName || "-"}</td></tr>
-                <tr><td>Unit</td><td>${tenant?.unit?.unitId || "-"}</td></tr>
-                <tr><td>Payment Method</td><td>${payment.paymentMethod || "-"}</td></tr>
-                <tr><td>Reference</td><td>${payment.reference || "-"}</td></tr>
-                <tr><td>Amount Paid</td><td class="total">${formatCurrency(payment.amount)}</td></tr>
-                <tr><td>Notes</td><td>${payment.notes || "-"}</td></tr>
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>Billing period</td><td>${formatReceiptValue(period)}</td></tr>
+                  <tr><td>Invoice total before VAT</td><td>${formatReceiptValue(invoiceTotal === undefined ? "-" : formatCurrency(invoiceTotal))}</td></tr>
+                  <tr><td>Amount paid before VAT</td><td>${formatReceiptValue(formatCurrency(receiptVat.subtotal))}</td></tr>
+                  <tr><td>VAT (${VAT_RATE_LABEL})</td><td>${formatReceiptValue(formatCurrency(receiptVat.vat))}</td></tr>
+                  <tr class="summary-total"><td>Total including VAT</td><td>${formatReceiptValue(formatCurrency(receiptVat.totalWithVat))}</td></tr>
+                  <tr><td>Balance after payment</td><td>${formatReceiptValue(balanceAfter === null ? "-" : formatCurrency(Math.max(0, balanceAfter)))}</td></tr>
+                </tbody>
               </table>
-              <p class="footer">Generated by BHA MALL Building Management System.</p>
+
+              <div class="notes">
+                <span class="section-label">Notes</span>
+                ${formatReceiptValue(payment.notes)}
+              </div>
+
+              <div class="signature-grid">
+                <div class="signature-line">Received by</div>
+                <div class="signature-line">Tenant signature</div>
+              </div>
+
+              <div class="footer">
+                <span>Generated by ${receiptBrandName}</span>
+                <span>This receipt is valid without a stamp when issued digitally.</span>
+              </div>
             </div>
           </div>
-          <script>window.print();</script>
+          <script>window.addEventListener("load", () => window.print());</script>
         </body>
       </html>
     `);

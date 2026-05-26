@@ -1,5 +1,8 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Date utilities accept both Gregorian dates and Ethiopian calendar dates.
+// Stored dates are normalized to UTC date-only values so comparisons stay predictable.
+
 const isGregorianLeapYear = (year) =>
   year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 
@@ -50,6 +53,7 @@ const parseParts = (value) => {
 };
 
 const shouldTreatAsEthiopian = (parts) => {
+  // Day-first years like 2018 are treated as Ethiopian unless the user writes ISO year-first.
   if (!parts || !parts.year) return false;
   if (parts.isExplicitEthiopian || parts.month === 13) return true;
   if (parts.isYearFirst) return false;
@@ -89,6 +93,7 @@ const parseGregorianParts = (year, month, day) => {
 };
 
 const parseFlexibleDateInput = (value) => {
+  // Main parser used by routes. Returns null for invalid input instead of throwing.
   if (!value) return null;
 
   if (value instanceof Date) {
@@ -127,6 +132,7 @@ const normalizeDateOnlyString = (value) => {
 };
 
 const gregorianToEthiopian = (value) => {
+  // Convert stored Gregorian date values back to Ethiopian dates for display/receipts.
   const date = parseFlexibleDateInput(value);
   if (!date) return null;
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   PencilSquareIcon,
   TrashIcon,
@@ -8,6 +8,7 @@ import Sidebar from "./Sidebar";
 import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
+  apiFetch,
   getSelectedBuildingId,
   invalidateCache,
   loadCachedJson,
@@ -16,6 +17,7 @@ import {
   setSelectedBuildingId
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import { compareSortValues, nextSortDirection } from "../utils/sortUtils";
 import {
   ETHIOPIAN_PHONE_ERROR,
@@ -26,6 +28,9 @@ import {
   phoneInputProps
 } from "../utils/phoneUtils";
 import "../style.css";
+
+// Buildings page manages the top-level building list and the active selected building.
+// Changing/deleting buildings invalidates cached data because most screens are building-scoped.
 
 export default function Buildings() {
   const selectedBuildingId = useSelectedBuilding();
@@ -38,11 +43,12 @@ export default function Buildings() {
   const [editingId, setEditingId] = useState(null);
   const buildingFormRef = useRef(null);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [sortField, setSortField] = useState("name");
   const [sortDirection, setSortDirection] = useState("asc");
 
-  const loadBuildings = async () => {
+  const loadBuildings = useCallback(async () => {
+    // If no building is selected yet, pick the first one so the app has a default context.
     await loadCachedJson(
       `${API_BASE}/buildings`,
       (data) => {
@@ -55,11 +61,11 @@ export default function Buildings() {
       setError,
       "Failed to load buildings"
     );
-  };
+  }, [setError]);
 
   useEffect(() => {
     loadBuildings();
-  }, []);
+  }, [loadBuildings]);
 
   useEffect(() => {
     if (editingId) {
@@ -80,6 +86,7 @@ export default function Buildings() {
   };
 
   const saveBuilding = async () => {
+    // Create/update share one form; phone is normalized before sending to the backend.
     setMessage("");
     setError("");
 
@@ -95,7 +102,7 @@ export default function Buildings() {
 
     try {
       const normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
-      const res = await fetch(
+      const res = await apiFetch(
         editingId ? `${API_BASE}/buildings/${editingId}` : `${API_BASE}/buildings`,
         {
           method: editingId ? "PUT" : "POST",
@@ -139,6 +146,7 @@ export default function Buildings() {
   };
 
   const deleteBuilding = async (buildingId) => {
+    // Deleting a building can remove many child records, so always confirm first.
     const shouldDelete = await confirmAction({
       title: "Delete building?",
       message: "Delete this building and all of its floors, units, tenants, contracts, employees, and utilities?",
@@ -154,7 +162,7 @@ export default function Buildings() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API_BASE}/buildings/${buildingId}`, {
+      const res = await apiFetch(`${API_BASE}/buildings/${buildingId}`, {
         method: "DELETE"
       });
       const data = await readResponse(res);

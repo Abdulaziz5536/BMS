@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+// AuditLog records important user/system actions so the Activity and System pages can explain changes.
 const auditLogSchema = new mongoose.Schema(
   {
     building: {

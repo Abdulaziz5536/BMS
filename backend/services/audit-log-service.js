@@ -1,5 +1,7 @@
 const AuditLog = require("../models/audit-log-model");
 
+// Small helper used by routes to record user-visible actions.
+// Audit failures should never break the original user action, so errors are swallowed after logging.
 const recordAuditLog = async ({
   building,
   action,

@@ -13,12 +13,14 @@ import { confirmAction } from "../components/confirmAction";
 import FilePreviewLink from "../components/FilePreviewLink";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import {
   dateInputProps,
   formatEthiopianDate,
@@ -37,7 +39,10 @@ import "../style.css";
 
 const MAX_UPLOAD_SIZE = 5 * 1024 * 1024;
 
+// Tenants page manages tenant profiles, unit assignment, document uploads, and payment history.
+
 const readUploadFile = (file, expectedType) => {
+  // Convert selected files to data URLs before sending them in JSON.
   return new Promise((resolve, reject) => {
     if (!file) {
       resolve(null);
@@ -106,7 +111,7 @@ export default function Tenant() {
 
   const [historyTenant, setHistoryTenant] = useState(null);
   const [paymentHistory, setPaymentHistory] = useState([]);
-  const [historyError, setHistoryError] = useState("");
+  const [historyError, setHistoryError] = useShortError();
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -114,7 +119,7 @@ export default function Tenant() {
   const [sortDirection, setSortDirection] = useState("asc");
 
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
 
   const clearForm = useCallback(() => {
     setTenantId("");
@@ -134,6 +139,7 @@ export default function Tenant() {
   }, []);
 
   const fetchUnits = useCallback(async (useCache = true) => {
+    // Unit data is needed to show availability and floor labels in the tenant form/table.
     if (!selectedBuildingId) {
       setUnits([]);
       return;
@@ -146,7 +152,7 @@ export default function Tenant() {
       "Failed to load units",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   const fetchTenants = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
@@ -161,9 +167,10 @@ export default function Tenant() {
       "Failed to load tenants",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   useEffect(() => {
+    // Switching buildings resets the form and payment-history panel.
     clearForm();
     setMessage("");
     setError("");
@@ -171,7 +178,7 @@ export default function Tenant() {
     setPaymentHistory([]);
     fetchUnits();
     fetchTenants();
-  }, [clearForm, fetchTenants, fetchUnits, selectedBuildingId]);
+  }, [clearForm, fetchTenants, fetchUnits, selectedBuildingId, setError]);
 
   useEffect(() => {
     if (editingId) {
@@ -250,6 +257,7 @@ export default function Tenant() {
   };
 
   const saveTenant = async () => {
+    // Backend verifies unit/building ownership and blocks duplicate tenant IDs.
     setMessage("");
     setError("");
 
@@ -276,7 +284,7 @@ export default function Tenant() {
     try {
       const normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
       const normalizedEmergencyPhone = normalizeEthiopianPhone(emergencyContactPhone, { required: false });
-      const res = await fetch(
+      const res = await apiFetch(
         editingId ? `${API_BASE}/tenants/${editingId}` : `${API_BASE}/tenants`,
         {
           method: editingId ? "PUT" : "POST",
@@ -318,6 +326,7 @@ export default function Tenant() {
   };
 
   const editTenant = (tenant) => {
+    // Existing uploaded files stay on the record unless a new file is selected.
     const tenantUnit = getTenantUnit(tenant);
 
     setTenantId(tenant.tenantId || "");
@@ -339,6 +348,7 @@ export default function Tenant() {
   };
 
   const deleteTenant = async (id) => {
+    // Backend blocks deletion while contracts/invoices/utilities/payments still reference the tenant.
     const shouldDelete = await confirmAction({
       title: "Delete tenant?",
       message: "Are you sure you want to delete this tenant?",
@@ -354,7 +364,7 @@ export default function Tenant() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API_BASE}/tenants/${id}`, {
+      const res = await apiFetch(`${API_BASE}/tenants/${id}`, {
         method: "DELETE"
       });
 
@@ -379,6 +389,7 @@ export default function Tenant() {
   };
 
   const fetchPaymentHistory = async (tenant) => {
+    // Payment history combines rent contracts, invoice payments, and utility charges.
     try {
       setHistoryLoading(true);
       setHistoryError("");
@@ -386,7 +397,7 @@ export default function Tenant() {
       setPaymentHistory([]);
       setHistoryScrollTrigger((current) => current + 1);
 
-      const res = await fetch(`${API_BASE}/tenants/${tenant._id}/payment-history`);
+      const res = await apiFetch(`${API_BASE}/tenants/${tenant._id}/payment-history`);
       const data = await readResponse(res);
 
       if (res.ok) {

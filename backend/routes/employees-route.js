@@ -7,6 +7,9 @@ const {
   normalizeEthiopianPhone
 } = require('../utils/phone-utils');
 
+// Employee routes support payroll/reporting. Normalizing input here keeps payroll exports clean.
+
+// Convert raw form values into the exact shape the database expects.
 const normalizeEmployeePayload = (body) => {
   const salary = Number(body.salary || 0);
 
@@ -60,6 +63,7 @@ router.post('/employees', async (req,res) => {
         return res.status(400).json({error:"Net salary must be a valid number"});
        }
 
+       // Avoid accidental duplicates when the same person is entered twice in one building.
        const existingEmployee = await Employee.findOne({
         building: employeeData.building,
         name: employeeData.name,
@@ -110,6 +114,7 @@ router.put('/employees/:id', async (req,res) => {
       return res.status(400).json({error:"Net salary must be a valid number"});
     }
 
+    // Same duplicate check as create, excluding the employee being edited.
     const existingEmployee = await Employee.findOne({
       building: employeeData.building,
       name: employeeData.name,

@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 const Invoice = require("../models/invoice-model");
-const RentInvoice = require("../models/rent-invoice-model");
 const {
   isEmailConfigured,
   isSmsConfigured,
@@ -8,20 +7,38 @@ const {
   sendSMS
 } = require("./messaging-service");
 const { recordAuditLog } = require("./audit-log-service");
+const { getBuildingBrandName } = require("../utils/branding-utils");
 const { formatEthiopianDate } = require("../utils/date-utils");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 let reminderTimer;
+
+// Reminder service is used by both the automatic background job and the manual dashboard button.
+// It decides which invoices are due/overdue, builds tenant messages, and records reminder history.
 
 const parseNumber = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const getStartOfToday = () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
+const getStartOfDay = (value = new Date()) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const getStartOfToday = () => getStartOfDay();
+
+const getDaysUntilDue = (dueDate, referenceDate = new Date()) => {
+  // Use calendar days, not partial milliseconds, so yesterday is overdue immediately.
+  const dueDay = getStartOfDay(dueDate);
+  const referenceDay = getStartOfDay(referenceDate);
+
+  if (Number.isNaN(dueDay.getTime()) || Number.isNaN(referenceDay.getTime())) {
+    return 0;
+  }
+
+  return Math.round((dueDay.getTime() - referenceDay.getTime()) / DAY_MS);
 };
 
 const getEndOfDay = (date) => {
@@ -30,11 +47,24 @@ const getEndOfDay = (date) => {
   return end;
 };
 
+const escapeHtml = (value = "") =>
+  String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[char]));
+
 const getInvoiceAmount = (invoice) =>
   invoice.outstandingBalance || invoice.totalAmount || invoice.rentAmount || 0;
 
 const reminderAlreadySent = (invoice, type) =>
   (invoice.remindersSent || []).some((reminder) => reminder.type === type);
+
+// Force resend is the only way to send the same reminder type more than once.
+const shouldSkipReminder = (invoice, type, options = {}) =>
+  !options.force && reminderAlreadySent(invoice, type);
 
 const getReminderText = (message) => {
   if (typeof message === "string") {
@@ -62,45 +92,48 @@ const buildEmailHtml = ({
   extraTitle = "Important notice",
   extraLines = [],
   accentColor = "#2563eb",
-  headerColor = "#0f4c81"
+  headerColor = "#0f4c81",
+  brandName = getBuildingBrandName()
 }) => {
+  // Shared email template for due and overdue notices.
   const importantNotes = extraLines.filter(Boolean);
+  const safeBrandName = escapeHtml(brandName);
 
   return `
     <div style="background: #f3f6fb; padding: 28px 14px; font-family: Arial, sans-serif; color: #1f2937;">
       ${preheader ? `
         <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent;">
-          ${preheader}
+          ${escapeHtml(preheader)}
         </div>
       ` : ''}
       <div style="max-width: 660px; margin: auto; background: #ffffff; border: 1px solid #dbe4f0; border-radius: 12px; overflow: hidden;">
         <div style="background: ${headerColor}; color: #ffffff; padding: 24px 28px;">
-          <p style="margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 1px;">BHA MALL</p>
-          <h1 style="margin: 0; font-size: 24px; font-weight: 700;">${title}</h1>
+          <p style="margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 1px;">${safeBrandName}</p>
+          <h1 style="margin: 0; font-size: 24px; font-weight: 700;">${escapeHtml(title)}</h1>
         </div>
 
         <div style="padding: 26px 28px;">
-          <p style="font-size: 16px; margin: 0 0 18px;">${greeting}</p>
+          <p style="font-size: 16px; margin: 0 0 18px;">${escapeHtml(greeting)}</p>
 
           <div style="background: #f8fbff; border-left: 4px solid ${accentColor}; padding: 16px 18px; margin-bottom: 22px;">
-            <p style="margin: 0; font-size: 15px; line-height: 1.65;">${summary}</p>
-            ${amharic ? `<p style="margin: 16px 0 0; font-size: 15px; line-height: 1.65;">${amharic}</p>` : ''}
+            <p style="margin: 0; font-size: 15px; line-height: 1.65;">${escapeHtml(summary)}</p>
+            ${amharic ? `<p style="margin: 16px 0 0; font-size: 15px; line-height: 1.65;">${escapeHtml(amharic)}</p>` : ''}
           </div>
 
           <table style="width: 100%; border-collapse: collapse; margin-bottom: 22px; font-size: 14px;">
             ${details.map((item) => `
               <tr>
-                <td style="padding: 11px 0; color: #64748b; width: 145px; vertical-align: top; border-bottom: 1px solid #edf2f7;">${item.label}</td>
-                <td style="padding: 11px 0; color: #111827; border-bottom: 1px solid #edf2f7;">${item.value}</td>
+                <td style="padding: 11px 0; color: #64748b; width: 145px; vertical-align: top; border-bottom: 1px solid #edf2f7;">${escapeHtml(item.label)}</td>
+                <td style="padding: 11px 0; color: #111827; border-bottom: 1px solid #edf2f7;">${escapeHtml(item.value)}</td>
               </tr>
             `).join('')}
           </table>
 
           ${importantNotes.length > 0 ? `
             <div style="background: #fff8ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 16px 18px; margin-bottom: 22px;">
-              <p style="margin: 0 0 12px; color: #9a3412; font-size: 13px; font-weight: 700;">${extraTitle}</p>
+              <p style="margin: 0 0 12px; color: #9a3412; font-size: 13px; font-weight: 700;">${escapeHtml(extraTitle)}</p>
               ${importantNotes.map((line, index) => `
-                <p style="margin: ${index === 0 ? "0" : "12px"} 0 0; color: ${index < 2 ? "#374151" : "#64748b"}; font-size: 14px; line-height: 1.65;">${line}</p>
+                <p style="margin: ${index === 0 ? "0" : "12px"} 0 0; color: ${index < 2 ? "#374151" : "#64748b"}; font-size: 14px; line-height: 1.65;">${escapeHtml(line)}</p>
               `).join('')}
             </div>
           ` : ''}
@@ -110,7 +143,7 @@ const buildEmailHtml = ({
         </div>
 
         <div style="background: #f8fafc; text-align: center; font-size: 12px; color: #94a3b8; padding: 15px 20px;">
-          This is an automated reminder from BHA MALL.
+          This is an automated reminder from ${safeBrandName}.
         </div>
       </div>
     </div>
@@ -118,7 +151,9 @@ const buildEmailHtml = ({
 };
 
 const buildDueDateMessage = (invoice, daysUntilDue) => {
+  // Due-date message covers invoices due soon or due today.
   const tenantName = invoice.tenant?.tenantName || "Tenant";
+  const brandName = getBuildingBrandName(invoice.building);
   const dueDate = formatEthiopianDate(invoice.dueDate);
   const amount = getInvoiceAmount(invoice);
   const timing = daysUntilDue === 0
@@ -142,9 +177,12 @@ ${dueNote}
 ${dueNoteAmharic}
 
 ${paidNote}
-${paidNoteAmharic}`;
+${paidNoteAmharic}
+
+${brandName}`;
   const sms = text;
   const html = buildEmailHtml({
+    brandName,
     title: "Rent Payment Reminder",
     greeting: `Hello ${tenantName},`,
     summary: `Your rent payment of Br ${amount} is due ${timing} on ${dueDate}.`,
@@ -168,7 +206,9 @@ ${paidNoteAmharic}`;
 };
 
 const buildLatePaymentMessage = (invoice, daysOverdue) => {
+  // Late-payment message is used after the due date has passed.
   const tenantName = invoice.tenant?.tenantName || "Tenant";
+  const brandName = getBuildingBrandName(invoice.building);
   const dueDate = formatEthiopianDate(invoice.dueDate);
   const amount = getInvoiceAmount(invoice);
   const overdueTiming = `${daysOverdue} day${daysOverdue === 1 ? "" : "s"}`;
@@ -188,9 +228,12 @@ ${overdueNote}
 ${overdueNoteAmharic}
 
 ${helpNote}
-${helpNoteAmharic}`;
+${helpNoteAmharic}
+
+${brandName}`;
   const sms = text;
   const html = buildEmailHtml({
+    brandName,
     title: "Overdue Rent Notice",
     greeting: `Hello ${tenantName},`,
     summary: `Your rent payment of Br ${amount} was due on ${dueDate} and is now ${overdueTiming} overdue.`,
@@ -216,6 +259,7 @@ ${helpNoteAmharic}`;
 };
 
 const getPendingInvoices = async (Model, daysAhead, buildingId) => {
+  // Pull unpaid invoices up to the due-soon window; overdue invoices also match this query.
   const today = getStartOfToday();
   const reminderEnd = getEndOfDay(new Date(today.getTime() + daysAhead * DAY_MS));
   const filter = {
@@ -236,6 +280,7 @@ const getPendingInvoices = async (Model, daysAhead, buildingId) => {
 };
 
 const sendTenantReminder = async (invoice, type, message, options) => {
+  // Send each selected channel independently so email can succeed even if SMS fails.
   const tenant = invoice.tenant;
   const errors = [];
   let sent = 0;
@@ -246,7 +291,9 @@ const sendTenantReminder = async (invoice, type, message, options) => {
 
   if (options.sendSms) {
     if (tenant.phone) {
-      const smsResult = await sendSMS(tenant.phone, getSmsText(message));
+      const smsResult = await sendSMS(tenant.phone, getSmsText(message), {
+        building: invoice.building
+      });
 
       if (smsResult.success) {
         sent += 1;
@@ -261,13 +308,14 @@ const sendTenantReminder = async (invoice, type, message, options) => {
   if (options.sendEmail) {
     if (tenant.email) {
       const subject = type === "late_payment"
-        ? "Rent payment overdue"
-        : "Rent payment due reminder";
+        ? `${getBuildingBrandName(invoice.building)} - Rent payment overdue`
+        : `${getBuildingBrandName(invoice.building)} - Rent payment due reminder`;
       const emailResult = await sendEmail(
         tenant.email,
         subject,
         getReminderText(message),
-        message.html
+        message.html,
+        { building: invoice.building }
       );
 
       if (emailResult.success) {
@@ -284,6 +332,7 @@ const sendTenantReminder = async (invoice, type, message, options) => {
 };
 
 const processInvoices = async (Model, label, options) => {
+  // Main reminder loop: classify each invoice, skip duplicates, send, then save history.
   const invoices = await getPendingInvoices(Model, options.daysAhead, options.buildingId);
   const today = getStartOfToday();
   const results = {
@@ -291,15 +340,16 @@ const processInvoices = async (Model, label, options) => {
     sent: 0,
     skipped: 0,
     failed: 0,
+    force: Boolean(options.force),
     errors: []
   };
 
   for (const invoice of invoices) {
-    const daysUntilDue = Math.ceil((invoice.dueDate - today) / DAY_MS);
+    const daysUntilDue = getDaysUntilDue(invoice.dueDate, today);
     const isOverdue = daysUntilDue < 0;
     const reminderType = isOverdue ? "late_payment" : "due_date";
 
-    if (reminderAlreadySent(invoice, reminderType)) {
+    if (shouldSkipReminder(invoice, reminderType, options)) {
       results.skipped += 1;
       continue;
     }
@@ -336,7 +386,8 @@ const processInvoices = async (Model, label, options) => {
           channels: {
             email: options.sendEmail,
             sms: options.sendSms
-          }
+          },
+          force: Boolean(options.force)
         }
       });
       results.sent += 1;
@@ -355,18 +406,8 @@ const processInvoices = async (Model, label, options) => {
   return results;
 };
 
-const mergeResults = (items) => items.reduce(
-  (summary, item) => ({
-    checked: summary.checked + item.checked,
-    sent: summary.sent + item.sent,
-    skipped: summary.skipped + item.skipped,
-    failed: summary.failed + item.failed,
-    errors: [...summary.errors, ...item.errors]
-  }),
-  { checked: 0, sent: 0, skipped: 0, failed: 0, errors: [] }
-);
-
 const runDueDateReminders = async (overrideOptions = {}) => {
+  // Options come from env by default, but manual API calls can override them.
   const options = {
     daysAhead: parseNumber(
       overrideOptions.daysAhead ?? process.env.DUE_REMINDER_DAYS_AHEAD,
@@ -382,7 +423,8 @@ const runDueDateReminders = async (overrideOptions = {}) => {
       : process.env.DUE_REMINDER_SEND_EMAIL !== undefined
         ? process.env.DUE_REMINDER_SEND_EMAIL === "true"
         : isEmailConfigured(),
-    buildingId: overrideOptions.buildingId || ""
+    buildingId: overrideOptions.buildingId || "",
+    force: overrideOptions.force === true || overrideOptions.force === "true"
   };
 
   if (options.sendSms && !isSmsConfigured()) {
@@ -391,20 +433,9 @@ const runDueDateReminders = async (overrideOptions = {}) => {
       sent: 0,
       skipped: 0,
       failed: 1,
+      force: Boolean(options.force),
       errors: [{
-        error: "SMS reminders are enabled, but SMS_API_URL, SMS_API_KEY, or SMS_SENDER_ID is missing."
-      }]
-    };
-  }
-
-  if (options.sendEmail && !isEmailConfigured()) {
-    return {
-      checked: 0,
-      sent: 0,
-      skipped: 0,
-      failed: 1,
-      errors: [{
-        error: "Email reminders are enabled, but SMTP_USER or SMTP_PASS is missing."
+        error: "SMS reminders are enabled, but SMS_API_URL, SMS_API_KEY, or an SMS sender ID is missing."
       }]
     };
   }
@@ -415,16 +446,12 @@ const runDueDateReminders = async (overrideOptions = {}) => {
       sent: 0,
       skipped: 0,
       failed: 0,
+      force: Boolean(options.force),
       errors: []
     };
   }
 
-  const results = await Promise.all([
-    processInvoices(Invoice, "Invoice", options),
-    processInvoices(RentInvoice, "RentInvoice", options)
-  ]);
-
-  return mergeResults(results);
+  return processInvoices(Invoice, "Invoice", options);
 };
 
 const summarizeReminderError = (entry) => {
@@ -448,6 +475,7 @@ const summarizeReminderResult = (result) => ({
 });
 
 const startDueDateReminderJob = () => {
+  // Background job waits briefly after startup so Mongo and env checks finish first.
   if (process.env.DUE_REMINDER_ENABLED !== "true") {
     console.log("Due date reminder job is disabled. Set DUE_REMINDER_ENABLED=true to enable it.");
     return null;
@@ -479,6 +507,9 @@ const startDueDateReminderJob = () => {
 };
 
 module.exports = {
+  getDaysUntilDue,
+  reminderAlreadySent,
   runDueDateReminders,
+  shouldSkipReminder,
   startDueDateReminderJob
 };

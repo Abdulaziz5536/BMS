@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 
+// Contract defines a tenant's rent agreement and drives generated invoice periods.
 const tenantFileSchema = new mongoose.Schema(
   {
     name: String,

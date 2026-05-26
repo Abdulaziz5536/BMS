@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+// Tenant stores contact details and the assigned unit.
+// Contracts, invoices, utilities, reminders, and payment records all reference tenants.
 const tenantFileSchema = new mongoose.Schema(
   {
     name: String,

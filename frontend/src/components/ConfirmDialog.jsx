@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CONFIRM_ACTION_EVENT } from "./confirmAction";
 
+// Single global confirm dialog. Pages call confirmAction() and this provider renders the modal.
 export default function ConfirmDialogProvider() {
   const [request, setRequest] = useState(null);
 
@@ -17,6 +18,7 @@ export default function ConfirmDialogProvider() {
   }, []);
 
   const close = useCallback((confirmed) => {
+    // Resolve the Promise created by confirmAction with true/false.
     request?.resolve?.(confirmed);
     setRequest(null);
   }, [request]);

@@ -1,6 +1,8 @@
 export const ETHIOPIAN_PHONE_PREFIX = "+251";
 export const ETHIOPIAN_PHONE_ERROR = "Phone must be a valid Ethiopian mobile number like +2519XXXXXXXX or +2517XXXXXXXX";
 
+// Phone helpers keep Ethiopian mobile numbers consistent in forms and API payloads.
+
 const getDigits = (value) => String(value || "").replace(/\D/g, "");
 
 export const formatEthiopianPhoneInput = (value) => {

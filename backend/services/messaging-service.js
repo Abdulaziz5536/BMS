@@ -1,18 +1,14 @@
 const nodemailer = require("nodemailer");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
+const { getShortErrorMessage } = require("../utils/error-response-utils");
+
+// Messaging service owns all outbound email/SMS behavior.
+// Building-specific env variables let different buildings use different SMTP accounts or SMS sender IDs.
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
-};
-
-const getEnvBoolean = (name, defaultValue = false) => {
-  if (process.env[name] === undefined) {
-    return defaultValue;
-  }
-
-  return process.env[name] === "true";
 };
 
 const escapeHtml = (value = "") =>
@@ -26,8 +22,90 @@ const escapeHtml = (value = "") =>
 
 const textToHtml = (value) => escapeHtml(value).replace(/\n/g, "<br>");
 
-const isEmailConfigured = () =>
-  Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+const normalizeEnvKey = (value = "") =>
+  String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const getBuildingEnvPrefixes = (namespace, building) => {
+  // For "Aymen Commercial Center", try both SMS_AYMEN_COMMERCIAL_CENTER_* and SMS_AYMEN_*.
+  const buildingName = typeof building === "string" ? building : building?.name;
+  const normalizedName = normalizeEnvKey(buildingName);
+  const firstWord = normalizeEnvKey(String(buildingName || "").split(/\s+/)[0] || "");
+
+  return [...new Set([normalizedName, firstWord].filter(Boolean).map((key) => `${namespace}_${key}`))];
+};
+
+const getEnvValue = (prefix, name, fallback) =>
+  process.env[`${prefix}_${name}`] || fallback;
+
+const getSmtpConfig = (building) => {
+  // Prefer building-specific SMTP credentials; fall back to global SMTP_* settings.
+  const buildingPrefix = getBuildingEnvPrefixes("SMTP", building).find((prefix) =>
+    process.env[`${prefix}_USER`] && process.env[`${prefix}_PASS`]
+  );
+  const prefix = buildingPrefix || "SMTP";
+
+  return {
+    key: prefix,
+    host: getEnvValue(prefix, "HOST", process.env.SMTP_HOST || "smtp.gmail.com"),
+    port: Number(getEnvValue(prefix, "PORT", process.env.SMTP_PORT || 587)),
+    secure: getEnvValue(prefix, "SECURE", process.env.SMTP_SECURE),
+    service: getEnvValue(prefix, "SERVICE", process.env.SMTP_SERVICE),
+    rejectUnauthorized: getEnvValue(
+      prefix,
+      "REJECT_UNAUTHORIZED",
+      process.env.SMTP_REJECT_UNAUTHORIZED
+    ),
+    user: getEnvValue(prefix, "USER", process.env.SMTP_USER),
+    pass: getEnvValue(prefix, "PASS", process.env.SMTP_PASS),
+    from: getEnvValue(prefix, "FROM", process.env.SMTP_FROM)
+  };
+};
+
+const isEmailConfigured = (building) => {
+  const config = getSmtpConfig(building);
+
+  return Boolean(config.user && config.pass);
+};
+
+const getSmsConfig = (building) => {
+  // One SMS API can be shared while sender IDs vary per building.
+  const buildingPrefix = getBuildingEnvPrefixes("SMS", building).find((prefix) =>
+    process.env[`${prefix}_SENDER_ID`] ||
+      process.env[`${prefix}_API_KEY`] ||
+      process.env[`${prefix}_API_URL`]
+  );
+  const prefix = buildingPrefix || "SMS";
+
+  return {
+    key: prefix,
+    apiUrl: getEnvValue(prefix, "API_URL", process.env.SMS_API_URL),
+    apiKey: getEnvValue(prefix, "API_KEY", process.env.SMS_API_KEY),
+    apiKeyHeader: getEnvValue(prefix, "API_KEY_HEADER", process.env.SMS_API_KEY_HEADER),
+    apiKeyPrefix: getEnvValue(prefix, "API_KEY_PREFIX", process.env.SMS_API_KEY_PREFIX),
+    apiKeyField: getEnvValue(prefix, "API_KEY_FIELD", process.env.SMS_API_KEY_FIELD),
+    method: getEnvValue(prefix, "API_METHOD", process.env.SMS_API_METHOD || "POST"),
+    toField: getEnvValue(prefix, "TO_FIELD", process.env.SMS_TO_FIELD || "to"),
+    messageField: getEnvValue(prefix, "MESSAGE_FIELD", process.env.SMS_MESSAGE_FIELD || "message"),
+    senderIdField: getEnvValue(prefix, "SENDER_ID_FIELD", process.env.SMS_SENDER_ID_FIELD || "senderId"),
+    senderId: getEnvValue(prefix, "SENDER_ID", process.env.SMS_SENDER_ID)
+  };
+};
+
+const hasAnySmsSenderId = () =>
+  Object.keys(process.env).some((key) =>
+    key !== "SMS_SENDER_ID" && /^SMS_[A-Z0-9_]+_SENDER_ID$/.test(key) && process.env[key]
+  );
+
+const isSmsConfigured = (building) => {
+  const config = getSmsConfig(building);
+  const hasSender = building ? Boolean(config.senderId) : Boolean(config.senderId || hasAnySmsSenderId());
+
+  return Boolean(config.apiUrl && config.apiKey && hasSender);
+};
 
 const describeSendError = (error) => {
   const details = [
@@ -37,48 +115,52 @@ const describeSendError = (error) => {
     error?.response
   ].filter(Boolean);
 
-  return details.join(" - ") || "Unknown messaging error";
+  return getShortErrorMessage(details.join(" - "), "Messaging failed");
 };
 
-let emailTransporter;
+const emailTransporters = new Map();
 
-const getEmailTransporter = () => {
-  if (!isEmailConfigured()) {
+const getEmailTransporter = (building) => {
+  const config = getSmtpConfig(building);
+
+  if (!config.user || !config.pass) {
     throw createHttpError(
       400,
       "Email is not configured. Set SMTP_USER and SMTP_PASS in backend/.env."
     );
   }
 
-  if (!emailTransporter) {
-    const port = Number(process.env.SMTP_PORT || 587);
-    const secure = getEnvBoolean("SMTP_SECURE", port === 465);
+  // Cache transporters per env prefix so repeated sends do not recreate SMTP clients.
+  if (!emailTransporters.has(config.key)) {
+    const secure = config.secure === undefined || config.secure === ""
+      ? config.port === 465
+      : config.secure === "true";
     const options = {
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
-      port,
+      host: config.host,
+      port: config.port,
       secure,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
+        user: config.user,
+        pass: config.pass
       }
     };
 
-    if (process.env.SMTP_SERVICE && !process.env.SMTP_HOST) {
-      options.service = process.env.SMTP_SERVICE;
+    if (config.service && !config.host) {
+      options.service = config.service;
     }
 
-    if (process.env.SMTP_REJECT_UNAUTHORIZED === "false") {
+    if (config.rejectUnauthorized === "false") {
       options.tls = { rejectUnauthorized: false };
     }
 
-    emailTransporter = nodemailer.createTransport(options);
+    emailTransporters.set(config.key, {
+      from: config.from || config.user,
+      transporter: nodemailer.createTransport(options)
+    });
   }
 
-  return emailTransporter;
+  return emailTransporters.get(config.key);
 };
-
-const isSmsConfigured = () =>
-  Boolean(process.env.SMS_API_URL && process.env.SMS_API_KEY && process.env.SMS_SENDER_ID);
 
 const formatSmsNumber = (phoneNumber) => {
   try {
@@ -88,15 +170,16 @@ const formatSmsNumber = (phoneNumber) => {
   }
 };
 
-const getSmsApiKeyHeaderValue = () => {
-  const headerName = process.env.SMS_API_KEY_HEADER || "Authorization";
-  const configuredPrefix = process.env.SMS_API_KEY_PREFIX;
+const getSmsApiKeyHeaderValue = (config) => {
+  // Providers differ: some expect "Authorization: Bearer key", others use a custom header.
+  const headerName = config.apiKeyHeader || "Authorization";
+  const configuredPrefix = config.apiKeyPrefix;
   const defaultPrefix = headerName.toLowerCase() === "authorization" ? "Bearer " : "";
   const prefix = configuredPrefix === undefined ? defaultPrefix : configuredPrefix;
 
   return {
     headerName,
-    value: `${prefix}${process.env.SMS_API_KEY}`
+    value: `${prefix}${config.apiKey}`
   };
 };
 
@@ -113,6 +196,7 @@ const parseProviderResponse = (text) => {
 };
 
 const providerResponseFailed = (responseBody) => {
+  // Some SMS providers return HTTP 200 with an error status inside the JSON body.
   if (!responseBody || typeof responseBody !== "object") {
     return false;
   }
@@ -125,11 +209,13 @@ const providerResponseFailed = (responseBody) => {
   return ["error", "failed", "failure", "rejected"].includes(status);
 };
 
-const sendSMS = async (phoneNumber, message) => {
+const sendSMS = async (phoneNumber, message, options = {}) => {
   try {
-    if (!isSmsConfigured()) {
+    const config = getSmsConfig(options.building);
+
+    if (!isSmsConfigured(options.building)) {
       throw new Error(
-        "SMS is not configured. Set SMS_API_URL, SMS_API_KEY, and SMS_SENDER_ID in backend/.env."
+        "SMS is not configured for this building. Set SMS_API_URL, SMS_API_KEY, and SMS_SENDER_ID or SMS_<BUILDING>_SENDER_ID in backend/.env."
       );
     }
 
@@ -139,23 +225,24 @@ const sendSMS = async (phoneNumber, message) => {
       throw new Error("No phone number available");
     }
 
-    const { headerName, value } = getSmsApiKeyHeaderValue();
-    const toField = process.env.SMS_TO_FIELD || "to";
-    const messageField = process.env.SMS_MESSAGE_FIELD || "message";
-    const senderField = process.env.SMS_SENDER_ID_FIELD || "senderId";
-    const apiKeyBodyField = process.env.SMS_API_KEY_FIELD || "";
+    const { headerName, value } = getSmsApiKeyHeaderValue(config);
+    const toField = config.toField;
+    const messageField = config.messageField;
+    const senderField = config.senderIdField;
+    const apiKeyBodyField = config.apiKeyField || "";
+    // Field names are configurable because SMS providers use different JSON shapes.
     const body = {
       [toField]: to,
       [messageField]: message,
-      [senderField]: process.env.SMS_SENDER_ID
+      [senderField]: config.senderId
     };
 
     if (apiKeyBodyField) {
-      body[apiKeyBodyField] = process.env.SMS_API_KEY;
+      body[apiKeyBodyField] = config.apiKey;
     }
 
-    const response = await fetch(process.env.SMS_API_URL, {
-      method: process.env.SMS_API_METHOD || "POST",
+    const response = await fetch(config.apiUrl, {
+      method: config.method,
       headers: {
         "Content-Type": "application/json",
         [headerName]: value
@@ -181,12 +268,11 @@ const sendSMS = async (phoneNumber, message) => {
   }
 };
 
-const sendEmail = async (email, subject, message, html) => {
+const sendEmail = async (email, subject, message, html, options = {}) => {
   try {
-    const transporter = getEmailTransporter();
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const { transporter, from } = getEmailTransporter(options.building);
     const info = await transporter.sendMail({
-      from,
+      from: options.from || from,
       to: email,
       subject,
       text: message,

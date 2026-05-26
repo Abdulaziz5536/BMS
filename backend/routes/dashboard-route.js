@@ -7,9 +7,11 @@ const Employee = require("../models/employees-model");
 const Contract = require("../models/contract-model");
 const Utility = require("../models/utility-model");
 const Invoice = require("../models/invoice-model");
-const RentInvoice = require("../models/rent-invoice-model");
 const PaymentRecord = require("../models/payment-record-model");
 const AuditLog = require("../models/audit-log-model");
+
+// Dashboard route builds a compact summary for the selected building.
+// It reads from several collections, so every query must use the same building filter.
 
 router.get("/dashboard", async (req,res) => {
 
@@ -19,6 +21,7 @@ router.get("/dashboard", async (req,res) => {
     ? { building: new mongoose.Types.ObjectId(req.query.building) }
     : {};
 
+  // Total units comes from floor metadata; occupied units comes from tenants assigned to units.
   const floorUnitsResult = await Floor.aggregate([
     { $match: aggregateFilter },
     {
@@ -39,6 +42,7 @@ router.get("/dashboard", async (req,res) => {
      const occupancyRate =
     totalUnits === 0 ? 0 : ((occupiedUnits.length / totalUnits) * 100).toFixed(1);
     
+    // Contract revenue is normalized to a monthly number for yearly/quarterly contracts.
     const revenueResult = await Contract.aggregate([
       { $match: { ...aggregateFilter, status: "paid" } },
       {
@@ -104,29 +108,18 @@ router.get("/dashboard", async (req,res) => {
   dueSoonEnd.setDate(dueSoonEnd.getDate() + 7);
   dueSoonEnd.setHours(23, 59, 59, 999);
 
-  const [invoiceOutstanding, rentInvoiceOutstanding] = await Promise.all([
-    Invoice.aggregate([
-      { $match: { ...aggregateFilter, outstandingBalance: { $gt: 0 } } },
-      { $group: { _id: null, total: { $sum: "$outstandingBalance" }, count: { $sum: 1 } } }
-    ]),
-    RentInvoice.aggregate([
-      { $match: { ...aggregateFilter, outstandingBalance: { $gt: 0 } } },
-      { $group: { _id: null, total: { $sum: "$outstandingBalance" }, count: { $sum: 1 } } }
-    ])
+  // Outstanding rent is based on invoice balances, not contract status.
+  const invoiceOutstanding = await Invoice.aggregate([
+    { $match: { ...aggregateFilter, outstandingBalance: { $gt: 0 } } },
+    { $group: { _id: null, total: { $sum: "$outstandingBalance" }, count: { $sum: 1 } } }
   ]);
 
-  const outstandingRent =
-    (invoiceOutstanding[0]?.total || 0) +
-    (rentInvoiceOutstanding[0]?.total || 0);
-  const outstandingInvoiceCount =
-    (invoiceOutstanding[0]?.count || 0) +
-    (rentInvoiceOutstanding[0]?.count || 0);
+  const outstandingRent = invoiceOutstanding[0]?.total || 0;
+  const outstandingInvoiceCount = invoiceOutstanding[0]?.count || 0;
 
-  const [dueSoonInvoices, overdueInvoices, dueSoonRentInvoices, overdueRentInvoices] = await Promise.all([
+  const [dueSoonInvoices, overdueInvoices] = await Promise.all([
     Invoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $gte: today, $lte: dueSoonEnd } }),
-    Invoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $lt: today } }),
-    RentInvoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $gte: today, $lte: dueSoonEnd } }),
-    RentInvoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $lt: today } })
+    Invoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $lt: today } })
   ]);
 
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -141,6 +134,7 @@ router.get("/dashboard", async (req,res) => {
     { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }
   ]);
 
+  // Recent activity gives the dashboard a quick audit trail for user actions.
   const recentActivity = await AuditLog.find(filter)
     .sort({ createdAt: -1 })
     .limit(8)
@@ -159,8 +153,8 @@ router.get("/dashboard", async (req,res) => {
       occupancyRate,
       outstandingRent,
       outstandingInvoiceCount,
-      dueSoonInvoices: dueSoonInvoices + dueSoonRentInvoices,
-      overdueInvoices: overdueInvoices + overdueRentInvoices,
+      dueSoonInvoices,
+      overdueInvoices,
       monthlyCollected: monthlyPaymentResult[0]?.total || 0,
       monthlyPaymentCount: monthlyPaymentResult[0]?.count || 0,
       recentActivity

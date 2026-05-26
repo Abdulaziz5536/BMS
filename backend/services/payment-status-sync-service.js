@@ -1,8 +1,10 @@
 const Contract = require("../models/contract-model");
 const Invoice = require("../models/invoice-model");
-const RentInvoice = require("../models/rent-invoice-model");
 
 const ACTIVE_INVOICE_FILTER = { status: { $ne: "cancelled" } };
+
+// Payment-status sync is the single place that translates between contract status
+// and invoice fields. Keeping this centralized prevents paid/pending drift.
 
 const getInvoiceTotal = (invoice) =>
   Number(invoice.totalAmount || invoice.rentAmount || 0);
@@ -23,6 +25,7 @@ const resolveContract = async (contractOrId) => {
 };
 
 const setInvoiceStatusFields = (invoice, status, options = {}) => {
+  // Update all payment-related invoice fields together, not only the status string.
   const total = getInvoiceTotal(invoice);
 
   if (status === "paid") {
@@ -48,17 +51,9 @@ const setInvoiceStatusFields = (invoice, status, options = {}) => {
   return invoice;
 };
 
-const getInvoiceFieldsForContractStatus = (contract, totalAmount) => {
+const getNewInvoicePaymentFields = (totalAmount) => {
+  // Fresh generated invoices must start unpaid even if the previous period was paid.
   const total = Number(totalAmount || 0);
-
-  if (contract.status === "paid") {
-    return {
-      amountPaid: total,
-      outstandingBalance: 0,
-      status: "paid",
-      paymentDate: new Date()
-    };
-  }
 
   return {
     amountPaid: 0,
@@ -68,15 +63,11 @@ const getInvoiceFieldsForContractStatus = (contract, totalAmount) => {
 };
 
 const getContractInvoices = async (contractId) => {
-  const [invoices, rentInvoices] = await Promise.all([
-    Invoice.find({ contract: contractId, ...ACTIVE_INVOICE_FILTER }),
-    RentInvoice.find({ contract: contractId, ...ACTIVE_INVOICE_FILTER })
-  ]);
-
-  return [...invoices, ...rentInvoices];
+  return Invoice.find({ contract: contractId, ...ACTIVE_INVOICE_FILTER });
 };
 
 const applyContractStatusToInvoices = async (contractOrId, status) => {
+  // Manual contract status changes intentionally apply to every active invoice.
   const contract = await resolveContract(contractOrId);
 
   if (!contract || !["pending", "paid"].includes(status)) {
@@ -112,36 +103,11 @@ const applyContractStatusToInvoices = async (contractOrId, status) => {
 };
 
 const syncContractPaymentState = async (contractOrId) => {
-  const contract = await resolveContract(contractOrId);
-
-  if (!contract) {
-    return null;
-  }
-
-  const invoices = await getContractInvoices(contract._id);
-
-  if (invoices.length === 0) {
-    return contract;
-  }
-
-  const allInvoicesPaid = invoices.every(isInvoicePaid);
-
-  if (contract.status === "paid" && !allInvoicesPaid) {
-    await applyContractStatusToInvoices(contract, "paid");
-    return contract;
-  }
-
-  const nextStatus = allInvoicesPaid ? "paid" : "pending";
-
-  if (contract.status !== nextStatus) {
-    contract.status = nextStatus;
-    await contract.save();
-  }
-
-  return contract;
+  return syncContractStatusFromInvoices(contractOrId);
 };
 
 const syncContractStatusFromInvoices = async (contractOrId) => {
+  // Contract is paid only when every active invoice is paid.
   const contract = await resolveContract(contractOrId);
 
   if (!contract) {
@@ -166,7 +132,7 @@ const syncContractStatusFromInvoices = async (contractOrId) => {
 
 module.exports = {
   applyContractStatusToInvoices,
-  getInvoiceFieldsForContractStatus,
+  getNewInvoicePaymentFields,
   setInvoiceStatusFields,
   syncContractPaymentState,
   syncContractStatusFromInvoices

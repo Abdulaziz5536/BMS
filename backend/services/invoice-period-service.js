@@ -7,6 +7,9 @@ const {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Invoice period service turns a contract into exact billing periods.
+// It uses Ethiopian month rules because rent cycles are entered in Ethiopian dates.
+
 const getFrequencyMonths = (paymentFrequency) => {
   switch (String(paymentFrequency || "").toLowerCase()) {
     case "quarterly":
@@ -33,6 +36,7 @@ const addDays = (date, days) =>
   new Date(date.getTime() + days * DAY_MS);
 
 const addEthiopianMonths = (date, monthsToAdd) => {
+  // Add months in the Ethiopian calendar, then convert back to Gregorian for storage.
   const ethiopianDate = gregorianToEthiopian(date);
 
   if (!ethiopianDate) {
@@ -56,6 +60,7 @@ const getLeaseEndDate = (contract) =>
   parseFlexibleDateInput(contract.leaseEndDate);
 
 const getPeriodEnd = (periodStart, contract, leaseEnd) => {
+  // Period end is the day before the next period begins, capped by lease end.
   const nextPeriodStart = addEthiopianMonths(
     periodStart,
     getFrequencyMonths(contract.paymentFrequency)
@@ -75,6 +80,7 @@ const getPeriodEnd = (periodStart, contract, leaseEnd) => {
 };
 
 const getPeriodContainingDate = (contract, targetDate, leaseStart, leaseEnd) => {
+  // Used when the user asks for the invoice covering a specific target date.
   let periodStart = leaseStart;
   let periodEnd = getPeriodEnd(periodStart, contract, leaseEnd);
   let guard = 0;
@@ -89,6 +95,7 @@ const getPeriodContainingDate = (contract, targetDate, leaseStart, leaseEnd) => 
 };
 
 const getNextInvoicePeriod = async (Model, contract, targetDate = null) => {
+  // With targetDate, generate that date's period; without it, continue after latest invoice.
   const parsedTargetDate = parseFlexibleDateInput(targetDate);
   const leaseStart = getLeaseStartDate(contract, parsedTargetDate);
   const leaseEnd = getLeaseEndDate(contract);
@@ -129,6 +136,7 @@ const getDateTime = (value) => {
 };
 
 const recalculateInvoicePeriodsForContract = async (Model, contract) => {
+  // When contract dates/frequency change, rewrite existing invoice periods in order.
   const leaseStart = getLeaseStartDate(contract);
   const leaseEnd = getLeaseEndDate(contract);
 

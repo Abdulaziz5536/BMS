@@ -8,12 +8,15 @@ import Sidebar from "./Sidebar";
 import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useSelectedBuildingName from "../hooks/useSelectedBuildingName";
+import useShortError from "../hooks/useShortError";
 import { compareSortValues, nextSortDirection } from "../utils/sortUtils";
 import {
   ETHIOPIAN_PHONE_ERROR,
@@ -24,6 +27,8 @@ import {
   phoneInputProps
 } from "../utils/phoneUtils";
 import "../style.css";
+
+// Employees page manages staff records and generates a payroll report for the selected building.
 
 const TAX_BRACKETS = [
   { min: 0, max: 2000, rate: 0, deduction: 0 },
@@ -44,7 +49,24 @@ const formatCurrency = (amount) => `Br ${Number(amount || 0).toLocaleString(unde
 
 const currentPayrollMonth = () => new Date().toISOString().slice(0, 7);
 
+const formatPayrollMonth = (value) => {
+  if (!value) return "-";
+  const [year, month] = value.split("-").map(Number);
+  if (!year || !month) return value;
+  return new Date(year, month - 1, 1).toLocaleDateString([], {
+    month: "long",
+    year: "numeric"
+  });
+};
+
+const formatGeneratedDate = () => new Date().toLocaleDateString([], {
+  year: "numeric",
+  month: "short",
+  day: "2-digit"
+});
+
 const calculateIncomeTax = (salary) => {
+  // Ethiopian payroll-style bracket calculation using deduction amounts.
   const grossSalary = Math.max(0, Number(salary) || 0);
   const bracket = TAX_BRACKETS.find((item) => grossSalary > item.min && grossSalary <= item.max) || TAX_BRACKETS[0];
   const tax = Math.max(0, grossSalary * bracket.rate - bracket.deduction);
@@ -59,6 +81,7 @@ const calculateNetPayFromGross = (grossSalary) => {
 };
 
 const calculateGrossSalaryFromNet = (netSalary) => {
+  // Salary is entered as net pay, so binary search finds the gross salary that produces it.
   const targetNet = Math.max(0, Number(netSalary) || 0);
 
   if (targetNet === 0) {
@@ -87,6 +110,7 @@ const calculateGrossSalaryFromNet = (netSalary) => {
 
 export default function Employees() {
   const selectedBuildingId = useSelectedBuilding();
+  const buildingName = useSelectedBuildingName();
   const [employees, setEmployees] = useState([]);
   const [name, setName] = useState("");
   const [position, setPosition] = useState("");
@@ -99,7 +123,7 @@ export default function Employees() {
   const [editingId, setEditingId] = useState(null);
   const employeeFormRef = useRef(null);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [sortField, setSortField] = useState("name");
   const [sortDirection, setSortDirection] = useState("asc");
 
@@ -115,6 +139,7 @@ export default function Employees() {
   }, []);
 
   const payrollRows = useMemo(() => employees.map((employee) => {
+    // Each payroll row expands one employee's net salary into tax/pension figures.
     const netPay = Number(employee.salary || 0);
     const grossSalary = calculateGrossSalaryFromNet(netPay);
     const employeePension = Number((grossSalary * EMPLOYEE_PENSION_RATE).toFixed(2));
@@ -154,6 +179,7 @@ export default function Employees() {
   ), [employees, sortDirection, sortField]);
 
   const fetchEmployees = useCallback(async (useCache = true) => {
+    // Employee list is cached per building to keep payroll screen fast.
     if (!selectedBuildingId) {
       setEmployees([]);
       return;
@@ -166,14 +192,14 @@ export default function Employees() {
       "Failed to load employees",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   useEffect(() => {
     clearForm();
     setMessage("");
     setError("");
     fetchEmployees();
-  }, [clearForm, fetchEmployees, selectedBuildingId]);
+  }, [clearForm, fetchEmployees, selectedBuildingId, setError]);
 
   useEffect(() => {
     if (editingId) {
@@ -185,6 +211,7 @@ export default function Employees() {
   }, [editingId]);
 
   const saveEmployee = async () => {
+    // Phone/email/salary validation runs before calling the backend.
     setMessage("");
     setError("");
 
@@ -211,7 +238,7 @@ export default function Employees() {
     try {
       const normalizedPhone = normalizeEthiopianPhone(phoneNumber, { required: false });
       const normalizedEmergencyPhone = normalizeEthiopianPhone(emergencyContactPhone, { required: false });
-      const res = await fetch(
+      const res = await apiFetch(
         editingId ? `${API_BASE}/employees/${editingId}` : `${API_BASE}/employees`,
         {
           method: editingId ? "PUT" : "POST",
@@ -247,6 +274,7 @@ export default function Employees() {
   };
 
   const editEmployee = (employee) => {
+    // Populate the form with display-friendly phone formatting.
     setName(employee.name || "");
     setPosition(employee.position || "");
     setPhoneNumber(formatEthiopianPhoneInput(employee.phoneNumber || ""));
@@ -260,10 +288,12 @@ export default function Employees() {
   };
 
   const printPayroll = () => {
+    // CSS print rules turn the current payroll table into a formal report.
     window.print();
   };
 
   const deleteEmployee = async (id) => {
+    // Employees are independent records, but deletion is still confirmed to prevent accidents.
     const shouldDelete = await confirmAction({
       title: "Delete employee?",
       message: "Are you sure you want to delete this employee?",
@@ -279,7 +309,7 @@ export default function Employees() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API_BASE}/employees/${id}`, {
+      const res = await apiFetch(`${API_BASE}/employees/${id}`, {
         method: "DELETE"
       });
 
@@ -301,6 +331,9 @@ export default function Employees() {
     setSortDirection(nextSortDirection(sortField, field, sortDirection));
     setSortField(field);
   };
+
+  const payrollMonthLabel = formatPayrollMonth(payrollMonth);
+  const payrollGeneratedDate = formatGeneratedDate();
 
   return (
     <div className="app-layout">
@@ -460,11 +493,12 @@ export default function Employees() {
           <div className="section-header">
             <div>
               <h2>Payroll Generator</h2>
-              <p>Payroll uses the entered net salary to calculate gross pay, PAYE, pension, and government remittance.</p>
+              <p>{payrollRows.length} employee{payrollRows.length === 1 ? "" : "s"} included for {payrollMonthLabel}.</p>
             </div>
             <div className="payroll-actions">
               <input
                 type="month"
+                aria-label="Payroll month"
                 value={payrollMonth}
                 onChange={(e) => setPayrollMonth(e.target.value)}
               />
@@ -503,10 +537,47 @@ export default function Employees() {
           </div>
 
           <div className="floors-table-wrapper payroll-report">
-            <div className="payroll-print-heading">
-              <h2>BHA MALL Payroll</h2>
-              <p>Payroll month: {payrollMonth || "-"}</p>
+            <div className="payroll-document-header">
+              <div>
+                <p className="document-kicker">{buildingName}</p>
+                <h2>Payroll Report</h2>
+                <p className="document-subtitle">Monthly salary, tax, pension, and remittance statement.</p>
+              </div>
+              <div className="document-meta-grid">
+                <div>
+                  <span>Payroll Month</span>
+                  <strong>{payrollMonthLabel}</strong>
+                </div>
+                <div>
+                  <span>Generated</span>
+                  <strong>{payrollGeneratedDate}</strong>
+                </div>
+                <div>
+                  <span>Employees</span>
+                  <strong>{payrollRows.length}</strong>
+                </div>
+              </div>
             </div>
+
+            <div className="payroll-report-summary">
+              <div>
+                <span>Total Gross</span>
+                <strong>{formatCurrency(payrollTotals.grossSalary)}</strong>
+              </div>
+              <div>
+                <span>Total Net Pay</span>
+                <strong>{formatCurrency(payrollTotals.netPay)}</strong>
+              </div>
+              <div>
+                <span>PAYE Tax</span>
+                <strong>{formatCurrency(payrollTotals.incomeTax)}</strong>
+              </div>
+              <div>
+                <span>Gov. Remittance</span>
+                <strong>{formatCurrency(payrollTotals.governmentRemittance)}</strong>
+              </div>
+            </div>
+
             <table className="floors-table payroll-table">
               <thead>
                 <tr>
@@ -552,6 +623,18 @@ export default function Employees() {
                 </tr>
               </tfoot>
             </table>
+
+            <div className="payroll-signature-grid">
+              <div>
+                <span>Prepared by</span>
+              </div>
+              <div>
+                <span>Reviewed by</span>
+              </div>
+              <div>
+                <span>Approved by</span>
+              </div>
+            </div>
           </div>
         </section>
       </div>

@@ -7,12 +7,17 @@ const Unit = require("../models/unit-model");
 const {
   createHttpError,
   isEmailConfigured,
+  isSmsConfigured,
   sendEmail,
   sendSMS
 } = require("../services/messaging-service");
+const { getBuildingBrandName } = require("../utils/branding-utils");
 const { parseFlexibleDateInput } = require("../utils/date-utils");
 
 const router = express.Router();
+
+// Announcements can target all tenants, selected floors/units, or named tenants.
+// Delivery uses the selected building for branding, email account, and SMS sender ID.
 
 const toBoolean = (value) => value === true || value === "true";
 
@@ -47,6 +52,7 @@ const priorityLabels = {
 };
 
 const getAnnouncementTheme = (announcement) => {
+  // Email colors change by importance so emergency and rent notices stand out.
   if (announcement.type === "emergency" || announcement.priority === "urgent") {
     return {
       accentColor: "#dc2626",
@@ -75,9 +81,10 @@ const getAnnouncementTheme = (announcement) => {
 
 const buildAnnouncementEmailText = (announcement, tenant) => {
   const tenantName = tenant?.tenantName || "Tenant";
+  const brandName = getBuildingBrandName(announcement.building);
 
   return [
-    "BHA MALL",
+    brandName,
     "",
     `Hello ${tenantName},`,
     "",
@@ -92,13 +99,18 @@ const buildAnnouncementEmailText = (announcement, tenant) => {
   ].join("\n");
 };
 
+const buildAnnouncementSmsText = (announcement) =>
+  `${getBuildingBrandName(announcement.building)}: ${announcement.message}`;
+
 const buildAnnouncementEmailHtml = (announcement, tenant) => {
   const tenantName = tenant?.tenantName || "Tenant";
+  const brandName = getBuildingBrandName(announcement.building);
   const typeLabel = announcementTypeLabels[announcement.type] || "Announcement";
   const priorityLabel = priorityLabels[announcement.priority] || announcement.priority || "Medium";
   const theme = getAnnouncementTheme(announcement);
   const preheader = `${typeLabel}: ${announcement.title}`;
 
+  // HTML is built here instead of the frontend because the backend sends the email.
   return `
     <div style="background: #f3f6fb; padding: 28px 14px; font-family: Arial, sans-serif; color: #1f2937;">
       <div style="display: none; max-height: 0; overflow: hidden; opacity: 0; color: transparent;">
@@ -107,7 +119,7 @@ const buildAnnouncementEmailHtml = (announcement, tenant) => {
 
       <div style="max-width: 680px; margin: auto; background: #ffffff; border: 1px solid #dbe4f0; border-radius: 12px; overflow: hidden;">
         <div style="background: ${theme.headerColor}; color: #ffffff; padding: 24px 28px;">
-          <p style="margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 1px;">BHA MALL</p>
+          <p style="margin: 0 0 8px; font-size: 13px; font-weight: 700; letter-spacing: 1px;">${escapeHtml(brandName)}</p>
           <h1 style="margin: 0; font-size: 24px; font-weight: 700;">${escapeHtml(announcement.title)}</h1>
         </div>
 
@@ -124,11 +136,11 @@ const buildAnnouncementEmailHtml = (announcement, tenant) => {
           </div>
 
           <p style="margin: 0; font-size: 14px; color: #475569;">Thank you for your attention.</p>
-          <p style="margin: 8px 0 0; font-size: 14px; color: #475569;">BHA MALL</p>
+          <p style="margin: 8px 0 0; font-size: 14px; color: #475569;">${escapeHtml(brandName)}</p>
         </div>
 
         <div style="background: #f8fafc; text-align: center; font-size: 12px; color: #94a3b8; padding: 15px 20px;">
-          This announcement was sent by BHA MALL.
+          This announcement was sent by ${escapeHtml(brandName)}.
         </div>
       </div>
     </div>
@@ -145,9 +157,13 @@ const validateObjectIds = (ids, label) => {
   ids.forEach((id) => validateObjectId(id, label));
 };
 
-const buildRecipientFilter = (building) => (
-  building ? { building } : {}
-);
+const getBuildingId = (building) => building?._id || building;
+
+const buildRecipientFilter = (building) => {
+  const buildingId = getBuildingId(building);
+
+  return buildingId ? { building: buildingId } : {};
+};
 
 const uniqueTenants = (tenants) => {
   const seen = new Set();
@@ -169,6 +185,7 @@ const getRecipients = async (announcement) => {
   const buildingFilter = buildRecipientFilter(building);
   let recipients = [];
 
+  // Resolve the chosen audience into tenant records that have email/phone fields.
   switch (targetType) {
     case "all_tenants":
       recipients = await Tenant.find(buildingFilter).populate("unit");
@@ -217,6 +234,7 @@ const normalizeAnnouncementPayload = (body) => {
     throw createHttpError(400, "Invalid scheduled date");
   }
 
+  // Keep draft/scheduled/sending/sent state consistent from the first save.
   return {
     title: String(body.title || "").trim(),
     message: String(body.message || "").trim(),
@@ -255,6 +273,7 @@ const validateAnnouncementPayload = (announcementData) => {
     throw createHttpError(400, "Select at least one delivery method");
   }
 
+  // Selected floors/units need ObjectIds so Mongo queries cannot accidentally match bad data.
   if (
     announcementData.targetType === "selected_floors" ||
     announcementData.targetType === "selected_units"
@@ -284,6 +303,7 @@ const validateAnnouncementPayload = (announcementData) => {
 };
 
 const updateDeliveryStatus = (announcement, delivery) => {
+  // Store a channel-by-channel delivery summary for the announcement history page.
   announcement.deliveryStatus = {
     sms: {
       sent: delivery.smsSent,
@@ -392,7 +412,7 @@ router.post("/:id/send", async (req, res) => {
   try {
     validateObjectId(req.params.id, "announcement ID");
 
-    announcement = await Announcement.findById(req.params.id);
+    announcement = await Announcement.findById(req.params.id).populate("building");
 
     if (!announcement) {
       return res.status(404).json({ error: "Announcement not found" });
@@ -406,12 +426,19 @@ router.post("/:id/send", async (req, res) => {
       return res.status(400).json({ error: "No delivery method selected" });
     }
 
-    if (announcement.sendEmail && !isEmailConfigured()) {
+    if (announcement.sendEmail && !isEmailConfigured(announcement.building)) {
       return res.status(400).json({
         error: "Email is not configured. Set SMTP_USER and SMTP_PASS in backend/.env."
       });
     }
 
+    if (announcement.sendSMS && !isSmsConfigured(announcement.building)) {
+      return res.status(400).json({
+        error: "SMS is not configured for this building. Set SMS_API_URL, SMS_API_KEY, and SMS_<BUILDING>_SENDER_ID in backend/.env."
+      });
+    }
+
+    // Recipients are resolved at send time so edits to tenants/floors are respected.
     const recipients = await getRecipients(announcement);
 
     if (recipients.length === 0) {
@@ -434,13 +461,19 @@ router.post("/:id/send", async (req, res) => {
       rent_reminder: "Rent Reminder",
       announcement: "Announcement"
     }[announcement.type] || "Announcement";
+    const brandName = getBuildingBrandName(announcement.building);
 
+    // Send to each tenant and collect per-channel failures instead of stopping at the first error.
     for (const tenant of recipients) {
-      const subject = `${subjectPrefix}: ${announcement.title}`;
+      const subject = `${brandName} - ${subjectPrefix}: ${announcement.title}`;
 
       if (announcement.sendSMS) {
         if (tenant.phone) {
-          const smsResult = await sendSMS(tenant.phone, announcement.message);
+          const smsResult = await sendSMS(
+            tenant.phone,
+            buildAnnouncementSmsText(announcement),
+            { building: announcement.building }
+          );
 
           if (smsResult.success) {
             delivery.smsSent += 1;
@@ -464,7 +497,9 @@ router.post("/:id/send", async (req, res) => {
         if (email) {
           const emailText = buildAnnouncementEmailText(announcement, tenant);
           const emailHtml = buildAnnouncementEmailHtml(announcement, tenant);
-          const emailResult = await sendEmail(email, subject, emailText, emailHtml);
+          const emailResult = await sendEmail(email, subject, emailText, emailHtml, {
+            building: announcement.building
+          });
 
           if (emailResult.success) {
             delivery.emailSent += 1;

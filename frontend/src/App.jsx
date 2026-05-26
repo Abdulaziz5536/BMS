@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import Login from "./components/Login";
 import Signup from "./components/Signup";
@@ -11,7 +11,6 @@ import Contracts from "./pages/Contracts";
 import Employees from "./pages/Employees";
 import Utilities from "./pages/Utilities";
 import Invoice from "./pages/Invoice";
-import Rent from "./pages/Rent";
 import Announcements from "./pages/Announcements";
 import Activity from "./pages/Activity";
 import SystemTools from "./pages/SystemTools";
@@ -21,7 +20,9 @@ import ConfirmDialogProvider from "./components/ConfirmDialog";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { SidebarSuppressContext } from "./components/sidebarContext";
+import { SIGNUP_ENABLED } from "./config";
 
+// ProtectedAppPage wraps every logged-in screen with the shared sidebar layout.
 function ProtectedAppPage({ children }) {
   return (
     <ProtectedRoute>
@@ -41,11 +42,12 @@ function App() {
   return (
     <ErrorBoundary>
     <ConfirmDialogProvider />
+    {/* Routes define the whole frontend navigation map. Protected pages require a login token. */}
     <Routes>
 
       <Route path="/" element={<Login />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
+      <Route path="/signup" element={SIGNUP_ENABLED ? <Signup /> : <Navigate to="/login" replace />} />
 
       <Route
         path="/dashboard"
@@ -65,13 +67,10 @@ function App() {
         }
       />
 
+      {/* Old rent route is kept as a redirect so saved bookmarks still work. */}
       <Route
         path="/rent"
-        element={
-          <ProtectedAppPage>
-            <Rent />
-          </ProtectedAppPage>
-        }
+        element={<Navigate to="/invoice" replace />}
       />
 
       <Route

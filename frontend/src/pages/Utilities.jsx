@@ -8,18 +8,22 @@ import { confirmAction } from "../components/confirmAction";
 import FilePreviewLink from "../components/FilePreviewLink";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import {
   dateInputProps,
   formatEthiopianDate,
   normalizeDateInputForApi
 } from "../utils/dateUtils";
 import "../style.css";
+
+// Utilities page tracks non-rent charges and can create the next utility cycle after payment.
 
 export default function Utilities() {
   const selectedBuildingId = useSelectedBuilding();
@@ -40,7 +44,7 @@ export default function Utilities() {
   const editUtilityFormRef = useRef(null);
 
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState("tenant");
@@ -49,6 +53,7 @@ export default function Utilities() {
   const MAX_UPLOAD_SIZE = 7 * 1024 * 1024;
 
   const readUploadFile = (file) => {
+    // Browser FileReader converts utility attachments into data URLs for the backend.
     return new Promise((resolve, reject) => {
       if (!file) {
         resolve(undefined);
@@ -102,6 +107,7 @@ export default function Utilities() {
   };
 
   const fetchUtilities = async (useCache = true) => {
+    // Utility rows include tenant/unit info for building-scoped tables.
     if (!selectedBuildingId) {
       setUtilities([]);
       return;
@@ -182,6 +188,7 @@ export default function Utilities() {
   };
 
   const formTotal = useMemo(() => {
+    // Live total helps users catch amount-entry mistakes before saving.
     return getUtilityTotal({
       waterAmount,
       lightAmount,
@@ -190,6 +197,7 @@ export default function Utilities() {
   }, [waterAmount, lightAmount, generatorGasAmount]);
 
   const saveUtility = async () => {
+    // Backend validates tenant ownership and negative amount rules.
     setMessage("");
     setError("");
 
@@ -204,7 +212,7 @@ export default function Utilities() {
     }
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         editingId ? `${API_BASE}/utilities/${editingId}` : `${API_BASE}/utilities`,
         {
           method: editingId ? "PUT" : "POST",
@@ -240,6 +248,7 @@ export default function Utilities() {
   };
 
   const editUtility = (utility) => {
+    // Editing keeps the current attachment unless a replacement is selected.
     setTenantId(utility.tenant?._id || utility.tenant || "");
     setWaterAmount(utility.waterAmount || "");
     setLightAmount(utility.lightAmount || "");
@@ -255,6 +264,7 @@ export default function Utilities() {
   };
 
   const deleteUtility = async (id) => {
+    // Backend blocks deletion if a payment record already references this utility bill.
     const shouldDelete = await confirmAction({
       title: "Delete utility payment?",
       message: "Are you sure you want to delete this utility payment?",
@@ -270,7 +280,7 @@ export default function Utilities() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API_BASE}/utilities/${id}`, {
+      const res = await apiFetch(`${API_BASE}/utilities/${id}`, {
         method: "DELETE"
       });
       const data = await readResponse(res);

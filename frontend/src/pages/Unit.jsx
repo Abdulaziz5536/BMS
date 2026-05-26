@@ -7,18 +7,22 @@ import Sidebar from "./Sidebar";
 import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import { formatFloorLabel } from "../utils/floorUtils";
 
 const sortCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base"
 });
+
+// Unit page manages rentable spaces and shows derived occupancy status.
 
 function Unit() {
   const selectedBuildingId = useSelectedBuilding();
@@ -27,7 +31,7 @@ function Unit() {
   const [type, setType] = useState("");
   const [units, setUnits] = useState([]);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [floors, setFloors] = useState([]);
   const [floor, setFloor] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -44,6 +48,7 @@ function Unit() {
   }, []);
 
   const fetchUnits = useCallback(async (useCache = true) => {
+    // Unit status is calculated by the backend from tenant assignments.
     if (!selectedBuildingId) {
       setUnits([]);
       return;
@@ -56,7 +61,7 @@ function Unit() {
       "Failed to load units",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   const fetchFloors = useCallback(async (useCache = true) => {
     if (!selectedBuildingId) {
@@ -71,7 +76,7 @@ function Unit() {
       "Failed to load floors",
       { useCache }
     );
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   useEffect(() => {
     clearForm();
@@ -79,7 +84,7 @@ function Unit() {
     setError("");
     fetchUnits();
     fetchFloors();
-  }, [clearForm, fetchFloors, fetchUnits, selectedBuildingId]);
+  }, [clearForm, fetchFloors, fetchUnits, selectedBuildingId, setError]);
 
   useEffect(() => {
     if (editingId) {
@@ -91,6 +96,7 @@ function Unit() {
   }, [editingId]);
 
   const saveUnit = async () => {
+    // Backend verifies that the selected floor belongs to the selected building.
     setMessage("");
     setError("");
 
@@ -105,7 +111,7 @@ function Unit() {
     }
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         editingId ? `${API_BASE}/units/${editingId}` : `${API_BASE}/units`,
         {
           method: editingId ? "PUT" : "POST",
@@ -148,6 +154,7 @@ function Unit() {
   };
 
   const removeUnit = async (id) => {
+    // Backend blocks deletion when a tenant is assigned to this unit.
     const shouldDelete = await confirmAction({
       title: "Delete unit?",
       message: "Are you sure you want to delete this unit?",
@@ -163,7 +170,7 @@ function Unit() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API_BASE}/units/${id}`, {
+      const res = await apiFetch(`${API_BASE}/units/${id}`, {
         method: "DELETE"
       });
 

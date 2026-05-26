@@ -9,8 +9,12 @@ import {
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import { formatEthiopianDate } from "../utils/dateUtils";
 import "../style.css";
+
+// Activity page shows the audit log for the selected building.
+// It is read-only and useful for tracking who/what changed records.
 
 const formatTime = (value) => {
   if (!value) return "-";
@@ -23,10 +27,11 @@ const formatTime = (value) => {
 export default function Activity() {
   const selectedBuildingId = useSelectedBuilding();
   const [logs, setLogs] = useState([]);
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [loading, setLoading] = useState(false);
 
   const fetchLogs = useCallback(async (useCache = true) => {
+    // Audit logs are cached but the Refresh button can force a new fetch.
     setLoading(true);
     await loadCachedJson(
       withBuilding("/audit-logs?limit=200", selectedBuildingId),
@@ -36,7 +41,7 @@ export default function Activity() {
       { useCache }
     );
     setLoading(false);
-  }, [selectedBuildingId]);
+  }, [selectedBuildingId, setError]);
 
   useEffect(() => {
     if (!selectedBuildingId) {

@@ -13,6 +13,9 @@ const {
 
 const getBuildingFilter = (building) => (building ? { building } : {});
 
+// Utility payments are separate from rent invoices but follow the same pattern:
+// validate tenant/building ownership, track paid/pending state, and record payments.
+
 const populateUtilityTenant = {
   path: "tenant",
   populate: {
@@ -34,6 +37,7 @@ const calculateNextDueDate = (dueDate, paymentFrequency) => {
 
   const next = new Date(base);
 
+  // Payment frequency determines the next utility bill created after a payment.
   switch ((paymentFrequency || "").toLowerCase()) {
     case "monthly":
       next.setMonth(next.getMonth() + 1);
@@ -59,6 +63,7 @@ const MAX_FILE_DATA_LENGTH = 7000000;
 const normalizeUtilityFile = (file) => {
   if (!file) return undefined;
 
+  // Files are stored as base64 data from the frontend, so keep a size limit before saving.
   if (file && file.name && file.type && file.data && typeof file.data === "string") {
     if (file.data.length > MAX_FILE_DATA_LENGTH) return null;
     return {
@@ -116,6 +121,7 @@ router.post("/utilities", async (req, res) => {
       return res.status(400).json({ error: "Utility amounts cannot be negative" });
     }
 
+    // Never allow a utility bill to reference a tenant from another building.
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
     if (!tenantRecord) {
       return res.status(400).json({ error: "Tenant does not belong to this building" });
@@ -282,7 +288,7 @@ router.patch("/utilities/:id/pay", async (req, res) => {
       return res.status(400).json({ error: "Utility payment is already paid" });
     }
 
-    // 1) mark current as paid
+    // Mark the current bill paid, create a payment record, then open the next pending cycle.
     utility.status = "paid";
     await utility.save();
 
@@ -296,7 +302,7 @@ router.patch("/utilities/:id/pay", async (req, res) => {
       notes: "Recorded from utility payment action"
     });
 
-    // 2) create next pending utility
+    // Create the next pending utility using the same amounts and frequency.
     const nextDueDate = calculateNextDueDate(utility.dueDate, utility.paymentFrequency);
 
     const nextUtility = await Utility.create({

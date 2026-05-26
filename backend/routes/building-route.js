@@ -8,7 +8,6 @@ const Tenant = require("../models/tenant-model");
 const Employee = require("../models/employees-model");
 const Contract = require("../models/contract-model");
 const Invoice = require("../models/invoice-model");
-const RentInvoice = require("../models/rent-invoice-model");
 const PaymentRecord = require("../models/payment-record-model");
 const Utility = require("../models/utility-model");
 const { recordAuditLog } = require("../services/audit-log-service");
@@ -16,6 +15,9 @@ const {
   ETHIOPIAN_PHONE_ERROR,
   normalizeEthiopianPhone
 } = require("../utils/phone-utils");
+
+// Building routes are the parent layer for almost every record in the system.
+// Most child tables store a building id, so delete/update logic here must protect related data.
 
 router.get("/buildings", async (req, res) => {
   try {
@@ -34,8 +36,8 @@ router.post("/buildings", async (req, res) => {
       return res.status(400).json({ error: "Building name is required" });
     }
 
+    // Normalize optional phone numbers once so stored data has a predictable format.
     let normalizedPhone;
-
     try {
       normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
     } catch {
@@ -114,6 +116,8 @@ router.delete("/buildings/:id", async (req, res) => {
       return res.status(404).json({ error: "Building not found" });
     }
 
+    // Count every child collection before deleting. This protects users from
+    // accidentally removing an entire building with tenants, invoices, or payments.
     const relatedCounts = {
       floors: await Floor.countDocuments({ building: req.params.id }),
       units: await Unit.countDocuments({ building: req.params.id }),
@@ -122,7 +126,6 @@ router.delete("/buildings/:id", async (req, res) => {
       contracts: await Contract.countDocuments({ building: req.params.id }),
       utilities: await Utility.countDocuments({ building: req.params.id }),
       invoices: await Invoice.countDocuments({ building: req.params.id }),
-      rentInvoices: await RentInvoice.countDocuments({ building: req.params.id }),
       payments: await PaymentRecord.countDocuments({ building: req.params.id })
     };
 
@@ -135,6 +138,7 @@ router.delete("/buildings/:id", async (req, res) => {
       });
     }
 
+    // Force delete is intentionally explicit because it cascades through all building-owned data.
     await Promise.all([
       Floor.deleteMany({ building: req.params.id }),
       Unit.deleteMany({ building: req.params.id }),
@@ -143,7 +147,6 @@ router.delete("/buildings/:id", async (req, res) => {
       Contract.deleteMany({ building: req.params.id }),
       Utility.deleteMany({ building: req.params.id }),
       Invoice.deleteMany({ building: req.params.id }),
-      RentInvoice.deleteMany({ building: req.params.id }),
       PaymentRecord.deleteMany({ building: req.params.id })
     ]);
 

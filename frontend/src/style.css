@@ -73,6 +73,49 @@
   grid-column: 1 / -1;
 }
 
+.system-health-summary,
+.backup-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.backup-readiness-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.system-health-card,
+.backup-readiness-grid div {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.system-health-card span,
+.backup-readiness-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.system-health-card strong,
+.backup-readiness-grid strong {
+  display: block;
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+
+.system-health-card.ok strong {
+  color: #166534;
+}
+
+.system-health-card.warn strong {
+  color: #b45309;
+}
+
 .export-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1069,9 +1112,55 @@ button:disabled {
   font-size: 0.92rem;
 }
 
+.dashboard-due-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.dashboard-due-summary-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.55rem;
+  align-items: center;
+  padding: 0.85rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.dashboard-due-summary-item svg {
+  width: 20px;
+  height: 20px;
+  grid-row: span 2;
+  color: #0f4c81;
+}
+
+.dashboard-due-summary-item span {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.dashboard-due-summary-item strong {
+  min-width: 0;
+  color: #111827;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-due-summary-item.is-overdue svg,
+.dashboard-due-summary-item.is-overdue strong {
+  color: #b91c1c;
+}
+
 .dashboard-reminder-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.65rem;
   margin: 1rem 0;
 }
@@ -1089,6 +1178,27 @@ button:disabled {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+}
+
+.dashboard-force-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 38px;
+  padding: 0.45rem 0.65rem;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.dashboard-force-toggle input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
 }
 
 .dashboard-due-list {
@@ -1314,13 +1424,128 @@ button:disabled {
   font-size: 1rem;
 }
 
-.payroll-print-heading {
-  display: none;
+.payroll-report tfoot th {
+  background: #e8f2fb;
+  color: #0f3450;
+  font-weight: 900;
 }
 
-.payroll-report tfoot th {
-  background: #eef2ff;
-  color: #1e3a8a;
+.payroll-report {
+  padding: 1.15rem;
+  background: #ffffff;
+}
+
+.payroll-document-header {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(320px, auto);
+  gap: 1.25rem;
+  align-items: stretch;
+  padding: 1.25rem;
+  color: #ffffff;
+  background: linear-gradient(135deg, #123b5d 0%, #17623f 100%);
+  border-radius: 8px;
+}
+
+.document-kicker {
+  margin: 0 0 0.35rem;
+  color: #dbeafe;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.payroll-document-header h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.65rem;
+  line-height: 1.1;
+}
+
+.document-subtitle {
+  margin: 0.45rem 0 0;
+  color: #e8f2fb;
+  font-size: 0.92rem;
+}
+
+.document-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.document-meta-grid div {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.document-meta-grid span,
+.payroll-report-summary span {
+  display: block;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.document-meta-grid span {
+  color: #dbeafe;
+}
+
+.document-meta-grid strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: #ffffff;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.payroll-report-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.payroll-report-summary div {
+  padding: 0.85rem 0.95rem;
+  border: 1px solid #dbe4f0;
+  border-left: 4px solid #15803d;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.payroll-report-summary strong {
+  display: block;
+  margin-top: 0.3rem;
+  color: #172033;
+  font-size: 1rem;
+}
+
+.payroll-signature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 2rem;
+}
+
+.payroll-signature-grid div {
+  min-height: 56px;
+  display: flex;
+  align-items: flex-end;
+  border-bottom: 1px solid #94a3b8;
+}
+
+.payroll-signature-grid span {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .employee-table,
@@ -1400,6 +1625,11 @@ button:disabled {
   padding: 0.65rem 0.55rem;
 }
 
+.payroll-table thead th {
+  background: #eef4f9;
+  color: #24384a;
+}
+
 .payroll-table th:nth-child(1),
 .payroll-table td:nth-child(1) {
   width: 16%;
@@ -1413,6 +1643,24 @@ button:disabled {
 .payroll-table th:nth-child(n + 3),
 .payroll-table td:nth-child(n + 3) {
   width: 10%;
+}
+
+.payroll-table th:last-child,
+.payroll-table td:last-child {
+  min-width: 0;
+  width: 10%;
+}
+
+@media (max-width: 900px) {
+  .payroll-document-header,
+  .payroll-report-summary,
+  .payroll-signature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .document-meta-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .selected-row td {
@@ -1964,34 +2212,7 @@ button:disabled {
   min-width: 0;
   margin: 0;
 }
-/* Rent Management Styles */
-.rent-tabs {
-  display: flex;
-  margin-bottom: 2rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.rent-tabs button {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  background: none;
-  color: #6b7280;
-  font-weight: 600;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s ease;
-}
-
-.rent-tabs button.active {
-  color: #374151;
-  border-bottom-color: #374151;
-}
-
-.rent-tabs button:hover {
-  color: #374151;
-  background-color: #f9fafb;
-}
-
+/* Invoice reminder styles */
 .reminders-list, .overdue-list {
   display: flex;
   flex-direction: column;
@@ -2262,10 +2483,6 @@ button:disabled {
   background: #e2e8f0;
 }
 
-.rent-status {
-  text-transform: capitalize;
-}
-
 .container {
   display: flex;
   min-height: 100vh;
@@ -2507,6 +2724,7 @@ button:disabled,
   border-radius: 8px;
   border: 1px solid;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .message {
@@ -2706,7 +2924,6 @@ span.secondary-btn {
 }
 
 .invoice-tabs,
-.rent-tabs,
 .system-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -2719,7 +2936,6 @@ span.secondary-btn {
 }
 
 .invoice-tabs button,
-.rent-tabs button,
 .system-tabs button {
   width: auto;
   min-width: 0;
@@ -2735,10 +2951,8 @@ span.secondary-btn {
 }
 
 .invoice-tabs button.active,
-.rent-tabs button.active,
 .system-tabs button.active,
 .invoice-tabs button:hover,
-.rent-tabs button:hover,
 .system-tabs button:hover {
   color: #0f3450;
   background: #e8f2fb;
@@ -2806,7 +3020,8 @@ span.secondary-btn {
     padding: 1rem;
   }
 
-  .rent-tabs {
+  .invoice-tabs,
+  .system-tabs {
     flex-wrap: wrap;
     gap: 0.5rem;
   }
@@ -2848,6 +3063,15 @@ span.secondary-btn {
   }
 
   .dashboard-due-item {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-due-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .system-health-summary,
+  .backup-readiness-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2908,7 +3132,8 @@ span.secondary-btn {
     max-width: 100%;
   }
 
-  .rent-tabs button {
+  .invoice-tabs button,
+  .system-tabs button {
     flex: 1 1 100%;
   }
 
@@ -2956,7 +3181,6 @@ span.secondary-btn {
   }
 
   .invoice-tabs,
-  .rent-tabs,
   .system-tabs {
     display: grid;
     grid-template-columns: 1fr;
@@ -2992,8 +3216,14 @@ span.secondary-btn {
 }
 
 @media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
   body {
     background: #ffffff;
+    color: #111827;
   }
 
   .sidebar,
@@ -3025,18 +3255,56 @@ span.secondary-btn {
 
   .payroll-report {
     display: block;
+    padding: 0;
     border: 0;
     box-shadow: none;
     overflow: visible;
   }
 
-  .payroll-print-heading {
-    display: block;
-    margin-bottom: 1rem;
+  .payroll-document-header {
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
-  .payroll-print-heading h2 {
-    margin: 0 0 0.25rem;
+  .payroll-document-header h2 {
+    font-size: 1.35rem;
+  }
+
+  .document-subtitle {
+    font-size: 0.78rem;
+  }
+
+  .document-meta-grid {
+    min-width: 320px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .document-meta-grid div {
+    padding: 0.5rem;
+  }
+
+  .document-meta-grid strong {
+    font-size: 0.8rem;
+  }
+
+  .payroll-report-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.45rem;
+    margin: 0.6rem 0;
+  }
+
+  .payroll-report-summary div {
+    padding: 0.55rem 0.65rem;
+    border-radius: 0;
+    break-inside: avoid;
+  }
+
+  .payroll-report-summary strong {
+    font-size: 0.82rem;
   }
 
   .floors-table {
@@ -3049,5 +3317,39 @@ span.secondary-btn {
   .floors-table td {
     padding: 0.4rem;
     max-width: none;
+  }
+
+  .payroll-table {
+    table-layout: fixed;
+    font-size: 9.5px;
+    page-break-inside: auto;
+  }
+
+  .payroll-table th,
+  .payroll-table td {
+    padding: 0.32rem 0.35rem;
+    font-size: 9.5px;
+    line-height: 1.2;
+  }
+
+  .payroll-table thead th,
+  .payroll-report tfoot th {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .payroll-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .payroll-signature-grid {
+    gap: 1rem;
+    margin-top: 1.2rem;
+    break-inside: avoid;
+  }
+
+  .payroll-signature-grid div {
+    min-height: 38px;
   }
 }

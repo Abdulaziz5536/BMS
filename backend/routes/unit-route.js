@@ -5,10 +5,14 @@ const Floor = require("../models/floor-model");
 const Tenant = require("../models/tenant-model");
 const { recordAuditLog } = require("../services/audit-log-service");
 
+// Unit routes manage rentable spaces. A unit is linked to one building and one floor.
+// The GET route also calculates whether each unit is occupied by looking at tenants.
+
 router.get('/units', async (req,res) => {
   try {
    const filter = req.query.building ? { building: req.query.building } : {};
    const units = await Unit.find(filter).populate("floor").lean();
+   // Occupancy is derived from tenants so unit status cannot drift out of sync.
    const occupiedUnitIds = await Tenant.distinct("unit", filter);
    const occupiedUnitSet = new Set(occupiedUnitIds.map((id) => String(id)));
    const unitsWithStatus = units.map((unit) => ({
@@ -33,12 +37,14 @@ router.post('/units', async (req,res) => {
     return res.status(400).json({ error: "Please fill all fields" });
   }
 
+  // Prevent assigning a unit to a floor from another building.
   const floorRecord = await Floor.findOne({ _id: floor, building });
 
   if (!floorRecord) {
     return res.status(400).json({ error: "Floor does not belong to this building" });
   }
 
+  // Case-insensitive duplicate check keeps "A-101" and "a-101" from becoming two units.
   const existingID = await Unit.findOne({
     building,
     unitId: normalizedUnitId
@@ -132,6 +138,7 @@ router.put('/units/:id', async (req,res) => {
 
 router.delete('/units/:id', async (req,res) => {
   try {
+    // A unit with a tenant cannot be deleted until the tenant is moved or removed.
     const tenantCount = await Tenant.countDocuments({ unit: req.params.id });
 
     if (tenantCount > 0) {

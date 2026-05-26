@@ -1,5 +1,7 @@
 import { Component } from "react";
+import { formatErrorMessage } from "../utils/errorUtils";
 
+// Error boundary prevents a frontend crash from turning the whole app into a blank page.
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -12,7 +14,7 @@ export default class ErrorBoundary extends Component {
   static getDerivedStateFromError(error) {
     return {
       hasError: true,
-      message: error?.message || "Something went wrong"
+      message: formatErrorMessage(error, "Something went wrong")
     };
   }
 

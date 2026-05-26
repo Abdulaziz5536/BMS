@@ -9,12 +9,15 @@ const Employee = require("../models/employees-model");
 const Floor = require("../models/floor-model");
 const Invoice = require("../models/invoice-model");
 const PaymentRecord = require("../models/payment-record-model");
-const RentInvoice = require("../models/rent-invoice-model");
 const Tenant = require("../models/tenant-model");
 const Unit = require("../models/unit-model");
 const Utility = require("../models/utility-model");
 const { buildCsv } = require("../utils/csv-utils");
+const { formatFloorLabel } = require("../utils/floor-label-utils");
 const { getSystemChecks } = require("../services/system-check-service");
+
+// System routes are operational tools: health checks, audit logs, JSON backup,
+// and CSV exports. They help an owner run and diagnose the deployed system.
 
 const validateBuildingQuery = (req, res) => {
   const { building } = req.query;
@@ -33,6 +36,7 @@ const setCsvHeaders = (res, filename) => {
 };
 
 router.get("/system/health", (req, res) => {
+  // Health endpoint returns 503 when required checks fail, useful for deployment monitors.
   const checks = getSystemChecks();
   res.status(checks.ok ? 200 : 503).json({
     status: checks.ok ? "ok" : "needs_attention",
@@ -72,6 +76,7 @@ router.get("/system/backup", async (req, res) => {
     const buildingFilter = buildingId ? { _id: buildingId } : {};
     const childFilter = buildingId ? { building: buildingId } : {};
 
+    // Backup gathers every major collection. Restore/import can use schemaVersion later.
     const [
       buildings,
       floors,
@@ -81,7 +86,6 @@ router.get("/system/backup", async (req, res) => {
       contracts,
       utilities,
       invoices,
-      rentInvoices,
       paymentRecords,
       auditLogs
     ] = await Promise.all([
@@ -93,27 +97,32 @@ router.get("/system/backup", async (req, res) => {
       Contract.find(childFilter).lean(),
       Utility.find(childFilter).lean(),
       Invoice.find(childFilter).lean(),
-      RentInvoice.find(childFilter).lean(),
       PaymentRecord.find(childFilter).lean(),
       AuditLog.find(childFilter).sort({ createdAt: -1 }).limit(1000).lean()
     ]);
+    const data = {
+      buildings,
+      floors,
+      units,
+      tenants,
+      employees,
+      contracts,
+      utilities,
+      invoices,
+      paymentRecords,
+      auditLogs
+    };
+    const counts = Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [key, Array.isArray(value) ? value.length : 0])
+    );
 
     res.json({
+      schemaVersion: 1,
       exportedAt: new Date(),
       building: buildingId || "all",
-      data: {
-        buildings,
-        floors,
-        units,
-        tenants,
-        employees,
-        contracts,
-        utilities,
-        invoices,
-        rentInvoices,
-        paymentRecords,
-        auditLogs
-      }
+      counts,
+      systemChecks: getSystemChecks(),
+      data
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -130,6 +139,7 @@ router.get("/exports/:resource", async (req, res) => {
     let rows = [];
     let columns = [];
 
+    // Each export defines rows and columns separately so CSV formatting stays shared.
     if (resource === "tenants") {
       rows = await Tenant.find(childFilter)
         .populate({ path: "unit", populate: { path: "floor" } })
@@ -140,7 +150,7 @@ router.get("/exports/:resource", async (req, res) => {
         { label: "Phone", value: (row) => row.phone },
         { label: "Email", value: (row) => row.email },
         { label: "Unit", value: (row) => row.unit?.unitId },
-        { label: "Floor", value: (row) => row.unit?.floor?.floor },
+        { label: "Floor", value: (row) => formatFloorLabel(row.unit?.floor?.floor) },
         { label: "Move In", value: (row) => row.moveInDate },
         { label: "Move Out", value: (row) => row.moveOutDate },
         { label: "Emergency Contact", value: (row) => row.emergencyContactName },

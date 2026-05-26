@@ -8,12 +8,14 @@ import { confirmAction } from "../components/confirmAction";
 import FilePreviewLink from "../components/FilePreviewLink";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
 import {
   dateInputProps,
   formatEthiopianDate,
@@ -23,7 +25,10 @@ import "../style.css";
 
 const MAX_UPLOAD_SIZE = 7 * 1024 * 1024; // 7MB
 
+// Contracts page manages rent agreements. Contract date/frequency changes can recalculate invoices.
+
 const readUploadFile = (file) => {
+  // Browser FileReader converts uploaded PDFs/photos into data URLs for the backend.
   return new Promise((resolve, reject) => {
     if (!file) {
       resolve(undefined);
@@ -66,7 +71,7 @@ export default function Contracts() {
   const contractFormRef = useRef(null);
 
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState("status");
@@ -84,6 +89,7 @@ export default function Contracts() {
   };
 
   const fetchContract = async (useCache = true) => {
+    // Contracts are building-scoped and include populated tenant/unit data.
     if (!selectedBuildingId) {
       setContracts([]);
       return;
@@ -171,6 +177,7 @@ export default function Contracts() {
   };
 
   const saveContract = async () => {
+    // The backend validates dates/tenant ownership and syncs related invoice periods.
     setMessage("");
     setError("");
 
@@ -185,7 +192,7 @@ export default function Contracts() {
     }
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         editingId ? `${API_BASE}/contract/${editingId}` : `${API_BASE}/contract`,
         {
           method: editingId ? "PUT" : "POST",
@@ -220,6 +227,7 @@ export default function Contracts() {
   };
 
   const editContract = (contract) => {
+    // Editing copies stored values into the form and scrolls the user back to it.
     setTenantId(contract.tenant?._id || contract.tenant || "");
     setAmount(contract.amount || "");
     setLeaseStartDate(normalizeDateInputForApi(contract.leaseStartDate || contract.date));
@@ -233,6 +241,7 @@ export default function Contracts() {
   };
 
   const deleteContract = async (id) => {
+    // Backend blocks deletion when invoices/payments still reference this contract.
     const shouldDelete = await confirmAction({
       title: "Delete contract?",
       message: "Are you sure you want to delete this contract?",
@@ -248,7 +257,7 @@ export default function Contracts() {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API_BASE}/contract/${id}`, {
+      const res = await apiFetch(`${API_BASE}/contract/${id}`, {
         method: "DELETE"
       });
 

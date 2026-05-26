@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const Contract = require('../models/contract-model');
 const Invoice = require('../models/invoice-model');
-const RentInvoice = require('../models/rent-invoice-model');
 const PaymentRecord = require('../models/payment-record-model');
 const Tenant = require('../models/tenant-model');
 const { recordAuditLog } = require('../services/audit-log-service');
@@ -18,6 +17,9 @@ const {
 } = require('../utils/date-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
+
+// Contracts define rent amount, lease dates, and payment frequency.
+// Invoice periods and payment status are derived from contract data, so edits here can affect invoices.
 
 const isValidFile = (file) => {
   if (!file) return true;
@@ -84,6 +86,7 @@ router.post('/contract', async (req, res) => {
       return res.status(400).json({ error: "Contract amount must be greater than zero" });
     }
 
+    // Dates can be entered in Ethiopian-style or ISO format; normalize before saving.
     const startDateObj = parseFlexibleDateInput(startDate);
     const leaseEndDateObj = parseFlexibleDateInput(leaseEndDate);
 
@@ -98,6 +101,7 @@ router.post('/contract', async (req, res) => {
     const normalizedStartDate = normalizeDateOnlyString(startDate);
     const normalizedLeaseEndDate = normalizeDateOnlyString(leaseEndDate);
 
+    // A contract must belong to a tenant inside the same building.
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
 
     if (!tenantRecord) {
@@ -208,16 +212,12 @@ router.put('/contract/:id', async (req, res) => {
       return res.status(404).json({ error: "Contract not found" });
     }
 
-    const [invoicePeriodSync, rentInvoicePeriodSync] = await Promise.all([
-      recalculateInvoicePeriodsForContract(Invoice, updatedContract),
-      recalculateInvoicePeriodsForContract(RentInvoice, updatedContract)
-    ]);
+    // If lease dates/frequency change, existing invoice periods must follow the new contract dates.
+    const invoicePeriodSync = await recalculateInvoicePeriodsForContract(Invoice, updatedContract);
     await applyContractStatusToInvoices(updatedContract, updatedContract.status);
 
-    const invoicePeriodsUpdated =
-      invoicePeriodSync.updated + rentInvoicePeriodSync.updated;
-    const invoicePeriodsSkipped =
-      invoicePeriodSync.skipped + rentInvoicePeriodSync.skipped;
+    const invoicePeriodsUpdated = invoicePeriodSync.updated;
+    const invoicePeriodsSkipped = invoicePeriodSync.skipped;
 
     await recordAuditLog({
       building: updatedContract.building,
@@ -257,6 +257,7 @@ const addFrequency = (date, paymentFrequency) => {
   const next = new Date(date);
   const freq = (paymentFrequency || "").toLowerCase();
 
+  // This helper is used when "pay contract" creates the next billing contract.
   switch (freq) {
     case 'monthly':
       next.setMonth(next.getMonth() + 1);
@@ -294,6 +295,7 @@ router.patch('/contract/:id/status', async (req, res) => {
       return res.status(404).json({ error: "Contract not found" });
     }
 
+    // Manual contract status updates intentionally push that status to existing invoices.
     await applyContractStatusToInvoices(contract, status);
     await syncContractPaymentState(contract);
     await recordAuditLog({
@@ -326,7 +328,7 @@ router.patch('/contract/:id/pay', async (req, res) => {
       return res.status(400).json({ error: "Contract is already paid" });
     }
 
-    // 1) mark current as paid
+    // Paying a contract closes the current cycle and creates the next pending cycle.
     contract.status = "paid";
     await contract.save();
     await applyContractStatusToInvoices(contract, "paid");
@@ -340,7 +342,7 @@ router.patch('/contract/:id/pay', async (req, res) => {
       notes: "Recorded from contract payment action"
     });
 
-    // 2) create next pending contract based on paymentFrequency
+    // Create the next pending contract based on payment frequency and old lease dates.
     const baseStart = parseDateOrNull(contract.leaseStartDate || contract.date);
     const baseEnd = parseDateOrNull(contract.leaseEndDate);
 
@@ -385,13 +387,13 @@ router.patch('/contract/:id/pay', async (req, res) => {
 
 router.delete('/contract/:id', async (req, res) => {
   try {
-    const [invoiceCount, rentInvoiceCount, paymentCount] = await Promise.all([
+    // Do not delete a contract if invoices or payment records still point to it.
+    const [invoiceCount, paymentCount] = await Promise.all([
       Invoice.countDocuments({ contract: req.params.id }),
-      RentInvoice.countDocuments({ contract: req.params.id }),
       PaymentRecord.countDocuments({ contract: req.params.id })
     ]);
 
-    if (invoiceCount || rentInvoiceCount || paymentCount) {
+    if (invoiceCount || paymentCount) {
       return res.status(400).json({
         error: "Cannot delete this contract because it has invoices or payment records. Delete or cancel those records first."
       });

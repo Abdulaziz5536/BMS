@@ -4,6 +4,7 @@ import {
   getSelectedBuildingId
 } from "../buildingSelection";
 
+// Hook that keeps React state synced with the building id stored in localStorage.
 export default function useSelectedBuilding() {
   const [selectedBuildingId, setSelectedBuildingIdState] = useState(getSelectedBuildingId());
 

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 
+// Floor belongs to one building and stores capacity/area metadata for unit planning.
 const floorSchema = new mongoose.Schema({
   building: {
     type: mongoose.Schema.Types.ObjectId,

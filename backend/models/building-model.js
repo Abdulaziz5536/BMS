@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+// Building is the top-level record. Most other collections are filtered by building.
 const buildingSchema = new mongoose.Schema(
   {
     name: {

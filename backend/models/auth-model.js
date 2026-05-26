@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+
+// User stores login accounts. Password values are bcrypt hashes, never raw passwords.
 const userSchema = new mongoose.Schema({
     name:{
         type:String

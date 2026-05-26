@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-
+// Employee stores staff information used by payroll reports and employee lists.
 const employeesSchema = new mongoose.Schema({
      building:{
           type: mongoose.Schema.Types.ObjectId,

@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+// Announcement stores the message, selected audience, delivery channels, and send result.
+// The send route resolves target floors/units/tenants into actual recipients.
 const announcementSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -115,7 +117,7 @@ const announcementSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-// Indexes for efficient queries
+// Indexes support building-filtered lists, status counts, and future scheduled sends.
 announcementSchema.index({ building: 1, createdAt: -1 });
 announcementSchema.index({ type: 1, status: 1 });
 announcementSchema.index({ scheduledFor: 1, status: 1 });

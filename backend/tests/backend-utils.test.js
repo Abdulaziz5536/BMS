@@ -6,8 +6,26 @@ const {
   normalizeDateOnlyString,
   parseFlexibleDateInput
 } = require("../utils/date-utils");
+const {
+  getShortErrorMessage,
+  sanitizeErrorPayload
+} = require("../utils/error-response-utils");
+const { getBuildingBrandName } = require("../utils/branding-utils");
+const {
+  getAllowedCorsOrigins,
+  isOriginAllowed,
+  shouldServeFrontendRoute
+} = require("../utils/deployment-utils");
+const { formatFloorLabel } = require("../utils/floor-label-utils");
+const { calculateLatePenalty } = require("../utils/late-penalty-utils");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
 const { getSystemChecks } = require("../services/system-check-service");
+const { isPublicPath } = require("../middleware/auth-middleware");
+const {
+  getDaysUntilDue,
+  reminderAlreadySent,
+  shouldSkipReminder
+} = require("../services/due-reminder-service");
 
 test("buildCsv escapes commas, quotes, and new lines", () => {
   const csv = buildCsv(
@@ -48,6 +66,123 @@ test("normalizeEthiopianPhone rejects non-Ethiopian or incomplete numbers", () =
 test("system checks returns a usable checklist shape", () => {
   const result = getSystemChecks();
   assert.equal(typeof result.ok, "boolean");
+  assert.equal(typeof result.checkedAt, "string");
   assert.ok(Array.isArray(result.checks));
+  assert.equal(typeof result.summary.total, "number");
+  assert.equal(typeof result.summary.requiredFailures, "number");
   assert.ok(result.checks.some((check) => check.name === "MongoDB connection"));
+});
+
+test("client errors are short and safe to display", () => {
+  const duplicateMessage = "MongoServerError: E11000 duplicate key error collection: bms.units index: unitId_1 dup key: { unitId: \"A-101\" }";
+  const longProviderMessage = `SMS provider returned 500: ${"provider details ".repeat(20)}`;
+
+  assert.equal(getShortErrorMessage(duplicateMessage), "This record already exists.");
+  assert.ok(getShortErrorMessage(longProviderMessage).length <= 140);
+
+  const payload = sanitizeErrorPayload({
+    errors: {
+      sms: [
+        { tenant: "1", error: longProviderMessage },
+        { tenant: "2", error: "No phone number available" },
+        { tenant: "3", error: "No phone number available" },
+        { tenant: "4", error: "No phone number available" }
+      ]
+    }
+  });
+
+  assert.equal(payload.errors.sms.length, 4);
+  assert.equal(payload.errors.sms[0].error, "SMS failed. Check provider settings.");
+  assert.equal(payload.errors.sms[3].error, "1 more errors hidden.");
+});
+
+test("late penalty is fixed at ten percent after due date", () => {
+  assert.equal(calculateLatePenalty("2026-05-10", "2026-05-10", 20000), 0);
+  assert.equal(calculateLatePenalty("2026-05-10", "2026-05-11", 20000), 2000);
+  assert.equal(calculateLatePenalty("2026-05-10", "2026-06-10", 20000), 2000);
+  assert.equal(calculateLatePenalty("bad-date", "2026-06-10", 20000), 0);
+});
+
+test("floor labels show basement floors as B levels", () => {
+  assert.equal(formatFloorLabel(-1), "B1");
+  assert.equal(formatFloorLabel("-4"), "B4");
+  assert.equal(formatFloorLabel(0), "G");
+  assert.equal(formatFloorLabel(3), "3");
+});
+
+test("building brand names come from the selected building", () => {
+  assert.equal(getBuildingBrandName({ name: "Aymen Building" }), "Aymen Building");
+  assert.equal(getBuildingBrandName({ name: "  Aymen\nBuilding  " }), "Aymen Building");
+  assert.equal(getBuildingBrandName(null), "Building Management System");
+});
+
+test("deployment CORS allows only configured production origins", () => {
+  const previousOrigins = process.env.CORS_ORIGINS;
+  const previousNodeEnv = process.env.NODE_ENV;
+
+  process.env.NODE_ENV = "production";
+  process.env.CORS_ORIGINS = "https://bms.example.com, https://admin.example.com";
+
+  try {
+    const allowedOrigins = getAllowedCorsOrigins();
+
+    assert.equal(isOriginAllowed("https://bms.example.com", allowedOrigins), true);
+    assert.equal(isOriginAllowed("https://other.example.com", allowedOrigins), false);
+    assert.equal(isOriginAllowed("", allowedOrigins), true);
+  } finally {
+    if (previousOrigins === undefined) {
+      delete process.env.CORS_ORIGINS;
+    } else {
+      process.env.CORS_ORIGINS = previousOrigins;
+    }
+
+    if (previousNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+  }
+});
+
+test("deployment frontend serving only catches browser page requests", () => {
+  assert.equal(shouldServeFrontendRoute({
+    method: "GET",
+    path: "/buildings",
+    headers: { accept: "text/html,application/xhtml+xml" }
+  }), true);
+
+  assert.equal(shouldServeFrontendRoute({
+    method: "GET",
+    path: "/buildings",
+    headers: { accept: "*/*" }
+  }), false);
+});
+
+test("backend auth middleware keeps only login/signup/health public", () => {
+  assert.equal(isPublicPath("/login"), true);
+  assert.equal(isPublicPath("/signup"), true);
+  assert.equal(isPublicPath("/system/health"), true);
+  assert.equal(isPublicPath("/buildings"), false);
+  assert.equal(isPublicPath("/invoices"), false);
+});
+
+test("manual reminder force option bypasses duplicate skip check", () => {
+  const invoice = {
+    remindersSent: [
+      { type: "due_date", sentAt: new Date("2026-05-24") }
+    ]
+  };
+
+  assert.equal(reminderAlreadySent(invoice, "due_date"), true);
+  assert.equal(shouldSkipReminder(invoice, "due_date", { force: false }), true);
+  assert.equal(shouldSkipReminder(invoice, "due_date", { force: true }), false);
+  assert.equal(shouldSkipReminder(invoice, "late_payment", { force: false }), false);
+});
+
+test("reminder due-day calculation uses calendar days", () => {
+  const referenceDate = new Date(2026, 4, 26, 8);
+
+  assert.equal(getDaysUntilDue(new Date(2026, 4, 26, 0), referenceDate), 0);
+  assert.equal(getDaysUntilDue(new Date(2026, 4, 25, 0), referenceDate), -1);
+  assert.equal(getDaysUntilDue(new Date(2026, 4, 27, 23), referenceDate), 1);
 });
