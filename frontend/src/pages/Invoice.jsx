@@ -17,6 +17,7 @@ import {
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useSelectedBuildingDetails from "../hooks/useSelectedBuildingDetails";
 import useSelectedBuildingName from "../hooks/useSelectedBuildingName";
 import useShortError from "../hooks/useShortError";
 import {
@@ -26,6 +27,7 @@ import {
   todayEthiopianDateInputValue
 } from "../utils/dateUtils";
 import { calculateVatBreakdown, VAT_RATE_LABEL } from "../utils/taxUtils";
+import { formatFsNumber } from "../utils/receiptUtils";
 import "../style.css";
 
 // Invoice page is the main rent billing screen.
@@ -53,6 +55,7 @@ const formatReceiptNumber = (payment) => {
 
 export default function Invoice() {
   const selectedBuildingId = useSelectedBuilding();
+  const selectedBuildingDetails = useSelectedBuildingDetails();
   const buildingName = useSelectedBuildingName();
   const [invoices, setInvoices] = useState([]);
   const [contracts, setContracts] = useState([]);
@@ -587,6 +590,7 @@ export default function Invoice() {
     // Receipt HTML is generated in a print window so it can be saved as PDF or printed.
     const invoice = findInvoiceForPayment(payment);
     const tenant = payment.tenant || invoice?.tenant;
+    const receiptBuilding = payment.building || invoice?.building || selectedBuildingDetails || {};
     const receiptWindow = window.open("", "_blank", "width=860,height=720");
 
     if (!receiptWindow) {
@@ -598,10 +602,7 @@ export default function Invoice() {
       ? `${formatEthiopianDate(invoice.periodStart)} to ${formatEthiopianDate(invoice.periodEnd)}`
       : "-";
     const invoiceTotal = invoice?.totalAmount ?? invoice?.rentAmount;
-    const balanceAfter = invoice
-      ? invoice.outstandingBalance ?? ((invoice.totalAmount || 0) - (invoice.amountPaid || 0))
-      : null;
-    // VAT is only added to the generated receipt display; it does not rewrite invoice/payment records.
+    // The saved payment amount already includes VAT; the receipt only shows the tax split for clarity.
     const receiptVat = calculateVatBreakdown(payment.amount);
     const generatedAt = new Date().toLocaleString([], {
       year: "numeric",
@@ -611,6 +612,9 @@ export default function Invoice() {
       minute: "2-digit"
     });
     const receiptBrandName = formatReceiptValue(buildingName);
+    const ownerTin = formatReceiptValue(receiptBuilding?.tinNumber);
+    const tenantTin = formatReceiptValue(tenant?.tinNumber);
+    const fsNumber = formatReceiptValue(formatFsNumber(payment));
 
     receiptWindow.document.write(`
       <!doctype html>
@@ -618,18 +622,18 @@ export default function Invoice() {
         <head>
           <title>${receiptBrandName} Receipt</title>
           <style>
-            @page { size: A4; margin: 14mm; }
+            @page { size: A4; margin: 8mm; }
             * { box-sizing: border-box; }
             body {
               margin: 0;
               color: #172033;
               background: #eef3f8;
               font-family: Arial, Helvetica, sans-serif;
-              line-height: 1.45;
+              line-height: 1.32;
             }
             .receipt {
-              width: min(760px, calc(100% - 32px));
-              margin: 24px auto;
+              width: min(760px, calc(100% - 18px));
+              margin: 10px auto;
               background: #ffffff;
               border: 1px solid #cbd7e5;
               box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
@@ -637,19 +641,21 @@ export default function Invoice() {
             .topbar {
               display: grid;
               grid-template-columns: 1fr auto;
-              gap: 24px;
+              gap: 18px;
               align-items: start;
-              padding: 26px 30px;
+              padding: 18px 22px;
               color: #ffffff;
               background: #123b5d;
             }
             .brand { margin: 0 0 6px; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-            h1 { margin: 0; font-size: 29px; line-height: 1.05; letter-spacing: 0; }
+            .tin-line { margin: 6px 0 0; color: #dbeafe; font-size: 12px; font-weight: 700; }
+            h1 { margin: 0; font-size: 25px; line-height: 1.05; letter-spacing: 0; }
             .receipt-meta { text-align: right; font-size: 12px; color: #dbeafe; }
-            .receipt-meta strong { display: block; margin-top: 5px; color: #ffffff; font-size: 16px; }
+            .receipt-meta strong { display: block; margin-top: 3px; color: #ffffff; font-size: 15px; }
+            .receipt-meta span { display: block; margin-top: 4px; }
             .status {
               display: inline-flex;
-              margin-top: 12px;
+              margin-top: 8px;
               padding: 5px 10px;
               color: #14532d;
               background: #dcfce7;
@@ -658,14 +664,14 @@ export default function Invoice() {
               font-size: 12px;
               font-weight: 800;
             }
-            .body { padding: 28px 30px 30px; }
+            .body { padding: 18px 22px 20px; }
             .amount-panel {
               display: grid;
               grid-template-columns: 1fr auto;
-              gap: 16px;
+              gap: 12px;
               align-items: center;
-              padding: 18px 20px;
-              margin-bottom: 22px;
+              padding: 13px 16px;
+              margin-bottom: 14px;
               border: 1px solid #bfd4e8;
               border-left: 5px solid #15803d;
               background: #f7fbff;
@@ -680,22 +686,22 @@ export default function Invoice() {
               text-transform: uppercase;
               letter-spacing: 0.08em;
             }
-            .amount-panel strong { color: #0f172a; font-size: 28px; line-height: 1; }
-            .amount-panel p { margin: 6px 0 0; color: #334155; }
+            .amount-panel strong { color: #0f172a; font-size: 23px; line-height: 1; }
+            .amount-panel p { margin: 4px 0 0; color: #334155; }
             .detail-grid {
               display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr));
-              gap: 12px;
-              margin-bottom: 22px;
+              grid-template-columns: repeat(3, minmax(0, 1fr));
+              gap: 8px;
+              margin-bottom: 14px;
             }
             .detail-card {
-              min-height: 76px;
-              padding: 13px 14px;
+              min-height: 58px;
+              padding: 9px 10px;
               border: 1px solid #e2e8f0;
               background: #ffffff;
             }
-            .detail-card strong { display: block; margin-top: 5px; color: #172033; font-size: 14px; overflow-wrap: anywhere; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #dbe4f0; }
+            .detail-card strong { display: block; margin-top: 4px; color: #172033; font-size: 13px; overflow-wrap: anywhere; }
+            table { width: 100%; border-collapse: collapse; margin-top: 7px; border: 1px solid #dbe4f0; }
             .summary-total td {
               color: #0f172a;
               background: #f1f8f4;
@@ -704,7 +710,7 @@ export default function Invoice() {
               font-weight: 800;
             }
             th {
-              padding: 10px 12px;
+              padding: 7px 10px;
               color: #334155;
               background: #edf4fa;
               border-bottom: 1px solid #dbe4f0;
@@ -713,12 +719,12 @@ export default function Invoice() {
               text-transform: uppercase;
               letter-spacing: 0.06em;
             }
-            td { padding: 12px; border-bottom: 1px solid #edf2f7; font-size: 13px; vertical-align: top; }
+            td { padding: 7px 10px; border-bottom: 1px solid #edf2f7; font-size: 12.5px; vertical-align: top; }
             td:last-child, th:last-child { text-align: right; }
             .notes {
-              min-height: 52px;
-              margin-top: 18px;
-              padding: 13px 14px;
+              min-height: 38px;
+              margin-top: 12px;
+              padding: 9px 10px;
               border: 1px solid #e2e8f0;
               color: #334155;
               background: #fbfdff;
@@ -728,16 +734,16 @@ export default function Invoice() {
             .signature-grid {
               display: grid;
               grid-template-columns: repeat(2, minmax(0, 1fr));
-              gap: 32px;
-              margin-top: 36px;
+              gap: 26px;
+              margin-top: 24px;
             }
             .signature-line { border-top: 1px solid #94a3b8; padding-top: 8px; color: #475569; font-size: 12px; }
             .footer {
               display: flex;
               justify-content: space-between;
               gap: 16px;
-              margin-top: 28px;
-              padding-top: 15px;
+              margin-top: 16px;
+              padding-top: 10px;
               border-top: 1px solid #e2e8f0;
               color: #64748b;
               font-size: 12px;
@@ -752,7 +758,7 @@ export default function Invoice() {
             }
             @media print {
               body { background: #ffffff; }
-              .receipt { width: 100%; margin: 0; border: 0; box-shadow: none; }
+              .receipt { width: 100%; margin: 0; border: 0; box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
               .topbar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             }
           </style>
@@ -763,18 +769,21 @@ export default function Invoice() {
               <div>
               <p class="brand">${receiptBrandName}</p>
               <h1>Payment Receipt</h1>
+                <p class="tin-line">TIN: ${ownerTin}</p>
                 <span class="status">PAID</span>
               </div>
               <div class="receipt-meta">
                 Receipt No.
                 <strong>${formatReceiptValue(formatReceiptNumber(payment))}</strong>
+                <span>FS No.</span>
+                <strong>${fsNumber}</strong>
                 Generated ${formatReceiptValue(generatedAt)}
               </div>
             </div>
             <div class="body">
               <div class="amount-panel">
                 <div>
-                  <span>Amount Paid Before VAT</span>
+                  <span>Amount Paid Including VAT</span>
                   <p>Payment received from <strong>${formatReceiptValue(tenant?.tenantName, "Tenant")}</strong></p>
                 </div>
                 <strong>${formatReceiptValue(formatCurrency(payment.amount))}</strong>
@@ -794,12 +803,12 @@ export default function Invoice() {
                   <strong>${formatReceiptValue(tenant?.tenantName)}</strong>
                 </div>
                 <div class="detail-card">
-                  <span class="detail-label">Unit</span>
-                  <strong>${formatReceiptValue(tenant?.unit?.unitId)}</strong>
+                  <span class="detail-label">Tenant TIN</span>
+                  <strong>${tenantTin}</strong>
                 </div>
                 <div class="detail-card">
-                  <span class="detail-label">Method</span>
-                  <strong>${formatReceiptValue(payment.paymentMethod)}</strong>
+                  <span class="detail-label">Unit</span>
+                  <strong>${formatReceiptValue(tenant?.unit?.unitId)}</strong>
                 </div>
                 <div class="detail-card">
                   <span class="detail-label">Reference</span>
@@ -817,11 +826,10 @@ export default function Invoice() {
                 </thead>
                 <tbody>
                   <tr><td>Billing period</td><td>${formatReceiptValue(period)}</td></tr>
-                  <tr><td>Invoice total before VAT</td><td>${formatReceiptValue(invoiceTotal === undefined ? "-" : formatCurrency(invoiceTotal))}</td></tr>
-                  <tr><td>Amount paid before VAT</td><td>${formatReceiptValue(formatCurrency(receiptVat.subtotal))}</td></tr>
-                  <tr><td>VAT (${VAT_RATE_LABEL})</td><td>${formatReceiptValue(formatCurrency(receiptVat.vat))}</td></tr>
-                  <tr class="summary-total"><td>Total including VAT</td><td>${formatReceiptValue(formatCurrency(receiptVat.totalWithVat))}</td></tr>
-                  <tr><td>Balance after payment</td><td>${formatReceiptValue(balanceAfter === null ? "-" : formatCurrency(Math.max(0, balanceAfter)))}</td></tr>
+                  <tr><td>Invoice total including VAT</td><td>${formatReceiptValue(invoiceTotal === undefined ? "-" : formatCurrency(invoiceTotal))}</td></tr>
+                  <tr><td>Taxable amount before VAT</td><td>${formatReceiptValue(formatCurrency(receiptVat.subtotal))}</td></tr>
+                  <tr><td>VAT included (${VAT_RATE_LABEL})</td><td>${formatReceiptValue(formatCurrency(receiptVat.vat))}</td></tr>
+                  <tr class="summary-total"><td>Total paid including VAT</td><td>${formatReceiptValue(formatCurrency(receiptVat.totalWithVat))}</td></tr>
                 </tbody>
               </table>
 

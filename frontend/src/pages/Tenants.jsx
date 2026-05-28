@@ -95,6 +95,7 @@ export default function Tenant() {
   const [tenantName, setTenantName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [tinNumber, setTinNumber] = useState("");
   const [unit, setUnit] = useState("");
   const [idLicenseFile, setIdLicenseFile] = useState(null);
   const [leaseAgreementFile, setLeaseAgreementFile] = useState(null);
@@ -126,6 +127,7 @@ export default function Tenant() {
     setTenantName("");
     setPhone("");
     setEmail("");
+    setTinNumber("");
     setUnit("");
     setIdLicenseFile(null);
     setLeaseAgreementFile(null);
@@ -211,6 +213,7 @@ export default function Tenant() {
       tenant.tenantName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       String(tenant.phone || "").includes(searchTerm) ||
       tenant.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tenant.tinNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       tenant.tenantId?.toString().includes(searchTerm)
     )
     .sort((a, b) => {
@@ -297,6 +300,8 @@ export default function Tenant() {
             tenantName,
             phone: normalizedPhone,
             email,
+            // Tenant TIN is optional, but receipts print it when the tenant has one.
+            tinNumber,
             unit,
             idLicenseFile,
             leaseAgreementFile,
@@ -333,6 +338,7 @@ export default function Tenant() {
     setTenantName(tenant.tenantName || "");
     setPhone(formatEthiopianPhoneInput(tenant.phone || ""));
     setEmail(tenant.email || "");
+    setTinNumber(tenant.tinNumber || "");
     setUnit(tenantUnit?._id || tenant.unit || "");
     setIdLicenseFile(tenant.idLicenseFile || null);
     setLeaseAgreementFile(tenant.leaseAgreementFile || null);
@@ -486,6 +492,13 @@ export default function Tenant() {
               disabled={!selectedBuildingId}
             />
 
+            <input
+              placeholder="Tenant TIN Number"
+              value={tinNumber}
+              onChange={(e) => setTinNumber(e.target.value)}
+              disabled={!selectedBuildingId}
+            />
+
             <select
               value={unit}
               onChange={(e) => setUnit(e.target.value)}
@@ -610,6 +623,9 @@ export default function Tenant() {
               <th onClick={() => handleSort("email")} className="sortable-header">
                 Email {sortField === "email" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
+              <th onClick={() => handleSort("tinNumber")} className="sortable-header">
+                TIN {sortField === "tinNumber" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th onClick={() => handleSort("unit")} className="sortable-header">
                 Unit {sortField === "unit" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
@@ -633,6 +649,7 @@ export default function Tenant() {
                     <td>{tenant.tenantName}</td>
                     <td>{formatEthiopianPhoneDisplay(tenant.phone)}</td>
                     <td>{tenant.email || "-"}</td>
+                    <td>{tenant.tinNumber || "-"}</td>
                     <td>{tenantUnit?.unitId || "Unassigned"}</td>
                     <td>{formatFloorLabel(tenantUnit?.floor?.floor)}</td>
                     <td>{formatEthiopianDate(tenant.moveInDate)}</td>
@@ -669,7 +686,7 @@ export default function Tenant() {
               })
             ) : (
               <tr>
-                <td colSpan="11">No tenants found</td>
+                <td colSpan="12">No tenants found</td>
               </tr>
             )}
           </tbody>

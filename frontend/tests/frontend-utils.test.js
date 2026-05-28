@@ -7,6 +7,8 @@ import { formatFloorLabel } from "../src/utils/floorUtils.js";
 import { normalizeDateInputForApi } from "../src/utils/dateUtils.js";
 import { compareSortValues, nextSortDirection } from "../src/utils/sortUtils.js";
 import { calculateVatBreakdown } from "../src/utils/taxUtils.js";
+import { formatFsNumber } from "../src/utils/receiptUtils.js";
+import { calculatePayrollRow } from "../src/utils/payrollUtils.js";
 
 test("frontend floor labels show ground and basement levels", () => {
   assert.equal(formatFloorLabel(-1), "B1");
@@ -42,10 +44,30 @@ test("frontend sorting handles numeric strings and direction flips", () => {
   assert.equal(nextSortDirection("name", "floor", "desc"), "asc");
 });
 
-test("receipt VAT uses the configured 15 percent rate", () => {
-  const result = calculateVatBreakdown(80000);
+test("receipt VAT splits an already VAT-inclusive payment", () => {
+  const result = calculateVatBreakdown(92000);
 
   assert.equal(result.subtotal, 80000);
   assert.equal(result.vat, 12000);
   assert.equal(result.totalWithVat, 92000);
+});
+
+test("receipt FS numbers stay unique and stable per payment", () => {
+  const payment = {
+    _id: "6655aabbccddeeff00112233",
+    paymentDate: "2026-05-26T08:00:00.000Z"
+  };
+
+  assert.equal(formatFsNumber(payment), "FS-20260526-00112233");
+});
+
+test("payroll uses employee salary as gross pay", () => {
+  const row = calculatePayrollRow({ name: "Alem", salary: 10000 });
+
+  assert.equal(row.grossSalary, 10000);
+  assert.equal(row.incomeTax, 1650);
+  assert.equal(row.employeePension, 700);
+  assert.equal(row.employerPension, 1100);
+  assert.equal(row.netPay, 7650);
+  assert.equal(row.governmentRemittance, 3450);
 });

@@ -38,6 +38,7 @@ export default function Buildings() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [managerName, setManagerName] = useState("");
+  const [tinNumber, setTinNumber] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -80,6 +81,7 @@ export default function Buildings() {
     setName("");
     setAddress("");
     setManagerName("");
+    setTinNumber("");
     setPhone("");
     setNotes("");
     setEditingId(null);
@@ -102,6 +104,7 @@ export default function Buildings() {
 
     try {
       const normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
+      // Building TIN is the owner TIN printed at the top of payment receipts.
       const res = await apiFetch(
         editingId ? `${API_BASE}/buildings/${editingId}` : `${API_BASE}/buildings`,
         {
@@ -109,7 +112,7 @@ export default function Buildings() {
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ name, address, managerName, phone: normalizedPhone, notes })
+          body: JSON.stringify({ name, address, managerName, tinNumber, phone: normalizedPhone, notes })
         }
       );
 
@@ -138,6 +141,7 @@ export default function Buildings() {
     setName(building.name || "");
     setAddress(building.address || "");
     setManagerName(building.managerName || "");
+    setTinNumber(building.tinNumber || "");
     setPhone(formatEthiopianPhoneInput(building.phone || ""));
     setNotes(building.notes || "");
     setEditingId(building._id);
@@ -226,6 +230,12 @@ export default function Buildings() {
             />
 
             <input
+              placeholder="Owner TIN Number"
+              value={tinNumber}
+              onChange={(e) => setTinNumber(e.target.value)}
+            />
+
+            <input
               {...phoneInputProps}
               placeholder="Phone (+2519XXXXXXXX)"
               value={phone}
@@ -270,6 +280,9 @@ export default function Buildings() {
               <th onClick={() => handleSort("managerName")} className="sortable-header">
                 Manager {sortField === "managerName" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
+              <th onClick={() => handleSort("tinNumber")} className="sortable-header">
+                Owner TIN {sortField === "tinNumber" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
               <th onClick={() => handleSort("phone")} className="sortable-header">
                 Phone {sortField === "phone" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
@@ -288,6 +301,7 @@ export default function Buildings() {
                   <td>{building.name}</td>
                   <td>{building.address || "-"}</td>
                   <td>{building.managerName || "-"}</td>
+                  <td>{building.tinNumber || "-"}</td>
                   <td>{formatEthiopianPhoneDisplay(building.phone) || "-"}</td>
                   <td>{selectedBuildingId === building._id ? "Selected" : "-"}</td>
                   <td>
@@ -309,7 +323,7 @@ export default function Buildings() {
               ))
             ) : (
               <tr>
-                <td colSpan="6">No buildings added yet</td>
+                <td colSpan="7">No buildings added yet</td>
               </tr>
             )}
           </tbody>

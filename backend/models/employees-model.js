@@ -15,6 +15,7 @@ const employeesSchema = new mongoose.Schema({
           trim:true,
           default:""
      },
+     // Gross monthly salary; payroll reports calculate tax, pension, and net pay from this.
      salary:{
           type:Number,
           default:0

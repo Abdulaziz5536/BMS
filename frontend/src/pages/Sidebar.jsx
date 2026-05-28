@@ -110,6 +110,12 @@ export default function Sidebar({ persistent = false }) {
         </li>
 
         <li>
+          <NavLink to="/utilities" className={({ isActive }) => (isActive ? "active" : "")}>
+            Utilities
+          </NavLink>
+        </li>
+
+        <li>
           <NavLink to="/floors" className={({ isActive }) => (isActive ? "active" : "")}>
             Floors
           </NavLink>
@@ -139,11 +145,6 @@ export default function Sidebar({ persistent = false }) {
           </NavLink>
         </li>
 
-        <li>
-          <NavLink to="/utilities" className={({ isActive }) => (isActive ? "active" : "")}>
-            Utilities
-          </NavLink>
-        </li>
 
         <li>
           <NavLink to="/announcements" className={({ isActive }) => (isActive ? "active" : "")}>

@@ -14,14 +14,20 @@ const { getBuildingBrandName } = require("../utils/branding-utils");
 const {
   getAllowedCorsOrigins,
   isOriginAllowed,
-  shouldServeFrontendRoute
+  shouldServeFrontendRoute,
+  isProtectedFrontendRoute
 } = require("../utils/deployment-utils");
+const {
+  AUTH_COOKIE_NAME,
+  getAuthTokenFromRequest
+} = require("../utils/session-cookie-utils");
 const { formatFloorLabel } = require("../utils/floor-label-utils");
 const { calculateLatePenalty } = require("../utils/late-penalty-utils");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
 const { getSystemChecks } = require("../services/system-check-service");
 const { isPublicPath } = require("../middleware/auth-middleware");
 const {
+  clearReminderHistoryForScheduleChange,
   getDaysUntilDue,
   reminderAlreadySent,
   shouldSkipReminder
@@ -156,14 +162,34 @@ test("deployment frontend serving only catches browser page requests", () => {
     path: "/buildings",
     headers: { accept: "*/*" }
   }), false);
+
+  assert.equal(isProtectedFrontendRoute("/dashboard"), true);
+  assert.equal(isProtectedFrontendRoute("/login"), false);
 });
 
 test("backend auth middleware keeps only login/signup/health public", () => {
   assert.equal(isPublicPath("/login"), true);
   assert.equal(isPublicPath("/signup"), true);
+  assert.equal(isPublicPath("/logout"), true);
   assert.equal(isPublicPath("/system/health"), true);
   assert.equal(isPublicPath("/buildings"), false);
   assert.equal(isPublicPath("/invoices"), false);
+});
+
+test("backend auth can read direct-page login cookies", () => {
+  assert.equal(
+    getAuthTokenFromRequest({ headers: { cookie: `${AUTH_COOKIE_NAME}=cookie-token; theme=dark` } }),
+    "cookie-token"
+  );
+  assert.equal(
+    getAuthTokenFromRequest({
+      headers: {
+        authorization: "Bearer api-token",
+        cookie: `${AUTH_COOKIE_NAME}=cookie-token`
+      }
+    }),
+    "api-token"
+  );
 });
 
 test("manual reminder force option bypasses duplicate skip check", () => {
@@ -176,6 +202,19 @@ test("manual reminder force option bypasses duplicate skip check", () => {
   assert.equal(reminderAlreadySent(invoice, "due_date"), true);
   assert.equal(shouldSkipReminder(invoice, "due_date", { force: false }), true);
   assert.equal(shouldSkipReminder(invoice, "due_date", { force: true }), false);
+  assert.equal(shouldSkipReminder(invoice, "late_payment", { force: false }), false);
+});
+
+test("schedule changes clear stale reminder history", () => {
+  const invoice = {
+    remindersSent: [
+      { type: "due_date", sentAt: new Date("2026-05-24") },
+      { type: "late_payment", sentAt: new Date("2026-05-26") }
+    ]
+  };
+
+  assert.equal(clearReminderHistoryForScheduleChange(invoice), 2);
+  assert.deepEqual(invoice.remindersSent, []);
   assert.equal(shouldSkipReminder(invoice, "late_payment", { force: false }), false);
 });
 

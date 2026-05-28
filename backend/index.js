@@ -20,13 +20,14 @@ const utilityRouter = require("./routes/utility-route");
 const invoiceRouter = require("./routes/invoice-route");
 const announcementRouter = require("./routes/announcement-route");
 const systemRouter = require("./routes/system-route");
-const { requireAuth } = require("./middleware/auth-middleware");
+const { requireAuth, isRequestAuthenticated } = require("./middleware/auth-middleware");
 const { startDueDateReminderJob } = require("./services/due-reminder-service");
 const { getSystemChecks } = require("./services/system-check-service");
 const {
   getAllowedCorsOrigins,
   isOriginAllowed,
-  shouldServeFrontendRoute
+  shouldServeFrontendRoute,
+  isProtectedFrontendRoute
 } = require("./utils/deployment-utils");
 const {
   errorResponseMiddleware,
@@ -80,6 +81,11 @@ if (shouldServeBundledFrontend) {
   app.use(express.static(frontendDistPath));
   app.use((req, res, next) => {
     if (shouldServeFrontendRoute(req)) {
+      // Protected app pages require a valid login cookie when opened directly in the browser.
+      if (isProtectedFrontendRoute(req.path) && !isRequestAuthenticated(req)) {
+        return res.redirect(302, "/login");
+      }
+
       return res.sendFile(frontendIndexPath);
     }
 

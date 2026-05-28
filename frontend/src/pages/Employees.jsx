@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ChevronDownIcon,
   PencilSquareIcon,
   PrinterIcon,
   TrashIcon
@@ -26,21 +27,13 @@ import {
   normalizeEthiopianPhone,
   phoneInputProps
 } from "../utils/phoneUtils";
+import {
+  calculatePayrollRow,
+  calculatePayrollTotals
+} from "../utils/payrollUtils";
 import "../style.css";
 
 // Employees page manages staff records and generates a payroll report for the selected building.
-
-const TAX_BRACKETS = [
-  { min: 0, max: 2000, rate: 0, deduction: 0 },
-  { min: 2000, max: 4000, rate: 0.15, deduction: 300 },
-  { min: 4000, max: 7000, rate: 0.20, deduction: 500 },
-  { min: 7000, max: 10000, rate: 0.25, deduction: 850 },
-  { min: 10000, max: 14000, rate: 0.30, deduction: 1350 },
-  { min: 14000, max: Infinity, rate: 0.35, deduction: 2050 }
-];
-
-const EMPLOYEE_PENSION_RATE = 0.07;
-const EMPLOYER_PENSION_RATE = 0.11;
 
 const formatCurrency = (amount) => `Br ${Number(amount || 0).toLocaleString(undefined, {
   minimumFractionDigits: 2,
@@ -65,49 +58,6 @@ const formatGeneratedDate = () => new Date().toLocaleDateString([], {
   day: "2-digit"
 });
 
-const calculateIncomeTax = (salary) => {
-  // Ethiopian payroll-style bracket calculation using deduction amounts.
-  const grossSalary = Math.max(0, Number(salary) || 0);
-  const bracket = TAX_BRACKETS.find((item) => grossSalary > item.min && grossSalary <= item.max) || TAX_BRACKETS[0];
-  const tax = Math.max(0, grossSalary * bracket.rate - bracket.deduction);
-  return Number(tax.toFixed(2));
-};
-
-const calculateNetPayFromGross = (grossSalary) => {
-  const gross = Math.max(0, Number(grossSalary) || 0);
-  const employeePension = gross * EMPLOYEE_PENSION_RATE;
-  const incomeTax = calculateIncomeTax(gross);
-  return gross - employeePension - incomeTax;
-};
-
-const calculateGrossSalaryFromNet = (netSalary) => {
-  // Salary is entered as net pay, so binary search finds the gross salary that produces it.
-  const targetNet = Math.max(0, Number(netSalary) || 0);
-
-  if (targetNet === 0) {
-    return 0;
-  }
-
-  let low = 0;
-  let high = Math.max(targetNet / (1 - EMPLOYEE_PENSION_RATE), targetNet + 1000);
-
-  while (calculateNetPayFromGross(high) < targetNet) {
-    high *= 2;
-  }
-
-  for (let i = 0; i < 80; i += 1) {
-    const mid = (low + high) / 2;
-
-    if (calculateNetPayFromGross(mid) < targetNet) {
-      low = mid;
-    } else {
-      high = mid;
-    }
-  }
-
-  return Number(high.toFixed(2));
-};
-
 export default function Employees() {
   const selectedBuildingId = useSelectedBuilding();
   const buildingName = useSelectedBuildingName();
@@ -120,8 +70,13 @@ export default function Employees() {
   const [emergencyContactName, setEmergencyContactName] = useState("");
   const [emergencyContactPhone, setEmergencyContactPhone] = useState("");
   const [payrollMonth, setPayrollMonth] = useState(currentPayrollMonth());
+  const [selectedPayrollEmployeeIds, setSelectedPayrollEmployeeIds] = useState([]);
+  const [payrollSelectionTouched, setPayrollSelectionTouched] = useState(false);
+  const [payrollSelectorOpen, setPayrollSelectorOpen] = useState(false);
+  const [payrollEmployeeSearch, setPayrollEmployeeSearch] = useState("");
   const [editingId, setEditingId] = useState(null);
   const employeeFormRef = useRef(null);
+  const payrollDropdownRef = useRef(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useShortError();
   const [sortField, setSortField] = useState("name");
@@ -138,41 +93,39 @@ export default function Employees() {
     setEditingId(null);
   }, []);
 
-  const payrollRows = useMemo(() => employees.map((employee) => {
-    // Each payroll row expands one employee's net salary into tax/pension figures.
-    const netPay = Number(employee.salary || 0);
-    const grossSalary = calculateGrossSalaryFromNet(netPay);
-    const employeePension = Number((grossSalary * EMPLOYEE_PENSION_RATE).toFixed(2));
-    const employerPension = Number((grossSalary * EMPLOYER_PENSION_RATE).toFixed(2));
-    const incomeTax = calculateIncomeTax(grossSalary);
-    const governmentRemittance = Number((employeePension + employerPension + incomeTax).toFixed(2));
+  const allEmployeeIds = useMemo(() => employees.map((employee) => String(employee._id)), [employees]);
 
-    return {
-      employee,
-      grossSalary,
-      employeePension,
-      employerPension,
-      incomeTax,
-      netPay,
-      governmentRemittance
-    };
-  }), [employees]);
+  const selectedPayrollEmployeeSet = useMemo(
+    () => new Set(selectedPayrollEmployeeIds),
+    [selectedPayrollEmployeeIds]
+  );
 
-  const payrollTotals = useMemo(() => payrollRows.reduce((totals, row) => ({
-    grossSalary: totals.grossSalary + row.grossSalary,
-    employeePension: totals.employeePension + row.employeePension,
-    employerPension: totals.employerPension + row.employerPension,
-    incomeTax: totals.incomeTax + row.incomeTax,
-    netPay: totals.netPay + row.netPay,
-    governmentRemittance: totals.governmentRemittance + row.governmentRemittance
-  }), {
-    grossSalary: 0,
-    employeePension: 0,
-    employerPension: 0,
-    incomeTax: 0,
-    netPay: 0,
-    governmentRemittance: 0
-  }), [payrollRows]);
+  const selectedPayrollEmployees = useMemo(() => employees.filter((employee) =>
+    selectedPayrollEmployeeSet.has(String(employee._id))
+  ), [employees, selectedPayrollEmployeeSet]);
+
+  const payrollSelectionEmployees = useMemo(() => [...employees].sort((a, b) =>
+    compareSortValues(a.name, b.name, "asc")
+  ), [employees]);
+
+  const filteredPayrollSelectionEmployees = useMemo(() => {
+    const searchValue = payrollEmployeeSearch.trim().toLowerCase();
+
+    if (!searchValue) {
+      return payrollSelectionEmployees;
+    }
+
+    return payrollSelectionEmployees.filter((employee) =>
+      [employee.name, employee.position, employee.phoneNumber, employee.email]
+        .some((value) => String(value || "").toLowerCase().includes(searchValue))
+    );
+  }, [payrollEmployeeSearch, payrollSelectionEmployees]);
+
+  const payrollRows = useMemo(() => selectedPayrollEmployees.map((employee) => (
+    calculatePayrollRow(employee)
+  )), [selectedPayrollEmployees]);
+
+  const payrollTotals = useMemo(() => calculatePayrollTotals(payrollRows), [payrollRows]);
 
   const sortedEmployees = useMemo(() => [...employees].sort((a, b) =>
     compareSortValues(a[sortField], b[sortField], sortDirection)
@@ -198,8 +151,51 @@ export default function Employees() {
     clearForm();
     setMessage("");
     setError("");
+    setSelectedPayrollEmployeeIds([]);
+    setPayrollSelectionTouched(false);
+    setPayrollSelectorOpen(false);
+    setPayrollEmployeeSearch("");
     fetchEmployees();
   }, [clearForm, fetchEmployees, selectedBuildingId, setError]);
+
+  useEffect(() => {
+    // Payroll defaults to all employees until the user chooses a smaller payroll group.
+    setSelectedPayrollEmployeeIds((currentIds) => {
+      if (!payrollSelectionTouched) {
+        return allEmployeeIds;
+      }
+
+      const validIds = new Set(allEmployeeIds);
+      return currentIds.filter((id) => validIds.has(id));
+    });
+  }, [allEmployeeIds, payrollSelectionTouched]);
+
+  useEffect(() => {
+    // Close the dropdown when the user clicks away or presses Escape.
+    if (!payrollSelectorOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!payrollDropdownRef.current?.contains(event.target)) {
+        setPayrollSelectorOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setPayrollSelectorOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [payrollSelectorOpen]);
 
   useEffect(() => {
     if (editingId) {
@@ -211,7 +207,7 @@ export default function Employees() {
   }, [editingId]);
 
   const saveEmployee = async () => {
-    // Phone/email/salary validation runs before calling the backend.
+    // Phone/email/gross-salary validation runs before calling the backend.
     setMessage("");
     setError("");
 
@@ -332,8 +328,36 @@ export default function Employees() {
     setSortField(field);
   };
 
+  const togglePayrollEmployee = (employeeId) => {
+    // Manual payroll selection lets one monthly report include all staff or only chosen employees.
+    setPayrollSelectionTouched(true);
+    setSelectedPayrollEmployeeIds((currentIds) =>
+      currentIds.includes(employeeId)
+        ? currentIds.filter((id) => id !== employeeId)
+        : [...currentIds, employeeId]
+    );
+  };
+
+  const selectAllPayrollEmployees = () => {
+    setPayrollSelectionTouched(true);
+    setSelectedPayrollEmployeeIds(allEmployeeIds);
+  };
+
+  const clearPayrollEmployeeSelection = () => {
+    setPayrollSelectionTouched(true);
+    setSelectedPayrollEmployeeIds([]);
+  };
+
   const payrollMonthLabel = formatPayrollMonth(payrollMonth);
   const payrollGeneratedDate = formatGeneratedDate();
+  const allPayrollEmployeesSelected = employees.length > 0 && selectedPayrollEmployees.length === employees.length;
+  const payrollSelectionLabel = employees.length === 0
+    ? "No employees"
+    : allPayrollEmployeesSelected
+      ? `All employees (${employees.length})`
+      : selectedPayrollEmployees.length === 0
+        ? "Choose employees"
+        : `${selectedPayrollEmployees.length} selected`;
 
   return (
     <div className="app-layout">
@@ -385,7 +409,7 @@ export default function Employees() {
             <input
               type="number"
               min="0"
-              placeholder="Net Monthly Salary (Br)"
+              placeholder="Gross Monthly Salary (Br)"
               value={salary}
               onChange={(e) => setSalary(e.target.value)}
               disabled={!selectedBuildingId}
@@ -443,7 +467,7 @@ export default function Employees() {
                 Email {sortField === "email" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
               <th onClick={() => handleSort("salary")} className="sortable-header">
-                Net Salary {sortField === "salary" && (sortDirection === "asc" ? "↑" : "↓")}
+                Gross Salary {sortField === "salary" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
               <th onClick={() => handleSort("emergencyContactName")} className="sortable-header">
                 Emergency Contact {sortField === "emergencyContactName" && (sortDirection === "asc" ? "↑" : "↓")}
@@ -502,11 +526,86 @@ export default function Employees() {
                 value={payrollMonth}
                 onChange={(e) => setPayrollMonth(e.target.value)}
               />
-              <button onClick={printPayroll}>
+              <button onClick={printPayroll} disabled={payrollRows.length === 0}>
                 <PrinterIcon />
                 Print / Save PDF
               </button>
             </div>
+          </div>
+
+          <div className="payroll-selection-panel" ref={payrollDropdownRef}>
+            <div className="payroll-selection-header">
+              <div>
+                <span>Employees</span>
+                <strong>{selectedPayrollEmployees.length} of {employees.length} selected</strong>
+              </div>
+              <button
+                type="button"
+                className={`payroll-select-trigger ${payrollSelectorOpen ? "is-open" : ""}`}
+                onClick={() => setPayrollSelectorOpen((isOpen) => !isOpen)}
+                disabled={employees.length === 0}
+                aria-expanded={payrollSelectorOpen}
+                aria-haspopup="listbox"
+              >
+                <span>{payrollSelectionLabel}</span>
+                <ChevronDownIcon />
+              </button>
+            </div>
+
+            {payrollSelectorOpen && (
+              <div className="payroll-selection-popover">
+                <div className="payroll-selection-tools">
+                  <input
+                    type="search"
+                    placeholder="Search employees"
+                    value={payrollEmployeeSearch}
+                    onChange={(e) => setPayrollEmployeeSearch(e.target.value)}
+                  />
+                  <div className="payroll-selection-actions">
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={selectAllPayrollEmployees}
+                      disabled={employees.length === 0 || selectedPayrollEmployees.length === employees.length}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={clearPayrollEmployeeSelection}
+                      disabled={selectedPayrollEmployees.length === 0}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="payroll-employee-selector" role="listbox" aria-label="Payroll employees">
+                  {filteredPayrollSelectionEmployees.length > 0 ? (
+                    filteredPayrollSelectionEmployees.map((employee) => {
+                      const employeeId = String(employee._id);
+
+                      return (
+                        <label className="payroll-employee-option" key={employee._id}>
+                          <input
+                            type="checkbox"
+                            checked={selectedPayrollEmployeeSet.has(employeeId)}
+                            onChange={() => togglePayrollEmployee(employeeId)}
+                          />
+                          <span>
+                            <strong>{employee.name}</strong>
+                            <small>{employee.position || "Employee"} - {formatCurrency(employee.salary)}</small>
+                          </span>
+                        </label>
+                      );
+                    })
+                  ) : (
+                    <p className="empty-state compact">No employees match this search.</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="payroll-summary-grid">

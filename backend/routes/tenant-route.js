@@ -24,6 +24,8 @@ const MAX_FILE_DATA_LENGTH = 7000000;
 // Normalize optional contact/date/file fields before validation and saving.
 const normalizeTenantPayload = (body) => ({
   email: String(body.email || "").trim(),
+  // Tenant TIN is optional, but when present it prints on receipts.
+  tinNumber: String(body.tinNumber || "").trim(),
   emergencyContactName: String(body.emergencyContactName || "").trim(),
   emergencyContactPhone: normalizeEthiopianPhone(body.emergencyContactPhone, { required: false }),
   emergencyContactRelation: String(body.emergencyContactRelation || "").trim(),

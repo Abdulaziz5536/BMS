@@ -35,6 +35,11 @@ const tenantSchema = new mongoose.Schema({
     trim:true,
     default:""
   },
+  tinNumber:{
+    type:String,
+    trim:true,
+    default:""
+  },
   unit:{
     type: mongoose.Schema.Types.ObjectId,
     ref: "Unit",

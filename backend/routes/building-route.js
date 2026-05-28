@@ -30,7 +30,9 @@ router.get("/buildings", async (req, res) => {
 
 router.post("/buildings", async (req, res) => {
   try {
-    const { name, address, managerName, phone, notes } = req.body;
+    const { name, address, managerName, tinNumber, phone, notes } = req.body;
+    // Owner TIN is stored on the building because receipts are issued by the selected building owner.
+    const normalizedTinNumber = String(tinNumber || "").trim();
 
     if (!name) {
       return res.status(400).json({ error: "Building name is required" });
@@ -48,6 +50,7 @@ router.post("/buildings", async (req, res) => {
       name,
       address,
       managerName,
+      tinNumber: normalizedTinNumber,
       phone: normalizedPhone,
       notes
     });
@@ -69,7 +72,8 @@ router.post("/buildings", async (req, res) => {
 
 router.put("/buildings/:id", async (req, res) => {
   try {
-    const { name, address, managerName, phone, notes } = req.body;
+    const { name, address, managerName, tinNumber, phone, notes } = req.body;
+    const normalizedTinNumber = String(tinNumber || "").trim();
 
     if (!name) {
       return res.status(400).json({ error: "Building name is required" });
@@ -85,7 +89,7 @@ router.put("/buildings/:id", async (req, res) => {
 
     const building = await Building.findByIdAndUpdate(
       req.params.id,
-      { name, address, managerName, phone: normalizedPhone, notes },
+      { name, address, managerName, tinNumber: normalizedTinNumber, phone: normalizedPhone, notes },
       { returnDocument: "after" }
     );
 

@@ -18,6 +18,11 @@ const buildingSchema = new mongoose.Schema(
       trim: true,
       default: ""
     },
+    tinNumber: {
+      type: String,
+      trim: true,
+      default: ""
+    },
     phone: {
       type: String,
       trim: true,

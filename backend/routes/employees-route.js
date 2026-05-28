@@ -11,6 +11,7 @@ const {
 
 // Convert raw form values into the exact shape the database expects.
 const normalizeEmployeePayload = (body) => {
+  // Salary is stored as gross monthly salary; payroll later calculates deductions from it.
   const salary = Number(body.salary || 0);
 
   return {
@@ -60,7 +61,7 @@ router.post('/employees', async (req,res) => {
        }
 
        if(!Number.isFinite(employeeData.salary) || employeeData.salary < 0){
-        return res.status(400).json({error:"Net salary must be a valid number"});
+        return res.status(400).json({error:"Gross salary must be a valid number"});
        }
 
        // Avoid accidental duplicates when the same person is entered twice in one building.
@@ -111,7 +112,7 @@ router.put('/employees/:id', async (req,res) => {
     }
 
     if(!Number.isFinite(employeeData.salary) || employeeData.salary < 0){
-      return res.status(400).json({error:"Net salary must be a valid number"});
+      return res.status(400).json({error:"Gross salary must be a valid number"});
     }
 
     // Same duplicate check as create, excluding the employee being edited.

@@ -66,6 +66,18 @@ const reminderAlreadySent = (invoice, type) =>
 const shouldSkipReminder = (invoice, type, options = {}) =>
   !options.force && reminderAlreadySent(invoice, type);
 
+const clearReminderHistoryForScheduleChange = (invoice) => {
+  const previousCount = Array.isArray(invoice.remindersSent)
+    ? invoice.remindersSent.length
+    : 0;
+
+  if (previousCount > 0) {
+    invoice.remindersSent = [];
+  }
+
+  return previousCount;
+};
+
 const getReminderText = (message) => {
   if (typeof message === "string") {
     return message;
@@ -507,6 +519,7 @@ const startDueDateReminderJob = () => {
 };
 
 module.exports = {
+  clearReminderHistoryForScheduleChange,
   getDaysUntilDue,
   reminderAlreadySent,
   runDueDateReminders,

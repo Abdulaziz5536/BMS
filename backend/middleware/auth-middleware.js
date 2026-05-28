@@ -1,12 +1,30 @@
 const jwt = require("jsonwebtoken");
+const { getAuthTokenFromRequest } = require("../utils/session-cookie-utils");
 
 const PUBLIC_PATHS = new Set([
   "/login",
   "/signup",
+  "/logout",
   "/system/health"
 ]);
 
 const isPublicPath = (path) => PUBLIC_PATHS.has(path);
+
+const verifyRequestToken = (req) => {
+  const token = getAuthTokenFromRequest(req);
+
+  if (!token || !process.env.JWT_SECRET) {
+    return null;
+  }
+
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return null;
+  }
+};
+
+const isRequestAuthenticated = (req) => Boolean(verifyRequestToken(req));
 
 const requireAuth = (req, res, next) => {
   // Every private API call must include the JWT created by /login.
@@ -15,8 +33,7 @@ const requireAuth = (req, res, next) => {
     return next();
   }
 
-  const authHeader = String(req.headers.authorization || "");
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const token = getAuthTokenFromRequest(req);
 
   if (!token) {
     return res.status(401).json({ error: "Login required" });
@@ -37,5 +54,7 @@ const requireAuth = (req, res, next) => {
 module.exports = {
   PUBLIC_PATHS,
   isPublicPath,
+  verifyRequestToken,
+  isRequestAuthenticated,
   requireAuth
 };

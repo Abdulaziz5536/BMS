@@ -6,6 +6,7 @@ const PaymentRecord = require('../models/payment-record-model');
 const Contract = require('../models/contract-model');
 const Tenant = require('../models/tenant-model');
 const {
+  clearReminderHistoryForScheduleChange,
   getDaysUntilDue,
   runDueDateReminders
 } = require('../services/due-reminder-service');
@@ -72,6 +73,7 @@ router.get('/invoices', async (req, res) => {
 
     const invoices = await Invoice.find(filter)
       .populate('tenant')
+      .populate('building')
       .populate('contract')
       .sort({ dueDate: -1 });
 
@@ -692,6 +694,7 @@ router.patch('/invoices/:id', async (req, res) => {
 
     // Editing dates changes the invoice only. It does not send reminders by itself.
     let dueDateChanged = false;
+    let remindersCleared = 0;
     if (dueDate) {
       const nextDueDate = parseFlexibleDateInput(dueDate);
 
@@ -705,6 +708,7 @@ router.patch('/invoices/:id', async (req, res) => {
 
       if (prevMs !== nextMs) {
         dueDateChanged = true;
+        remindersCleared = clearReminderHistoryForScheduleChange(invoice);
       }
 
       invoice.dueDate = nextDueDate;
@@ -777,6 +781,7 @@ router.patch('/invoices/:id', async (req, res) => {
       message: `Invoice ${getInvoiceLabel(invoice)} updated`,
       metadata: {
         dueDateChanged,
+        remindersCleared,
         previousStatus,
         status: invoice.status
       }
@@ -852,6 +857,7 @@ router.get('/payment-records', async (req, res) => {
     }
 
     const payments = await PaymentRecord.find(filter)
+      .populate('building')
       .populate({
         path: 'tenant',
         populate: { path: 'unit', select: 'unitId' }

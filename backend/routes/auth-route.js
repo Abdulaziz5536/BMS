@@ -3,9 +3,14 @@ const router = express.Router();
 const User = require('../models/auth-model');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const {
+  setAuthCookie,
+  clearAuthCookie,
+  getAuthTokenFromRequest
+} = require("../utils/session-cookie-utils");
 
 // Authentication is intentionally small: users sign up, passwords are hashed,
-// and login returns a JWT that the frontend stores for protected pages.
+// and login returns a JWT plus a browser cookie for protected pages.
 
 router.post('/signup', async (req,res) => {
   // Set ALLOW_SIGNUP=false after creating the owner/admin account on a public deployment.
@@ -84,6 +89,8 @@ router.post('/login', async (req,res) => {
       { expiresIn: "7d" }
     );
 
+  // The token is returned for API calls and also stored in an HttpOnly cookie for direct page visits.
+  setAuthCookie(res, token);
   res.json({message:"Logged in successfully",token});
 
   }
@@ -92,5 +99,30 @@ router.post('/login', async (req,res) => {
   }
 
 })
+
+router.get('/session', (req, res) => {
+  const token = getAuthTokenFromRequest(req);
+
+  if (!token) {
+    return res.status(401).json({ error: "Login required" });
+  }
+
+  if (!process.env.JWT_SECRET) {
+    return res.status(500).json({ error: "Login is not configured" });
+  }
+
+  try {
+    jwt.verify(token, process.env.JWT_SECRET);
+    return res.json({ authenticated: true });
+  } catch {
+    return res.status(401).json({ error: "Login expired" });
+  }
+});
+
+router.post('/logout', (req, res) => {
+  // Clear both server-side browser access and the frontend localStorage token.
+  clearAuthCookie(res);
+  res.json({ message: "Logged out" });
+});
 
 module.exports = router;

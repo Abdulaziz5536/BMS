@@ -17,6 +17,12 @@ const FRONTEND_ROUTES = new Set([
   "/system"
 ]);
 
+const PUBLIC_FRONTEND_ROUTES = new Set([
+  "/",
+  "/login",
+  "/signup"
+]);
+
 const DEFAULT_DEV_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -61,11 +67,16 @@ const shouldServeFrontendRoute = (req) => {
     FRONTEND_ROUTES.has(req.path);
 };
 
+const isProtectedFrontendRoute = (path) =>
+  FRONTEND_ROUTES.has(path) && !PUBLIC_FRONTEND_ROUTES.has(path);
+
 module.exports = {
   FRONTEND_ROUTES,
+  PUBLIC_FRONTEND_ROUTES,
   DEFAULT_DEV_ORIGINS,
   splitCsvEnv,
   getAllowedCorsOrigins,
   isOriginAllowed,
-  shouldServeFrontendRoute
+  shouldServeFrontendRoute,
+  isProtectedFrontendRoute
 };

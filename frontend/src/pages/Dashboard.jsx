@@ -155,7 +155,9 @@ export default function Dashboard() {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Logout clears the browser token and asks the backend to clear the direct-URL session cookie.
+    await apiFetch(`${API_BASE}/logout`, { method: "POST" }).catch(() => {});
     localStorage.removeItem("token");
     window.location.href = "/login";
   };

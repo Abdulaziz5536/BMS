@@ -1397,6 +1397,124 @@ button:disabled {
   height: 18px;
 }
 
+.payroll-selection-panel {
+  position: relative;
+  margin: 1rem 0;
+  padding: 0.95rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.payroll-selection-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.payroll-selection-header > div > span,
+.payroll-employee-option small {
+  display: block;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.payroll-selection-header > div > strong,
+.payroll-employee-option strong {
+  display: block;
+  color: #172033;
+  font-size: 0.92rem;
+}
+
+.payroll-select-trigger {
+  width: min(360px, 100%);
+  justify-content: space-between;
+  color: #172033;
+  background: #ffffff;
+  border-color: #cbd7e5;
+}
+
+.payroll-select-trigger:hover {
+  background: #f8fafc;
+  border-color: #9fb0c5;
+}
+
+.payroll-select-trigger svg {
+  width: 17px;
+  height: 17px;
+  transition: transform 0.16s ease;
+}
+
+.payroll-select-trigger.is-open svg {
+  transform: rotate(180deg);
+}
+
+.payroll-selection-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0.95rem;
+  right: 0.95rem;
+  padding: 0.85rem;
+  border: 1px solid #cbd7e5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.15);
+}
+
+.payroll-selection-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.payroll-selection-tools input {
+  margin: 0;
+}
+
+.payroll-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.payroll-selection-actions button {
+  min-height: 34px;
+}
+
+.payroll-employee-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.55rem;
+  max-height: 220px;
+  margin-top: 0.7rem;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.payroll-employee-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.payroll-employee-option input {
+  width: 17px;
+  height: 17px;
+  min-height: 0;
+  margin: 0;
+  accent-color: #0f4c81;
+}
+
 .payroll-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1982,7 +2100,7 @@ button:disabled {
 }
 
 .floors-table.tenant-table {
-  min-width: 1540px;
+  min-width: 1660px;
 }
 
 .floors-table.invoice-table {
@@ -2021,7 +2139,11 @@ button:disabled {
 }
 
 .tenant-table th:nth-child(5),
-.tenant-table td:nth-child(5),
+.tenant-table td:nth-child(5) {
+  min-width: 125px;
+  white-space: nowrap;
+}
+
 .tenant-table th:nth-child(6),
 .tenant-table td:nth-child(6) {
   min-width: 95px;
@@ -2036,20 +2158,20 @@ button:disabled {
   white-space: nowrap;
 }
 
-.tenant-table th:nth-child(9),
-.tenant-table td:nth-child(9) {
+.tenant-table th:nth-child(10),
+.tenant-table td:nth-child(10) {
   min-width: 210px;
   max-width: 250px;
   line-height: 1.45;
 }
 
-.tenant-table th:nth-child(10),
-.tenant-table td:nth-child(10) {
+.tenant-table th:nth-child(11),
+.tenant-table td:nth-child(11) {
   min-width: 140px;
 }
 
-.tenant-table th:nth-child(11),
-.tenant-table td:nth-child(11) {
+.tenant-table th:nth-child(12),
+.tenant-table td:nth-child(12) {
   min-width: 190px;
 }
 
@@ -3075,6 +3197,19 @@ span.secondary-btn {
     grid-template-columns: 1fr;
   }
 
+  .payroll-selection-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .payroll-select-trigger {
+    width: 100%;
+  }
+
+  .payroll-selection-tools {
+    grid-template-columns: 1fr;
+  }
+
   .announcement-stats,
   .announcement-form-grid {
     grid-template-columns: 1fr 1fr;
@@ -3176,6 +3311,8 @@ span.secondary-btn {
 
   .dashboard-reminder-actions,
   .dashboard-reminder-actions button,
+  .payroll-selection-actions,
+  .payroll-selection-actions button,
   .dashboard-due-panel .secondary-btn {
     width: 100%;
   }
@@ -3233,6 +3370,7 @@ span.secondary-btn {
   .message,
   .error,
   .payroll-panel > .section-header,
+  .payroll-selection-panel,
   .payroll-summary-grid,
   .floors-table-wrapper:not(.payroll-report) {
     display: none !important;
