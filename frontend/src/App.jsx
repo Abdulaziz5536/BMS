@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./components/Login";
 import Signup from "./components/Signup";
 import Dashboard from "./pages/Dashboard";
+import PaymentStatus from "./pages/PaymentStatus";
 import Buildings from "./pages/Buildings";
 import Floors from "./pages/Floors";
 import Unit from "./pages/Unit";
@@ -14,6 +15,7 @@ import Invoice from "./pages/Invoice";
 import Announcements from "./pages/Announcements";
 import Activity from "./pages/Activity";
 import SystemTools from "./pages/SystemTools";
+import Accounts from "./pages/Accounts";
 import Sidebar from "./pages/Sidebar";
 
 import ConfirmDialogProvider from "./components/ConfirmDialog";
@@ -55,6 +57,15 @@ function App() {
           <ProtectedAppPage>
             <Dashboard />
           </ProtectedAppPage>
+        }
+      />
+
+      <Route
+        path="/payment-status"
+        element={
+          <ProtectedRoute>
+            <PaymentStatus />
+          </ProtectedRoute>
         }
       />
 
@@ -157,6 +168,14 @@ function App() {
         element={
           <ProtectedAppPage>
             <SystemTools />
+          </ProtectedAppPage>
+        }
+      />
+      <Route
+        path="/accounts"
+        element={
+          <ProtectedAppPage>
+            <Accounts />
           </ProtectedAppPage>
         }
       />

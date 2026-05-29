@@ -1,4 +1,5 @@
 import { getApiErrorMessage, formatErrorMessage } from "./utils/errorUtils";
+import { isReadOnlyUser } from "./authSession";
 
 const defaultApiBase = import.meta.env.PROD
   ? (typeof window === "undefined" ? "" : window.location.origin)
@@ -171,7 +172,7 @@ export const loadCachedJson = async (
 
 export const prefetchBuildingData = (buildingId = getSelectedBuildingId()) => {
   // Warm common building-scoped pages after selection changes to make navigation feel faster.
-  if (!buildingId) {
+  if (!buildingId || isReadOnlyUser()) {
     return;
   }
 

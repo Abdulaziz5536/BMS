@@ -9,6 +9,7 @@ const {
   applyContractStatusToInvoices,
   syncContractPaymentState
 } = require('../services/payment-status-sync-service');
+const { createPaymentRecordIfMissing } = require('../services/payment-record-service');
 const { recalculateInvoicePeriodsForContract } = require('../services/invoice-period-service');
 const {
   normalizeDateOnlyString,
@@ -135,6 +136,16 @@ router.post('/contract', async (req, res) => {
       message: "Contract created"
     });
 
+    if (contract.status === "paid") {
+      await createPaymentRecordIfMissing({
+        building: contract.building,
+        tenant: contract.tenant,
+        contract: contract._id,
+        amount: contract.amount,
+        notes: "Recorded from paid contract status"
+      });
+    }
+
     res.json({ message: "contract created", contract });
   } catch (err) {
     res.status(500).json({ err: err.message });
@@ -191,6 +202,12 @@ router.put('/contract/:id', async (req, res) => {
       return res.status(400).json({ error: "Uploaded file is invalid or too large" });
     }
 
+    const previousContract = await Contract.findById(req.params.id);
+
+    if (!previousContract) {
+      return res.status(404).json({ error: "Contract not found" });
+    }
+
     const updatedContract = await Contract.findByIdAndUpdate(
       req.params.id,
       {
@@ -208,13 +225,19 @@ router.put('/contract/:id', async (req, res) => {
       { returnDocument: "after" }
     );
 
-    if (!updatedContract) {
-      return res.status(404).json({ error: "Contract not found" });
-    }
-
     // If lease dates/frequency change, existing invoice periods must follow the new contract dates.
     const invoicePeriodSync = await recalculateInvoicePeriodsForContract(Invoice, updatedContract);
     await applyContractStatusToInvoices(updatedContract, updatedContract.status);
+
+    if (previousContract.status !== "paid" && updatedContract.status === "paid") {
+      await createPaymentRecordIfMissing({
+        building: updatedContract.building,
+        tenant: updatedContract.tenant,
+        contract: updatedContract._id,
+        amount: updatedContract.amount,
+        notes: "Recorded from paid contract status"
+      });
+    }
 
     const invoicePeriodsUpdated = invoicePeriodSync.updated;
     const invoicePeriodsSkipped = invoicePeriodSync.skipped;
@@ -285,19 +308,29 @@ router.patch('/contract/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const contract = await Contract.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { returnDocument: "after" }
-    );
+    const contract = await Contract.findById(req.params.id);
 
     if (!contract) {
       return res.status(404).json({ error: "Contract not found" });
     }
 
+    const previousStatus = contract.status;
+    contract.status = status;
+    await contract.save();
+
     // Manual contract status updates intentionally push that status to existing invoices.
     await applyContractStatusToInvoices(contract, status);
     await syncContractPaymentState(contract);
+
+    if (previousStatus !== "paid" && status === "paid") {
+      await createPaymentRecordIfMissing({
+        building: contract.building,
+        tenant: contract.tenant,
+        contract: contract._id,
+        amount: contract.amount,
+        notes: "Recorded from paid contract status"
+      });
+    }
     await recordAuditLog({
       building: contract.building,
       action: "status_changed",

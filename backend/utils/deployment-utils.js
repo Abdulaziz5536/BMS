@@ -3,6 +3,7 @@ const FRONTEND_ROUTES = new Set([
   "/login",
   "/signup",
   "/dashboard",
+  "/payment-status",
   "/buildings",
   "/rent",
   "/floors",
@@ -14,6 +15,7 @@ const FRONTEND_ROUTES = new Set([
   "/invoice",
   "/announcements",
   "/activity",
+  "/accounts",
   "/system"
 ]);
 

@@ -23,6 +23,7 @@ import {
   withBuilding
 } from "../buildingSelection";
 import { confirmAction } from "../components/confirmAction";
+import { clearCurrentUser } from "../authSession";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import useShortError from "../hooks/useShortError";
 import { formatEthiopianDate } from "../utils/dateUtils";
@@ -159,6 +160,7 @@ export default function Dashboard() {
     // Logout clears the browser token and asks the backend to clear the direct-URL session cookie.
     await apiFetch(`${API_BASE}/logout`, { method: "POST" }).catch(() => {});
     localStorage.removeItem("token");
+    clearCurrentUser();
     window.location.href = "/login";
   };
 

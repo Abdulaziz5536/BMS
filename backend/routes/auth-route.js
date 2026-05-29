@@ -8,6 +8,10 @@ const {
   clearAuthCookie,
   getAuthTokenFromRequest
 } = require("../utils/session-cookie-utils");
+const {
+  getSafeUser,
+  normalizeRole
+} = require("../middleware/auth-middleware");
 
 // Authentication is intentionally small: users sign up, passwords are hashed,
 // and login returns a JWT plus a browser cookie for protected pages.
@@ -21,6 +25,7 @@ router.post('/signup', async (req,res) => {
   const name = String(req.body.name || "").trim();
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
+  const role = normalizeRole(req.body.role);
 
   try{
     if (!name || !email || !password) {
@@ -46,7 +51,7 @@ router.post('/signup', async (req,res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-     const user = await User.create({name,email,password:hashedPassword});
+    await User.create({name,email,password:hashedPassword,role});
        res.json({message:"Account created successfully"});
 
 
@@ -82,16 +87,18 @@ router.post('/login', async (req,res) => {
     return res.status(500).json({ error: "Login is not configured" });
   }
 
-  // The token contains only the user id and expires after one week.
+  const safeUser = getSafeUser(user);
+
+  // The token keeps enough user identity for the frontend, while /session still re-checks the database.
   const token = jwt.sign(
-      { id: user._id },
+      safeUser,
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
   // The token is returned for API calls and also stored in an HttpOnly cookie for direct page visits.
   setAuthCookie(res, token);
-  res.json({message:"Logged in successfully",token});
+  res.json({message:"Logged in successfully",token,user:safeUser});
 
   }
   catch(error){
@@ -100,7 +107,7 @@ router.post('/login', async (req,res) => {
 
 })
 
-router.get('/session', (req, res) => {
+router.get('/session', async (req, res) => {
   const token = getAuthTokenFromRequest(req);
 
   if (!token) {
@@ -112,8 +119,14 @@ router.get('/session', (req, res) => {
   }
 
   try {
-    jwt.verify(token, process.env.JWT_SECRET);
-    return res.json({ authenticated: true });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = decoded.id ? await User.findById(decoded.id) : null;
+
+    if (!user) {
+      return res.status(401).json({ error: "Login expired" });
+    }
+
+    return res.json({ authenticated: true, user: getSafeUser(user) });
   } catch {
     return res.status(401).json({ error: "Login expired" });
   }

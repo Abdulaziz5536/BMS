@@ -1,8 +1,11 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { SidebarSuppressContext } from "../components/sidebarContext";
+import { clearCurrentUser, getCurrentUser, getRoleLabel, isReadOnlyUser } from "../authSession";
+import { portLabel } from "../utils/portLabels";
 import {
   API_BASE,
+  apiFetch,
   buildingsUpdatedEvent,
   getSelectedBuildingId,
   loadCachedJson,
@@ -12,10 +15,13 @@ import {
 
 // Sidebar owns navigation and the active-building selector used by every protected page.
 export default function Sidebar({ persistent = false }) {
+  const navigate = useNavigate();
   const suppressNestedSidebar = useContext(SidebarSuppressContext);
   const isSuppressed = suppressNestedSidebar && !persistent;
   const [buildings, setBuildings] = useState([]);
   const [selectedBuilding, setSelectedBuilding] = useState(getSelectedBuildingId());
+  const [currentUser] = useState(getCurrentUser());
+  const readOnly = isReadOnlyUser(currentUser);
 
   const loadBuildings = useCallback(async () => {
     // Load buildings once, select a default if needed, then prefetch common building data.
@@ -31,17 +37,21 @@ export default function Sidebar({ persistent = false }) {
         if (!getSelectedBuildingId() && data.length > 0) {
           setSelectedBuildingId(data[0]._id);
           setSelectedBuilding(data[0]._id);
-          prefetchBuildingData(data[0]._id);
+          if (!readOnly) {
+            prefetchBuildingData(data[0]._id);
+          }
         } else {
           const activeBuildingId = getSelectedBuildingId();
           setSelectedBuilding(activeBuildingId);
-          prefetchBuildingData(activeBuildingId);
+          if (!readOnly) {
+            prefetchBuildingData(activeBuildingId);
+          }
         }
       },
       null,
       "Failed to load buildings"
     );
-  }, [isSuppressed]);
+  }, [isSuppressed, readOnly]);
 
   useEffect(() => {
     if (isSuppressed) {
@@ -71,15 +81,32 @@ export default function Sidebar({ persistent = false }) {
     // Changing buildings notifies all hooks/pages through buildingSelection events.
     setSelectedBuilding(buildingId);
     setSelectedBuildingId(buildingId);
-    prefetchBuildingData(buildingId);
+    if (!readOnly) {
+      prefetchBuildingData(buildingId);
+    }
+  };
+
+  const logout = async () => {
+    await apiFetch(`${API_BASE}/logout`, { method: "POST" }).catch(() => {});
+    localStorage.removeItem("token");
+    clearCurrentUser();
+    navigate("/login", { replace: true });
   };
 
   return (
     <div className="sidebar">
       <h2>Building Management System</h2>
 
+      {currentUser && (
+        <div className="sidebar-user">
+          <span>{portLabel("Signed in as", "የገባው")}</span>
+          <strong>{currentUser.name || currentUser.email}</strong>
+          <small>{getRoleLabel(currentUser.role)}</small>
+        </div>
+      )}
+
       <div className="building-switcher">
-        <label>Active Building</label>
+        <label>{portLabel("Active Building", "ህንፃ")}</label>
         <select value={selectedBuilding} onChange={(e) => changeBuilding(e.target.value)}>
           <option value="">Select Building</option>
           {buildings.map((building) => (
@@ -104,7 +131,7 @@ export default function Sidebar({ persistent = false }) {
         </li>
 
         <li>
-          <NavLink to="/invoice" className={({ isActive }) => (isActive ? "active" : "")}> 
+          <NavLink to="/invoice" className={({ isActive }) => (isActive ? "active" : "")}>
           Invoice
           </NavLink>
         </li>
@@ -145,6 +172,11 @@ export default function Sidebar({ persistent = false }) {
           </NavLink>
         </li>
 
+        <li>
+          <NavLink to="/accounts" className={({ isActive }) => (isActive ? "active" : "")}>
+            Accounts
+          </NavLink>
+        </li>
 
         <li>
           <NavLink to="/announcements" className={({ isActive }) => (isActive ? "active" : "")}>
@@ -158,6 +190,10 @@ export default function Sidebar({ persistent = false }) {
           </NavLink>
         </li>
       </ul>
+
+      <button className="sidebar-logout-btn" onClick={logout}>
+        {portLabel("Logout", "ውጣ")}
+      </button>
     </div>
   );
 }

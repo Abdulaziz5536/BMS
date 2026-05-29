@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE, apiFetch, readResponse } from "../buildingSelection";
+import { clearCurrentUser, setCurrentUser } from "../authSession";
 import { SIGNUP_ENABLED } from "../config";
 import useShortError from "../hooks/useShortError";
+import { portLabel } from "../utils/portLabels";
 import "../style.css";
 
 // Login page exchanges email/password for a JWT token stored in localStorage.
@@ -27,6 +29,8 @@ export default function Login() {
       return;
     }
 
+    localStorage.removeItem("token");
+    clearCurrentUser();
     setLoading(true);
 
     try {
@@ -45,11 +49,12 @@ export default function Login() {
 
          
         localStorage.setItem("token", data.token);
+        const user = setCurrentUser(data.user);
 
         setMessage(data.message);
 
         setTimeout(() => {
-          navigate("/dashboard");
+          navigate(user?.role === "viewer" ? "/payment-status" : "/dashboard");
         }, 1000);
 
       } else {
@@ -68,6 +73,7 @@ export default function Login() {
 
     } catch {
 
+      clearCurrentUser();
       setError("Server error. Please try again.");
 
     }
@@ -79,10 +85,10 @@ export default function Login() {
   return (
     <div className="signup">
 
-      <h1>Login</h1>
+      <h1>{portLabel("Login", "ግባ")}</h1>
 
       <input
-        placeholder="email"
+        placeholder={portLabel("email", "ኢሜይል")}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
       />
@@ -91,7 +97,7 @@ export default function Login() {
 
       <input
         type="password"
-        placeholder="password"
+        placeholder={portLabel("password", "የይለፍ ቁጥር")}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
@@ -103,7 +109,7 @@ export default function Login() {
         onClick={login}
         disabled={loading}
       >
-        {loading ? "Logging in..." : "Login"}
+        {loading ? "Logging in..." : portLabel("Login", "ግባ")}
       </button>
 
       <br />
@@ -113,7 +119,7 @@ export default function Login() {
           id="signup-button"
           onClick={() => navigate("/signup")}
         >
-          Don't have an account? Sign Up
+          {portLabel("Don't have an account? Sign Up", "መለያ ይፍጠሩ")}
         </button>
       )}
       <h2 className="message">{message}</h2>

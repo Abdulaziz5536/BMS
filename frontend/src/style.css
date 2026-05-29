@@ -455,6 +455,14 @@ button:disabled {
   margin-top: 1rem;
 }
 
+.signup-role-field {
+  margin-bottom: 1rem;
+}
+
+.signup-role-field select {
+  margin-bottom: 0;
+}
+
 
 .app-layout {
   display: flex;
@@ -514,6 +522,42 @@ button:disabled {
   padding: 0 0.75rem 1rem;
   border-bottom: 1px solid #374151;
   margin-bottom: 0.75rem;
+}
+
+.sidebar-user {
+  margin: 0 0.75rem 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(203, 213, 225, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.32);
+}
+
+.sidebar-user span,
+.sidebar-user small {
+  display: block;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.sidebar-user strong {
+  display: block;
+  margin: 0.2rem 0;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.sidebar-logout-btn {
+  width: calc(100% - 1.5rem);
+  margin: auto 0.75rem 0;
+  color: #dbe6f2;
+  background: transparent;
+  border-color: rgba(203, 213, 225, 0.28);
+}
+
+.sidebar-logout-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .building-switcher label {
@@ -3103,6 +3147,387 @@ span.secondary-btn {
   margin-top: 2rem;
 }
 
+.payment-status-page {
+  display: grid;
+  gap: 1rem;
+  width: min(1180px, calc(100% - 32px));
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.25rem 0 2rem;
+}
+
+.payment-status-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.payment-status-header h1 {
+  margin: 0.2rem 0 0;
+  color: #0f172a;
+  font-size: clamp(1.45rem, 2vw, 2rem);
+}
+
+.payment-status-header p {
+  margin-top: 0.35rem;
+  color: #64748b;
+}
+
+.payment-status-eyebrow {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.payment-status-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.payment-building-select {
+  display: grid;
+  gap: 0.35rem;
+  min-width: min(280px, 100%);
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.payment-building-select select {
+  margin: 0;
+}
+
+.payment-logout-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.payment-status-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.payment-summary-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.65rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.045);
+}
+
+.payment-summary-card svg {
+  grid-row: span 2;
+  width: 28px;
+  height: 28px;
+  color: #0f4c81;
+}
+
+.payment-summary-card span {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.payment-summary-card strong {
+  color: #111827;
+  font-size: 1.45rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.payment-summary-card.is-paid svg,
+.payment-summary-card.is-paid strong {
+  color: #166534;
+}
+
+.payment-summary-card.is-unpaid svg,
+.payment-summary-card.is-unpaid strong {
+  color: #991b1b;
+}
+
+.payment-status-panel {
+  padding: 1rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.045);
+}
+
+.payment-status-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.payment-status-tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.payment-status-tabs button {
+  min-width: 0;
+  margin: 0;
+  color: #475569;
+  background: transparent;
+  box-shadow: none;
+}
+
+.payment-status-tabs button.active,
+.payment-status-tabs button:hover {
+  color: #0f3450;
+  background: #e8f2fb;
+  box-shadow: none;
+}
+
+.payment-search {
+  width: min(320px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  border: 1px solid #cbd7e5;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.payment-search svg {
+  width: 18px;
+  height: 18px;
+  color: #64748b;
+}
+
+.payment-search input {
+  margin: 0;
+  padding-left: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.payment-status-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.payment-status-list-heading h2 {
+  margin: 0;
+}
+
+.payment-status-list-heading span {
+  color: #64748b;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.payment-status-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.payment-status-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(260px, 1.4fr) auto;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 0.95rem;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #92400e;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.payment-status-row.is-paid {
+  border-left-color: #166534;
+}
+
+.payment-tenant-main {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.payment-tenant-main > svg {
+  width: 32px;
+  height: 32px;
+  color: #475569;
+}
+
+.payment-tenant-main h3,
+.payment-tenant-main p {
+  margin: 0;
+}
+
+.payment-tenant-main h3 {
+  color: #111827;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.payment-tenant-main p {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.payment-row-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.payment-row-facts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.payment-row-facts svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+}
+
+.payment-row-key-facts {
+  gap: 0.75rem;
+}
+
+.payment-row-fact-large {
+  color: #172033;
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.payment-row-fact-large svg {
+  width: 21px;
+  height: 21px;
+  flex-basis: 21px;
+  color: #0f4c81;
+}
+
+.payment-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.payment-status-pill.is-paid {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.payment-status-pill.is-unpaid {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.accounts-page {
+  max-width: 980px;
+}
+
+.accounts-subtitle {
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.accounts-panel {
+  max-width: none;
+}
+
+.accounts-panel .section-header p {
+  margin-top: 0.25rem;
+  color: #64748b;
+}
+
+.accounts-panel-icon {
+  width: 34px;
+  height: 34px;
+  color: #0f4c81;
+}
+
+.accounts-panel button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.accounts-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.account-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.9rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.account-row svg {
+  width: 26px;
+  height: 26px;
+  color: #475569;
+}
+
+.account-row strong,
+.account-row span {
+  display: block;
+}
+
+.account-row strong {
+  color: #111827;
+}
+
+.account-row span {
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.account-row em {
+  justify-self: end;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  color: #0f3450;
+  background: #e8f2fb;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 /* Responsive: phone/tablet */
 @media (max-width: 900px) {
   .app-layout {
@@ -3190,6 +3615,27 @@ span.secondary-btn {
 
   .dashboard-due-summary {
     grid-template-columns: 1fr;
+  }
+
+  .payment-status-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payment-status-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .account-row {
+    grid-template-columns: 1fr;
+  }
+
+  .account-row em {
+    justify-self: start;
+  }
+
+  .payment-status-pill {
+    width: fit-content;
   }
 
   .system-health-summary,
@@ -3315,6 +3761,29 @@ span.secondary-btn {
   .payroll-selection-actions button,
   .dashboard-due-panel .secondary-btn {
     width: 100%;
+  }
+
+  .payment-status-tools,
+  .payment-status-actions,
+  .payment-building-select,
+  .payment-search,
+  .payment-status-tabs,
+  .payment-status-tabs button {
+    width: 100%;
+  }
+
+  .payment-status-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .payment-status-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-status-list-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .invoice-tabs,

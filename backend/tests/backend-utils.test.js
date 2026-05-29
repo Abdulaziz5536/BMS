@@ -25,7 +25,10 @@ const { formatFloorLabel } = require("../utils/floor-label-utils");
 const { calculateLatePenalty } = require("../utils/late-penalty-utils");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
 const { getSystemChecks } = require("../services/system-check-service");
-const { isPublicPath } = require("../middleware/auth-middleware");
+const {
+  isPublicPath,
+  isReadOnlyAllowedPath
+} = require("../middleware/auth-middleware");
 const {
   clearReminderHistoryForScheduleChange,
   getDaysUntilDue,
@@ -164,6 +167,8 @@ test("deployment frontend serving only catches browser page requests", () => {
   }), false);
 
   assert.equal(isProtectedFrontendRoute("/dashboard"), true);
+  assert.equal(isProtectedFrontendRoute("/payment-status"), true);
+  assert.equal(isProtectedFrontendRoute("/accounts"), true);
   assert.equal(isProtectedFrontendRoute("/login"), false);
 });
 
@@ -174,6 +179,14 @@ test("backend auth middleware keeps only login/signup/health public", () => {
   assert.equal(isPublicPath("/system/health"), true);
   assert.equal(isPublicPath("/buildings"), false);
   assert.equal(isPublicPath("/invoices"), false);
+  assert.equal(isPublicPath("/users/viewers"), false);
+});
+
+test("read-only accounts can only see the simple payment status data", () => {
+  assert.equal(isReadOnlyAllowedPath("GET", "/payment-status"), true);
+  assert.equal(isReadOnlyAllowedPath("GET", "/buildings"), true);
+  assert.equal(isReadOnlyAllowedPath("GET", "/invoices"), false);
+  assert.equal(isReadOnlyAllowedPath("POST", "/invoices/123/pay"), false);
 });
 
 test("backend auth can read direct-page login cookies", () => {

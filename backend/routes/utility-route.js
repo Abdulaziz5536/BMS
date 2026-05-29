@@ -5,6 +5,7 @@ const Utility = require("../models/utility-model");
 const Tenant = require("../models/tenant-model");
 const PaymentRecord = require("../models/payment-record-model");
 const { recordAuditLog } = require("../services/audit-log-service");
+const { createPaymentRecordIfMissing } = require("../services/payment-record-service");
 const {
   normalizeDateOnlyString,
   parseFlexibleDateInput,
@@ -160,6 +161,16 @@ router.post("/utilities", async (req, res) => {
       message: "Utility payment created"
     });
 
+    if (utility.status === "paid") {
+      await createPaymentRecordIfMissing({
+        building: utility.building,
+        tenant: utility.tenant,
+        utility: utility._id,
+        amount: getUtilityTotal(utility),
+        notes: "Recorded from paid utility status"
+      });
+    }
+
     res.status(201).json({ message: "Utility payment added", utility });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -205,6 +216,12 @@ router.put("/utilities/:id", async (req, res) => {
 
     const normalizedDueDate = normalizeDateOnlyString(dueDate);
 
+    const previousUtility = await Utility.findById(req.params.id);
+
+    if (!previousUtility) {
+      return res.status(404).json({ error: "Utility payment not found" });
+    }
+
     const utility = await Utility.findByIdAndUpdate(
       req.params.id,
       {
@@ -222,10 +239,6 @@ router.put("/utilities/:id", async (req, res) => {
       { returnDocument: "after" }
     );
 
-    if (!utility) {
-      return res.status(404).json({ error: "Utility payment not found" });
-    }
-
     await recordAuditLog({
       building: utility.building,
       action: "updated",
@@ -234,6 +247,16 @@ router.put("/utilities/:id", async (req, res) => {
       entityLabel: String(getUtilityTotal(utility)),
       message: "Utility payment updated"
     });
+
+    if (previousUtility.status !== "paid" && utility.status === "paid") {
+      await createPaymentRecordIfMissing({
+        building: utility.building,
+        tenant: utility.tenant,
+        utility: utility._id,
+        amount: getUtilityTotal(utility),
+        notes: "Recorded from paid utility status"
+      });
+    }
 
     res.json({ message: "Utility payment updated", utility });
   } catch (error) {
@@ -249,14 +272,24 @@ router.patch("/utilities/:id/status", async (req, res) => {
       return res.status(400).json({ error: "Invalid status" });
     }
 
-    const utility = await Utility.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { returnDocument: "after" }
-    );
+    const utility = await Utility.findById(req.params.id);
 
     if (!utility) {
       return res.status(404).json({ error: "Utility payment not found" });
+    }
+
+    const previousStatus = utility.status;
+    utility.status = status;
+    await utility.save();
+
+    if (previousStatus !== "paid" && status === "paid") {
+      await createPaymentRecordIfMissing({
+        building: utility.building,
+        tenant: utility.tenant,
+        utility: utility._id,
+        amount: getUtilityTotal(utility),
+        notes: "Recorded from paid utility status"
+      });
     }
 
     await recordAuditLog({

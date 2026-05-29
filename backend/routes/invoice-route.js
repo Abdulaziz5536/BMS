@@ -16,6 +16,7 @@ const {
   setInvoiceStatusFields,
   syncContractStatusFromInvoices
 } = require('../services/payment-status-sync-service');
+const { createPaymentRecordIfMissing } = require('../services/payment-record-service');
 const { getNextInvoicePeriod } = require('../services/invoice-period-service');
 const { parseFlexibleDateInput } = require('../utils/date-utils');
 const { calculateLatePenalty } = require('../utils/late-penalty-utils');
@@ -52,6 +53,105 @@ const calculateDueDate = (periodEnd) => {
 };
 
 const getInvoiceLabel = (invoice) => invoice.invoiceNumber || String(invoice._id);
+
+const getInvoiceOutstandingBalance = (invoice) =>
+  Number(invoice?.outstandingBalance ?? Math.max(0, Number(invoice?.totalAmount || 0) - Number(invoice?.amountPaid || 0)));
+
+const getPaymentStatusItem = (tenant, invoice = null) => {
+  const outstandingBalance = invoice ? getInvoiceOutstandingBalance(invoice) : 0;
+  const isPaid = Boolean(invoice) && (invoice.status === "paid" || outstandingBalance <= 0);
+  const sourceTenant = tenant || invoice?.tenant || {};
+
+  return {
+    tenantId: sourceTenant?._id || null,
+    tenantName: sourceTenant?.tenantName || "Tenant",
+    tenantPhone: sourceTenant?.phone || "",
+    tenantEmail: sourceTenant?.email || "",
+    tenantUnit: sourceTenant?.unit?.unitId || "",
+    invoiceId: invoice?._id || null,
+    invoiceNumber: invoice?.invoiceNumber || "",
+    periodStart: invoice?.periodStart || null,
+    periodEnd: invoice?.periodEnd || null,
+    dueDate: invoice?.dueDate || null,
+    paymentDate: invoice?.paymentDate || null,
+    totalAmount: Number(invoice?.totalAmount || 0),
+    amountPaid: Number(invoice?.amountPaid || 0),
+    outstandingBalance,
+    status: isPaid ? "paid" : "not_paid",
+    invoiceStatus: invoice?.status || "no_invoice",
+    hasInvoice: Boolean(invoice)
+  };
+};
+
+// Simple read-only payment status view for family/viewer accounts.
+router.get('/payment-status', async (req, res) => {
+  try {
+    const filter = {};
+
+    if (req.query.building) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
+        return res.status(400).json({ error: 'Invalid building id' });
+      }
+      filter.building = new mongoose.Types.ObjectId(req.query.building);
+    }
+
+    const tenants = await Tenant.find(filter)
+      .populate({ path: 'unit', select: 'unitId' })
+      .sort({ tenantName: 1 });
+
+    const invoices = await Invoice.find(filter)
+      .populate({
+        path: 'tenant',
+        populate: { path: 'unit', select: 'unitId' }
+      })
+      .sort({ dueDate: -1, createdAt: -1 });
+
+    const latestInvoiceByTenant = new Map();
+    const invoicesWithoutTenant = [];
+
+    invoices.forEach((invoice) => {
+      const tenantId = invoice.tenant?._id ? String(invoice.tenant._id) : "";
+
+      if (!tenantId) {
+        invoicesWithoutTenant.push(invoice);
+        return;
+      }
+
+      if (!latestInvoiceByTenant.has(tenantId)) {
+        latestInvoiceByTenant.set(tenantId, invoice);
+      }
+    });
+
+    const items = tenants.map((tenant) =>
+      getPaymentStatusItem(tenant, latestInvoiceByTenant.get(String(tenant._id)))
+    );
+
+    invoicesWithoutTenant.forEach((invoice) => {
+      items.push(getPaymentStatusItem(invoice.tenant, invoice));
+    });
+
+    const paid = items.filter((item) => item.status === "paid");
+    const notPaid = items.filter((item) => item.status !== "paid");
+    const totalPaidAmount = items.reduce((sum, item) => sum + item.amountPaid, 0);
+
+    res.json({
+      buildingId: req.query.building || null,
+      generatedAt: new Date(),
+      summary: {
+        totalTenants: items.length,
+        paid: paid.length,
+        notPaid: notPaid.length,
+        totalPaidAmount,
+        totalCollected: totalPaidAmount,
+        totalOutstanding: notPaid.reduce((sum, item) => sum + item.outstandingBalance, 0)
+      },
+      paid,
+      notPaid
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Get all invoices
 router.get('/invoices', async (req, res) => {
@@ -349,7 +449,8 @@ router.post('/invoices/:id/pay', async (req, res) => {
       paymentMethod: paymentMethod || 'cash',
       reference: reference || '',
       notes: notes || '',
-      receipt: normalizedReceipt
+      receipt: normalizedReceipt,
+      recordedBy: req.user?.id || undefined
     });
 
     // Update invoice balance after this payment; paid status depends on remaining balance.
@@ -756,6 +857,10 @@ router.patch('/invoices/:id', async (req, res) => {
       invoice.outstandingBalance = Math.max(0, invoice.totalAmount - (invoice.amountPaid || 0));
     }
 
+    const manualPaymentAmount = status === "paid" && previousStatus !== "paid"
+      ? Math.max(0, Number(invoice.outstandingBalance || 0))
+      : 0;
+
     // Status changes use the shared helper so amountPaid/outstandingBalance stay consistent.
     if (status) {
       setInvoiceStatusFields(invoice, status, {
@@ -771,6 +876,18 @@ router.patch('/invoices/:id', async (req, res) => {
     await syncContractStatusFromInvoices(invoice.contract);
     await invoice.populate('tenant');
     await invoice.populate('contract');
+
+    if (manualPaymentAmount > 0) {
+      await createPaymentRecordIfMissing({
+        building: invoice.building,
+        tenant: invoice.tenant?._id || invoice.tenant,
+        invoice: invoice._id,
+        amount: manualPaymentAmount,
+        paymentDate: invoice.paymentDate || new Date(),
+        notes: "Recorded from paid invoice status",
+        skipExisting: false
+      });
+    }
 
     await recordAuditLog({
       building: invoice.building,
