@@ -9,6 +9,7 @@ import {
   MagnifyingGlassIcon
 } from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import Accounts from "./Accounts";
 import {
   API_BASE,
   apiFetch,
@@ -60,7 +61,8 @@ const tabs = [
   { id: "checks", label: "Health" },
   { id: "quality", label: "Quality & Tests" },
   { id: "activity", label: "Activity" },
-  { id: "exports", label: "Backup & Exports" }
+  { id: "exports", label: "Backup & Exports" },
+  { id: "accounts", label: "Accounts" }
 ];
 
 // SystemTools is the operator page for health checks, activity, backup, and exports.
@@ -76,7 +78,11 @@ const formatTime = (value) => {
 
 export default function SystemTools() {
   const selectedBuildingId = useSelectedBuilding();
-  const [activeTab, setActiveTab] = useState("checks");
+  const getInitialTab = () => {
+    const hashTab = window.location.hash.replace("#", "");
+    return tabs.some((tab) => tab.id === hashTab) ? hashTab : "checks";
+  };
+  const [activeTab, setActiveTab] = useState(getInitialTab);
   const [checks, setChecks] = useState([]);
   const [checksOk, setChecksOk] = useState(false);
   const [checksSummary, setChecksSummary] = useState({
@@ -127,6 +133,18 @@ export default function SystemTools() {
   useEffect(() => {
     loadChecks();
   }, [loadChecks]);
+
+  useEffect(() => {
+    const syncTabFromHash = () => {
+      const hashTab = window.location.hash.replace("#", "");
+      if (tabs.some((tab) => tab.id === hashTab)) {
+        setActiveTab(hashTab);
+      }
+    };
+
+    window.addEventListener("hashchange", syncTabFromHash);
+    return () => window.removeEventListener("hashchange", syncTabFromHash);
+  }, []);
 
   const loadAuditLogs = useCallback(async () => {
     // Activity is scoped to the selected building and reset to page 1 after reload.
@@ -255,7 +273,10 @@ export default function SystemTools() {
             <button
               key={tab.id}
               className={activeTab === tab.id ? "active" : ""}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                window.history.replaceState(null, "", `#${tab.id}`);
+              }}
             >
               {tab.label}
             </button>
@@ -465,6 +486,8 @@ export default function SystemTools() {
             </section>
           </>
         )}
+
+        {activeTab === "accounts" && <Accounts />}
       </div>
     </div>
   );

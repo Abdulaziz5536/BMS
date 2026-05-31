@@ -27,15 +27,31 @@ const getAuthCookieOptions = () => ({
   maxAge: AUTH_COOKIE_MAX_AGE_MS
 });
 
-const setAuthCookie = (res, token) => {
-  // The cookie lets the backend protect direct browser visits like /dashboard.
-  res.cookie(AUTH_COOKIE_NAME, token, getAuthCookieOptions());
+const getRequestPort = (req = {}) => {
+  const host = String(req.headers?.host || "");
+  const portMatch = host.match(/:(\d+)$/);
+
+  return portMatch?.[1] || String(process.env.PORT || "");
 };
 
-const clearAuthCookie = (res) => {
+const getAuthCookieName = (req) => {
+  const port = getRequestPort(req);
+  return port ? `${AUTH_COOKIE_NAME}_${port}` : AUTH_COOKIE_NAME;
+};
+
+const setAuthCookie = (res, token, req) => {
+  // The cookie lets the backend protect direct browser visits like /dashboard.
   const { maxAge, ...clearOptions } = getAuthCookieOptions();
 
   res.clearCookie(AUTH_COOKIE_NAME, clearOptions);
+  res.cookie(getAuthCookieName(req), token, getAuthCookieOptions());
+};
+
+const clearAuthCookie = (res, req) => {
+  const { maxAge, ...clearOptions } = getAuthCookieOptions();
+
+  res.clearCookie(AUTH_COOKIE_NAME, clearOptions);
+  res.clearCookie(getAuthCookieName(req), clearOptions);
 };
 
 const getAuthTokenFromRequest = (req) => {
@@ -47,13 +63,14 @@ const getAuthTokenFromRequest = (req) => {
   }
 
   const cookies = parseCookies(req.headers.cookie || "");
-  return cookies[AUTH_COOKIE_NAME] || "";
+  return cookies[getAuthCookieName(req)] || "";
 };
 
 module.exports = {
   AUTH_COOKIE_NAME,
   AUTH_COOKIE_MAX_AGE_MS,
   parseCookies,
+  getAuthCookieName,
   getAuthCookieOptions,
   setAuthCookie,
   clearAuthCookie,

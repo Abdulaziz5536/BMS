@@ -1,6 +1,47 @@
 import { portLabel } from "./utils/portLabels";
 
 const USER_STORAGE_KEY = "currentUser";
+const LEGACY_TOKEN_STORAGE_KEY = "token";
+
+const getAuthStorageScope = () => {
+  if (typeof window === "undefined") {
+    return "default";
+  }
+
+  return window.location.port || window.location.host || "default";
+};
+
+const getTokenStorageKey = () => `token:${getAuthStorageScope()}`;
+const getUserStorageKey = () => `${USER_STORAGE_KEY}:${getAuthStorageScope()}`;
+
+const getSessionStore = () => {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+};
+
+const getLocalStore = () => {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+};
+
+const clearSharedAuthStorage = () => {
+  const store = getLocalStore();
+
+  if (!store) {
+    return;
+  }
+
+  store.removeItem(getTokenStorageKey());
+  store.removeItem(getUserStorageKey());
+  store.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  store.removeItem(USER_STORAGE_KEY);
+};
 
 const normalizeRole = (role) => role === "viewer" ? "viewer" : "admin";
 
@@ -18,38 +59,89 @@ export const normalizeUser = (user = {}) => {
 };
 
 export const getCurrentUser = () => {
-  if (typeof localStorage === "undefined") {
+  const store = getSessionStore();
+
+  if (!store) {
     return null;
   }
 
   try {
-    const rawUser = localStorage.getItem(USER_STORAGE_KEY);
+    const rawUser = store.getItem(getUserStorageKey());
     return rawUser ? normalizeUser(JSON.parse(rawUser)) : null;
   } catch {
-    localStorage.removeItem(USER_STORAGE_KEY);
+    store.removeItem(getUserStorageKey());
+    store.removeItem(USER_STORAGE_KEY);
     return null;
   }
 };
 
 export const setCurrentUser = (user) => {
-  if (typeof localStorage === "undefined") {
+  const store = getSessionStore();
+
+  if (!store) {
     return null;
   }
 
   const normalizedUser = normalizeUser(user);
   if (!normalizedUser) {
-    localStorage.removeItem(USER_STORAGE_KEY);
+    store.removeItem(getUserStorageKey());
+    store.removeItem(USER_STORAGE_KEY);
+    clearSharedAuthStorage();
     return null;
   }
 
-  localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(normalizedUser));
+  store.removeItem(USER_STORAGE_KEY);
+  store.setItem(getUserStorageKey(), JSON.stringify(normalizedUser));
+  clearSharedAuthStorage();
   return normalizedUser;
 };
 
 export const clearCurrentUser = () => {
-  if (typeof localStorage !== "undefined") {
-    localStorage.removeItem(USER_STORAGE_KEY);
+  const store = getSessionStore();
+
+  if (store) {
+    store.removeItem(getUserStorageKey());
+    store.removeItem(USER_STORAGE_KEY);
   }
+
+  clearSharedAuthStorage();
+};
+
+export const getAuthToken = () => {
+  const store = getSessionStore();
+
+  if (!store) {
+    return "";
+  }
+
+  return store.getItem(getTokenStorageKey()) || "";
+};
+
+export const setAuthToken = (token) => {
+  const store = getSessionStore();
+
+  if (!store) {
+    return;
+  }
+
+  if (token) {
+    store.setItem(getTokenStorageKey(), token);
+  } else {
+    store.removeItem(getTokenStorageKey());
+  }
+
+  clearSharedAuthStorage();
+};
+
+export const clearAuthToken = () => {
+  const store = getSessionStore();
+
+  if (store) {
+    store.removeItem(getTokenStorageKey());
+    store.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  }
+
+  clearSharedAuthStorage();
 };
 
 export const isReadOnlyUser = (user = getCurrentUser()) => normalizeRole(user?.role) === "viewer";

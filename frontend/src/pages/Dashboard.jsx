@@ -23,12 +23,13 @@ import {
   withBuilding
 } from "../buildingSelection";
 import { confirmAction } from "../components/confirmAction";
-import { clearCurrentUser } from "../authSession";
+import { clearAuthToken, clearCurrentUser } from "../authSession";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import useShortError from "../hooks/useShortError";
 import { formatEthiopianDate } from "../utils/dateUtils";
 
 const formatCurrency = (amount) => `Br ${Number(amount || 0).toLocaleString()}`;
+const firstDefined = (...values) => values.find((value) => value !== undefined && value !== null);
 
 // Dashboard gives the manager the highest-priority building summary first:
 // overdue/due rent, occupancy, revenue, and fast reminder actions.
@@ -159,7 +160,7 @@ export default function Dashboard() {
   const logout = async () => {
     // Logout clears the browser token and asks the backend to clear the direct-URL session cookie.
     await apiFetch(`${API_BASE}/logout`, { method: "POST" }).catch(() => {});
-    localStorage.removeItem("token");
+    clearAuthToken();
     clearCurrentUser();
     window.location.href = "/login";
   };
@@ -187,6 +188,16 @@ export default function Dashboard() {
     dueSoon: paymentAlerts.dueSoon.length,
     total: duePayments.reduce((sum, item) => sum + Number(item.amountDue || 0), 0)
   };
+  const monthlyRevenue = firstDefined(dashboard?.monthlyRevenue, dashboard?.normalizedMonthlyRevenue);
+  const monthlyRentCollected = firstDefined(
+    dashboard?.monthlyRentCollected,
+    dashboard?.monthlyCollected,
+    dashboard?.totalRevenue
+  );
+  const monthlyUtilityCollected = firstDefined(
+    dashboard?.monthlyUtilityCollected,
+    dashboard?.utilityRevenue
+  );
 
   const renderTenantPaymentDue = () => (
     <section className="panel dashboard-due-panel dashboard-priority-panel">
@@ -346,12 +357,17 @@ export default function Dashboard() {
         <div className="revenue-container">
           <div className="card">
             <CurrencyDollarIcon className="card-icon" />
-            Monthly Rent Revenue: {formatCurrency(dashboard?.totalRevenue)}
+            Monthly Revenue: {formatCurrency(monthlyRevenue)}
           </div>
 
           <div className="card">
             <CurrencyDollarIcon className="card-icon" />
-            Utility Revenue: {formatCurrency(dashboard?.utilityRevenue)}
+            Rent Collected This Month: {formatCurrency(monthlyRentCollected)}
+          </div>
+
+          <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
+            <CurrencyDollarIcon className="card-icon" />
+            Outstanding Rent Due: {formatCurrency(dashboard?.outstandingRent)}
           </div>
 
           <div className="card">
@@ -369,9 +385,9 @@ export default function Dashboard() {
             Occupancy: {dashboard?.occupancyRate || 0}%
           </div>
 
-          <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
+          <div className="card">
             <CurrencyDollarIcon className="card-icon" />
-            Outstanding Rent: {formatCurrency(dashboard?.outstandingRent)}
+            Utility Revenue: {formatCurrency(monthlyUtilityCollected)}
           </div>
 
           <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
@@ -379,10 +395,6 @@ export default function Dashboard() {
             Overdue Invoices: {dashboard?.overdueInvoices || 0}
           </div>
 
-          <div className="card">
-            <CurrencyDollarIcon className="card-icon" />
-            Collected This Month: {formatCurrency(dashboard?.monthlyCollected)}
-          </div>
         </div>
 
         <section className="panel dashboard-activity-panel">

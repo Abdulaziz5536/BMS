@@ -9,6 +9,7 @@ const Utility = require("../models/utility-model");
 const Invoice = require("../models/invoice-model");
 const PaymentRecord = require("../models/payment-record-model");
 const AuditLog = require("../models/audit-log-model");
+const { getEthiopianMonthRange } = require("../utils/date-utils");
 
 // Dashboard route builds a compact summary for the selected building.
 // It reads from several collections, so every query must use the same building filter.
@@ -41,9 +42,17 @@ router.get("/dashboard", async (req,res) => {
 
      const occupancyRate =
     totalUnits === 0 ? 0 : ((occupiedUnits.length / totalUnits) * 100).toFixed(1);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const ethiopianMonthRange = getEthiopianMonthRange(today);
     
-    // Contract revenue is normalized to a monthly number for yearly/quarterly contracts.
-    const revenueResult = await Contract.aggregate([
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Monthly revenue is the normalized rent value from paid contracts:
+    // yearly / 12, every 6 months / 6, quarterly / 3, monthly as-is.
+    const monthlyRevenueResult = await Contract.aggregate([
       { $match: { ...aggregateFilter, status: "paid" } },
       {
         $group: {
@@ -73,23 +82,86 @@ router.get("/dashboard", async (req,res) => {
       }
     ]);
 
-    const totalRevenue = Number((revenueResult[0]?.total || 0).toFixed(2));
+    const monthlyRevenue = Number((monthlyRevenueResult[0]?.total || 0).toFixed(2));
 
-    const utilityRevenueResult = await Utility.aggregate([
-      { $match: { ...aggregateFilter, status: "paid" } },
+    // Monthly rent revenue follows the current Ethiopian month and excludes utility payments.
+    const rentRevenueResult = await PaymentRecord.aggregate([
+      {
+        $match: {
+          ...aggregateFilter,
+          paymentDate: {
+            $gte: ethiopianMonthRange.start,
+            $lt: ethiopianMonthRange.end
+          },
+          $or: [
+            { invoice: { $exists: true, $ne: null } },
+            { contract: { $exists: true, $ne: null } }
+          ]
+        }
+      },
+      {
+        $lookup: {
+          from: "invoices",
+          localField: "invoice",
+          foreignField: "_id",
+          as: "invoiceDoc"
+        }
+      },
+      {
+        $lookup: {
+          from: "contracts",
+          localField: "contract",
+          foreignField: "_id",
+          as: "contractDoc"
+        }
+      },
+      {
+        $match: {
+          $or: [
+            {
+              invoice: { $exists: true, $ne: null },
+              "invoiceDoc.status": "paid"
+            },
+            {
+              contract: { $exists: true, $ne: null },
+              "contractDoc.status": "paid"
+            }
+          ]
+        }
+      },
       {
         $group: {
           _id: null,
-          total: {
-            $sum: {
-              $add: ["$waterAmount", "$lightAmount", "$generatorGasAmount"]
-            }
-          }
+          total: { $sum: "$amount" },
+          count: { $sum: 1 }
         }
       }
     ]);
 
-    const utilityRevenue = utilityRevenueResult[0]?.total || 0;
+    const totalRevenue = Number((rentRevenueResult[0]?.total || 0).toFixed(2));
+
+    // Utility revenue is also month-scoped using the Ethiopian calendar.
+    const utilityRevenueResult = await PaymentRecord.aggregate([
+      {
+        $match: {
+          ...aggregateFilter,
+          paymentDate: {
+            $gte: ethiopianMonthRange.start,
+            $lt: ethiopianMonthRange.end
+          },
+          utility: { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const utilityRevenue = Number((utilityRevenueResult[0]?.total || 0).toFixed(2));
 
     
     const pendingPayments = await Contract.countDocuments({
@@ -102,15 +174,19 @@ router.get("/dashboard", async (req,res) => {
     status: "pending"
   });
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
   const dueSoonEnd = new Date(today);
   dueSoonEnd.setDate(dueSoonEnd.getDate() + 7);
   dueSoonEnd.setHours(23, 59, 59, 999);
 
-  // Outstanding rent is based on invoice balances, not contract status.
+  // Outstanding rent is based on invoice balances that are already due, not future invoices.
   const invoiceOutstanding = await Invoice.aggregate([
-    { $match: { ...aggregateFilter, outstandingBalance: { $gt: 0 } } },
+    {
+      $match: {
+        ...aggregateFilter,
+        outstandingBalance: { $gt: 0 },
+        dueDate: { $lt: tomorrow }
+      }
+    },
     { $group: { _id: null, total: { $sum: "$outstandingBalance" }, count: { $sum: 1 } } }
   ]);
 
@@ -120,18 +196,6 @@ router.get("/dashboard", async (req,res) => {
   const [dueSoonInvoices, overdueInvoices] = await Promise.all([
     Invoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $gte: today, $lte: dueSoonEnd } }),
     Invoice.countDocuments({ ...filter, status: { $in: ["pending", "overdue"] }, dueDate: { $lt: today } })
-  ]);
-
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-  const monthlyPaymentResult = await PaymentRecord.aggregate([
-    {
-      $match: {
-        ...aggregateFilter,
-        paymentDate: { $gte: monthStart, $lt: monthEnd }
-      }
-    },
-    { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } }
   ]);
 
   // Recent activity gives the dashboard a quick audit trail for user actions.
@@ -146,6 +210,7 @@ router.get("/dashboard", async (req,res) => {
       totalUnitsAvailable,
       totalTenants,
       totalEmployees,
+      monthlyRevenue,
       totalRevenue,
       utilityRevenue,
       pendingPayments,
@@ -155,8 +220,12 @@ router.get("/dashboard", async (req,res) => {
       outstandingInvoiceCount,
       dueSoonInvoices,
       overdueInvoices,
-      monthlyCollected: monthlyPaymentResult[0]?.total || 0,
-      monthlyPaymentCount: monthlyPaymentResult[0]?.count || 0,
+      monthlyCollected: totalRevenue,
+      monthlyPaymentCount: rentRevenueResult[0]?.count || 0,
+      monthlyRentCollected: totalRevenue,
+      monthlyRentPaymentCount: rentRevenueResult[0]?.count || 0,
+      monthlyUtilityCollected: utilityRevenue,
+      monthlyUtilityPaymentCount: utilityRevenueResult[0]?.count || 0,
       recentActivity
     });
     

@@ -77,10 +77,20 @@ router.post('/login', async (req,res) => {
   if(!user){
     return res.status(400).json({error:"User does not exist"});
   }
-  const isMatch = await bcrypt.compare(password, user.password);
+  const storedPassword = String(user.password || "");
+  const passwordIsHashed = /^\$2[aby]\$\d{2}\$/.test(storedPassword);
+  const isMatch = passwordIsHashed
+    ? await bcrypt.compare(password, storedPassword)
+    : password === storedPassword;
 
   if(!isMatch){
     return res.status(400).json({error:"Invalid credentials"})
+  }
+
+  if (!passwordIsHashed) {
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+    await user.save();
   }
 
   if (!process.env.JWT_SECRET) {
@@ -97,7 +107,7 @@ router.post('/login', async (req,res) => {
     );
 
   // The token is returned for API calls and also stored in an HttpOnly cookie for direct page visits.
-  setAuthCookie(res, token);
+  setAuthCookie(res, token, req);
   res.json({message:"Logged in successfully",token,user:safeUser});
 
   }
@@ -134,7 +144,7 @@ router.get('/session', async (req, res) => {
 
 router.post('/logout', (req, res) => {
   // Clear both server-side browser access and the frontend localStorage token.
-  clearAuthCookie(res);
+  clearAuthCookie(res, req);
   res.json({ message: "Logged out" });
 });
 

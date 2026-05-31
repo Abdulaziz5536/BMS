@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { API_BASE, apiFetch, readResponse } from "../buildingSelection";
-import { clearCurrentUser, isReadOnlyUser, setCurrentUser } from "../authSession";
+import {
+  clearAuthToken,
+  clearCurrentUser,
+  getAuthToken,
+  isReadOnlyUser,
+  setCurrentUser
+} from "../authSession";
 
 // Redirect unauthenticated users away from protected app pages.
 export default function ProtectedRoute({ children }) {
   const location = useLocation();
-  const token = localStorage.getItem("token");
+  const token = getAuthToken();
   const [authStatus, setAuthStatus] = useState(token ? "checking" : "guest");
   const [sessionUser, setSessionUser] = useState(null);
 
@@ -37,7 +43,7 @@ export default function ProtectedRoute({ children }) {
           setAuthStatus("authenticated");
         }
       } catch {
-        localStorage.removeItem("token");
+        clearAuthToken();
         clearCurrentUser();
 
         if (!ignore) {
@@ -62,8 +68,14 @@ export default function ProtectedRoute({ children }) {
     return null;
   }
 
-  if (isReadOnlyUser(sessionUser) && location.pathname !== "/payment-status") {
+  const readOnlySession = isReadOnlyUser(sessionUser);
+
+  if (readOnlySession && location.pathname !== "/payment-status") {
     return <Navigate to="/payment-status" replace />;
+  }
+
+  if (!readOnlySession && location.pathname === "/payment-status") {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;

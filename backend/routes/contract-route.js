@@ -12,6 +12,9 @@ const {
 const { createPaymentRecordIfMissing } = require('../services/payment-record-service');
 const { recalculateInvoicePeriodsForContract } = require('../services/invoice-period-service');
 const {
+  syncPendingUtilitiesToLatestTenantInvoiceDueDate
+} = require('../services/utility-invoice-sync-service');
+const {
   normalizeDateOnlyString,
   parseFlexibleDateInput,
   toIsoDate
@@ -227,6 +230,13 @@ router.put('/contract/:id', async (req, res) => {
 
     // If lease dates/frequency change, existing invoice periods must follow the new contract dates.
     const invoicePeriodSync = await recalculateInvoicePeriodsForContract(Invoice, updatedContract);
+    const utilityDueDateSync = invoicePeriodSync.updated > 0
+      ? await syncPendingUtilitiesToLatestTenantInvoiceDueDate({
+          tenant: updatedContract.tenant,
+          building: updatedContract.building,
+          contract: updatedContract._id
+        })
+      : { matchedCount: 0, modifiedCount: 0 };
     await applyContractStatusToInvoices(updatedContract, updatedContract.status);
 
     if (previousContract.status !== "paid" && updatedContract.status === "paid") {
@@ -241,6 +251,7 @@ router.put('/contract/:id', async (req, res) => {
 
     const invoicePeriodsUpdated = invoicePeriodSync.updated;
     const invoicePeriodsSkipped = invoicePeriodSync.skipped;
+    const utilityDueDatesUpdated = utilityDueDateSync.modifiedCount || 0;
 
     await recordAuditLog({
       building: updatedContract.building,
@@ -251,7 +262,8 @@ router.put('/contract/:id', async (req, res) => {
       message: "Contract updated",
       metadata: {
         invoicePeriodsUpdated,
-        invoicePeriodsSkipped
+        invoicePeriodsSkipped,
+        utilityDueDatesUpdated
       }
     });
 
@@ -261,7 +273,8 @@ router.put('/contract/:id', async (req, res) => {
         : "Contract updated",
       contract: updatedContract,
       invoicePeriodsUpdated,
-      invoicePeriodsSkipped
+      invoicePeriodsSkipped,
+      utilityDueDatesUpdated
     });
 
   } catch (err) {

@@ -1,5 +1,5 @@
 import { getApiErrorMessage, formatErrorMessage } from "./utils/errorUtils";
-import { isReadOnlyUser } from "./authSession";
+import { getAuthToken, isReadOnlyUser } from "./authSession";
 
 const defaultApiBase = import.meta.env.PROD
   ? (typeof window === "undefined" ? "" : window.location.origin)
@@ -54,7 +54,7 @@ export const withBuilding = (path, buildingId = getSelectedBuildingId()) => {
 
 export const apiFetch = (url, options = {}) => {
   // Add the login token to private API calls. Login/signup still work because no token is required there.
-  const token = typeof localStorage === "undefined" ? "" : localStorage.getItem("token");
+  const token = getAuthToken();
   const headers = new Headers(options.headers || {});
 
   if (token && !headers.has("Authorization")) {

@@ -32,7 +32,7 @@ const setInvoiceStatusFields = (invoice, status, options = {}) => {
     invoice.status = "paid";
     invoice.amountPaid = Math.max(Number(invoice.amountPaid || 0), total);
     invoice.outstandingBalance = 0;
-    invoice.paymentDate = invoice.paymentDate || new Date();
+    invoice.paymentDate = options.paymentDate || invoice.paymentDate || new Date();
     return invoice;
   }
 

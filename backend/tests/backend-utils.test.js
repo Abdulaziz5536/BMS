@@ -3,8 +3,11 @@ const assert = require("node:assert/strict");
 
 const { buildCsv } = require("../utils/csv-utils");
 const {
+  getEthiopianMonthRange,
   normalizeDateOnlyString,
-  parseFlexibleDateInput
+  parseFlexibleDateInput,
+  parsePaymentDateInput,
+  toIsoDate
 } = require("../utils/date-utils");
 const {
   getShortErrorMessage,
@@ -19,12 +22,14 @@ const {
 } = require("../utils/deployment-utils");
 const {
   AUTH_COOKIE_NAME,
+  getAuthCookieName,
   getAuthTokenFromRequest
 } = require("../utils/session-cookie-utils");
 const { formatFloorLabel } = require("../utils/floor-label-utils");
 const { calculateLatePenalty } = require("../utils/late-penalty-utils");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
 const { getSystemChecks } = require("../services/system-check-service");
+const { normalizeDueDateValue } = require("../services/utility-invoice-sync-service");
 const {
   isPublicPath,
   isReadOnlyAllowedPath
@@ -57,6 +62,26 @@ test("parseFlexibleDateInput accepts Ethiopian-style date input", () => {
 test("normalizeDateOnlyString keeps native ISO date input as Gregorian", () => {
   assert.equal(normalizeDateOnlyString("2018-08-16"), "2018-08-16");
   assert.equal(normalizeDateOnlyString("2018-08-16 EC"), "2026-04-24");
+});
+
+test("parsePaymentDateInput accepts current Ethiopian year-first date values", () => {
+  const referenceDate = new Date(Date.UTC(2026, 4, 31));
+
+  assert.equal(toIsoDate(parsePaymentDateInput("2018-09-23", referenceDate)), "2026-05-31");
+  assert.equal(toIsoDate(parsePaymentDateInput("2026-05-31", referenceDate)), "2026-05-31");
+});
+
+test("getEthiopianMonthRange returns Ethiopian month boundaries", () => {
+  const range = getEthiopianMonthRange("2026-05-30");
+
+  assert.equal(range.ethiopianYear, 2018);
+  assert.equal(range.ethiopianMonth, 9);
+  assert.equal(toIsoDate(range.start), "2026-05-09");
+  assert.equal(toIsoDate(range.end), "2026-06-08");
+});
+
+test("utility invoice sync stores due dates as date-only values", () => {
+  assert.equal(normalizeDueDateValue("2026-05-31T12:00:00.000Z"), "2026-05-31");
 });
 
 test("normalizeEthiopianPhone accepts local and international mobile numbers", () => {
@@ -191,14 +216,24 @@ test("read-only accounts can only see the simple payment status data", () => {
 
 test("backend auth can read direct-page login cookies", () => {
   assert.equal(
-    getAuthTokenFromRequest({ headers: { cookie: `${AUTH_COOKIE_NAME}=cookie-token; theme=dark` } }),
+    getAuthCookieName({ headers: { host: "localhost:3001" } }),
+    `${AUTH_COOKIE_NAME}_3001`
+  );
+  assert.equal(
+    getAuthTokenFromRequest({
+      headers: {
+        host: "localhost:3001",
+        cookie: `${AUTH_COOKIE_NAME}_3001=cookie-token; ${AUTH_COOKIE_NAME}_3000=other-token`
+      }
+    }),
     "cookie-token"
   );
   assert.equal(
     getAuthTokenFromRequest({
       headers: {
         authorization: "Bearer api-token",
-        cookie: `${AUTH_COOKIE_NAME}=cookie-token`
+        host: "localhost:3001",
+        cookie: `${AUTH_COOKIE_NAME}_3001=cookie-token`
       }
     }),
     "api-token"

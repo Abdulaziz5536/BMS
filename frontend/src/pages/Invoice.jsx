@@ -23,8 +23,7 @@ import useShortError from "../hooks/useShortError";
 import {
   dateInputProps,
   formatEthiopianDate,
-  normalizeDateInputForApi,
-  todayEthiopianDateInputValue
+  normalizeDateInputForApi
 } from "../utils/dateUtils";
 import { calculateVatBreakdown, VAT_RATE_LABEL } from "../utils/taxUtils";
 import { formatFsNumber } from "../utils/receiptUtils";
@@ -1018,7 +1017,7 @@ export default function Invoice() {
                               setCurrentInvoiceId(invoice._id);
                               const outstanding = invoice.outstandingBalance ?? (invoice.totalAmount - (invoice.amountPaid || 0));
                               setPaymentAmount(outstanding.toString());
-                              setPaymentDate(todayEthiopianDateInputValue());
+                              setPaymentDate(normalizeDateInputForApi(new Date()));
                               setReceiptFile(null);
                             }}>
                               <BanknotesIcon />

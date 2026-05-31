@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE, apiFetch, readResponse } from "../buildingSelection";
-import { clearCurrentUser, setCurrentUser } from "../authSession";
+import { clearAuthToken, clearCurrentUser, setAuthToken, setCurrentUser } from "../authSession";
 import { SIGNUP_ENABLED } from "../config";
 import useShortError from "../hooks/useShortError";
 import { portLabel } from "../utils/portLabels";
 import "../style.css";
 
-// Login page exchanges email/password for a JWT token stored in localStorage.
+// Login page exchanges email/password for a JWT token stored in this browser tab.
 export default function Login() {
 
   const [email, setEmail] = useState("");
@@ -29,7 +29,7 @@ export default function Login() {
       return;
     }
 
-    localStorage.removeItem("token");
+    clearAuthToken();
     clearCurrentUser();
     setLoading(true);
 
@@ -48,7 +48,7 @@ export default function Login() {
       if (res.ok) {
 
          
-        localStorage.setItem("token", data.token);
+        setAuthToken(data.token);
         const user = setCurrentUser(data.user);
 
         setMessage(data.message);

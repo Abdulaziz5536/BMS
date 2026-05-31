@@ -125,6 +125,38 @@ const parseFlexibleDateInput = (value) => {
   return normalizeUtcDate(parsed);
 };
 
+const parsePaymentDateInput = (value, referenceDate = new Date()) => {
+  if (!value) return null;
+
+  const text = String(value).trim();
+  const yearFirstMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+
+  if (yearFirstMatch) {
+    const ethiopianDate = ethiopianToGregorian(
+      Number(yearFirstMatch[1]),
+      Number(yearFirstMatch[2]),
+      Number(yearFirstMatch[3])
+    );
+    const reference = referenceDate instanceof Date
+      ? normalizeUtcDate(referenceDate)
+      : parseFlexibleDateInput(referenceDate);
+
+    if (ethiopianDate && reference) {
+      const windowStart = new Date(reference);
+      windowStart.setUTCFullYear(windowStart.getUTCFullYear() - 1);
+
+      const windowEnd = new Date(reference);
+      windowEnd.setUTCFullYear(windowEnd.getUTCFullYear() + 1);
+
+      if (ethiopianDate >= windowStart && ethiopianDate <= windowEnd) {
+        return normalizeUtcDate(ethiopianDate);
+      }
+    }
+  }
+
+  return parseFlexibleDateInput(value);
+};
+
 const normalizeDateOnlyString = (value) => {
   if (!value) return "";
   const date = parseFlexibleDateInput(value);
@@ -158,12 +190,36 @@ const formatEthiopianDate = (value) => {
   return `${pad(date.day)}/${pad(date.month)}/${date.year} EC`;
 };
 
+const getEthiopianMonthRange = (value = new Date()) => {
+  const ethiopianDate = gregorianToEthiopian(value);
+  if (!ethiopianDate) return null;
+
+  const start = ethiopianToGregorian(
+    ethiopianDate.year,
+    ethiopianDate.month,
+    1
+  );
+  const nextMonth = ethiopianDate.month === 13
+    ? { year: ethiopianDate.year + 1, month: 1 }
+    : { year: ethiopianDate.year, month: ethiopianDate.month + 1 };
+  const end = ethiopianToGregorian(nextMonth.year, nextMonth.month, 1);
+
+  return {
+    start,
+    end,
+    ethiopianYear: ethiopianDate.year,
+    ethiopianMonth: ethiopianDate.month
+  };
+};
+
 module.exports = {
   ethiopianToGregorian,
   formatEthiopianDate,
+  getEthiopianMonthRange,
   gregorianToEthiopian,
   isEthiopianLeapYear,
   normalizeDateOnlyString,
   parseFlexibleDateInput,
+  parsePaymentDateInput,
   toIsoDate
 };

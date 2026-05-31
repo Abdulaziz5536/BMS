@@ -18,7 +18,14 @@ const {
 } = require('../services/payment-status-sync-service');
 const { createPaymentRecordIfMissing } = require('../services/payment-record-service');
 const { getNextInvoicePeriod } = require('../services/invoice-period-service');
-const { parseFlexibleDateInput } = require('../utils/date-utils');
+const {
+  syncPendingUtilitiesToInvoiceDueDate
+} = require('../services/utility-invoice-sync-service');
+const {
+  getEthiopianMonthRange,
+  parseFlexibleDateInput,
+  parsePaymentDateInput
+} = require('../utils/date-utils');
 const { calculateLatePenalty } = require('../utils/late-penalty-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
@@ -54,12 +61,32 @@ const calculateDueDate = (periodEnd) => {
 
 const getInvoiceLabel = (invoice) => invoice.invoiceNumber || String(invoice._id);
 
+const startOfDay = (value = new Date()) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const isInvoiceDueBy = (invoice, referenceDate = new Date()) => {
+  if (!invoice?.dueDate) {
+    return false;
+  }
+
+  const dueDate = startOfDay(invoice.dueDate);
+  return !Number.isNaN(dueDate.getTime()) && dueDate <= startOfDay(referenceDate);
+};
+
 const getInvoiceOutstandingBalance = (invoice) =>
   Number(invoice?.outstandingBalance ?? Math.max(0, Number(invoice?.totalAmount || 0) - Number(invoice?.amountPaid || 0)));
 
-const getPaymentStatusItem = (tenant, invoice = null) => {
-  const outstandingBalance = invoice ? getInvoiceOutstandingBalance(invoice) : 0;
-  const isPaid = Boolean(invoice) && (invoice.status === "paid" || outstandingBalance <= 0);
+const getPaymentStatusItem = (tenant, invoice = null, options = {}) => {
+  const rawOutstandingBalance = invoice ? getInvoiceOutstandingBalance(invoice) : 0;
+  const hasDueInvoice = Boolean(invoice) && isInvoiceDueBy(invoice, options.referenceDate);
+  const outstandingBalance = hasDueInvoice ? rawOutstandingBalance : 0;
+  const isPaid = invoice?.status === "paid";
+  const amountPaid = Number(invoice?.amountPaid || 0);
+  const amountDue = isPaid ? amountPaid : rawOutstandingBalance;
+  const displayDate = isPaid && invoice?.paymentDate ? invoice.paymentDate : invoice?.dueDate || null;
   const sourceTenant = tenant || invoice?.tenant || {};
 
   return {
@@ -75,8 +102,14 @@ const getPaymentStatusItem = (tenant, invoice = null) => {
     dueDate: invoice?.dueDate || null,
     paymentDate: invoice?.paymentDate || null,
     totalAmount: Number(invoice?.totalAmount || 0),
-    amountPaid: Number(invoice?.amountPaid || 0),
+    amountPaid,
     outstandingBalance,
+    amountDue,
+    displayAmount: amountDue,
+    displayDate,
+    displayDateLabel: isPaid && invoice?.paymentDate ? "Paid" : "Due",
+    invoiceOutstandingBalance: rawOutstandingBalance,
+    hasDueInvoice,
     status: isPaid ? "paid" : "not_paid",
     invoiceStatus: invoice?.status || "no_invoice",
     hasInvoice: Boolean(invoice)
@@ -87,6 +120,8 @@ const getPaymentStatusItem = (tenant, invoice = null) => {
 router.get('/payment-status', async (req, res) => {
   try {
     const filter = {};
+    const today = startOfDay();
+    const ethiopianMonthRange = getEthiopianMonthRange(today);
 
     if (req.query.building) {
       if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
@@ -107,10 +142,18 @@ router.get('/payment-status', async (req, res) => {
       .sort({ dueDate: -1, createdAt: -1 });
 
     const latestInvoiceByTenant = new Map();
+    const latestDueInvoiceByTenant = new Map();
     const invoicesWithoutTenant = [];
+    let totalOutstanding = 0;
 
     invoices.forEach((invoice) => {
       const tenantId = invoice.tenant?._id ? String(invoice.tenant._id) : "";
+      const isDue = isInvoiceDueBy(invoice, today);
+      const outstandingBalance = getInvoiceOutstandingBalance(invoice);
+
+      if (isDue && outstandingBalance > 0) {
+        totalOutstanding += outstandingBalance;
+      }
 
       if (!tenantId) {
         invoicesWithoutTenant.push(invoice);
@@ -120,19 +163,85 @@ router.get('/payment-status', async (req, res) => {
       if (!latestInvoiceByTenant.has(tenantId)) {
         latestInvoiceByTenant.set(tenantId, invoice);
       }
+
+      if (isDue && !latestDueInvoiceByTenant.has(tenantId)) {
+        latestDueInvoiceByTenant.set(tenantId, invoice);
+      }
     });
 
-    const items = tenants.map((tenant) =>
-      getPaymentStatusItem(tenant, latestInvoiceByTenant.get(String(tenant._id)))
-    );
+    const items = tenants.map((tenant) => {
+      const tenantId = String(tenant._id);
+      const invoice = latestDueInvoiceByTenant.get(tenantId) || latestInvoiceByTenant.get(tenantId);
+
+      return getPaymentStatusItem(tenant, invoice, {
+        referenceDate: today
+      });
+    });
 
     invoicesWithoutTenant.forEach((invoice) => {
-      items.push(getPaymentStatusItem(invoice.tenant, invoice));
+      items.push(getPaymentStatusItem(invoice.tenant, invoice, {
+        referenceDate: today
+      }));
     });
 
     const paid = items.filter((item) => item.status === "paid");
     const notPaid = items.filter((item) => item.status !== "paid");
-    const totalPaidAmount = items.reduce((sum, item) => sum + item.amountPaid, 0);
+    const paymentMatch = {
+      paymentDate: {
+        $gte: ethiopianMonthRange.start,
+        $lt: ethiopianMonthRange.end
+      },
+      $or: [
+        { invoice: { $exists: true, $ne: null } },
+        { contract: { $exists: true, $ne: null } }
+      ]
+    };
+
+    if (filter.building) {
+      paymentMatch.building = filter.building;
+    }
+
+    const monthlyPaidResult = await PaymentRecord.aggregate([
+      { $match: paymentMatch },
+      {
+        $lookup: {
+          from: "invoices",
+          localField: "invoice",
+          foreignField: "_id",
+          as: "invoiceDoc"
+        }
+      },
+      {
+        $lookup: {
+          from: "contracts",
+          localField: "contract",
+          foreignField: "_id",
+          as: "contractDoc"
+        }
+      },
+      {
+        $match: {
+          $or: [
+            {
+              invoice: { $exists: true, $ne: null },
+              "invoiceDoc.status": "paid"
+            },
+            {
+              contract: { $exists: true, $ne: null },
+              "contractDoc.status": "paid"
+            }
+          ]
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    const totalPaidAmount = monthlyPaidResult[0]?.total || 0;
 
     res.json({
       buildingId: req.query.building || null,
@@ -143,7 +252,9 @@ router.get('/payment-status', async (req, res) => {
         notPaid: notPaid.length,
         totalPaidAmount,
         totalCollected: totalPaidAmount,
-        totalOutstanding: notPaid.reduce((sum, item) => sum + item.outstandingBalance, 0)
+        totalPaidThisMonth: totalPaidAmount,
+        paidThisMonthCount: monthlyPaidResult[0]?.count || 0,
+        totalOutstanding
       },
       paid,
       notPaid
@@ -249,6 +360,7 @@ router.post('/invoices/generate', async (req, res) => {
       ...getNewInvoicePaymentFields(contract.amount)
     });
 
+    await syncPendingUtilitiesToInvoiceDueDate(invoice);
     await syncContractStatusFromInvoices(invoice.contract);
 
     await recordAuditLog({
@@ -334,6 +446,7 @@ router.post('/invoices/auto-generate', async (req, res) => {
           ...getNewInvoicePaymentFields(contract.amount)
         });
 
+        await syncPendingUtilitiesToInvoiceDueDate(invoice);
         await syncContractStatusFromInvoices(invoice.contract);
 
         generatedInvoices.push(invoice);
@@ -425,7 +538,7 @@ router.post('/invoices/:id/pay', async (req, res) => {
       return res.status(400).json({ error: "Uploaded receipt is invalid or too large" });
     }
 
-    const paymentDateObj = paymentDate ? parseFlexibleDateInput(paymentDate) : new Date();
+    const paymentDateObj = paymentDate ? parsePaymentDateInput(paymentDate) : new Date();
     if (paymentDate && !paymentDateObj) {
       return res.status(400).json({ error: "Invalid payment date" });
     }
@@ -844,6 +957,7 @@ router.patch('/invoices/:id', async (req, res) => {
     }
 
     const previousStatus = invoice.status;
+    const previousAmountPaid = Number(invoice.amountPaid || 0);
 
     if (totalAmount !== undefined) {
       const normalizedTotal = Number(totalAmount);
@@ -857,13 +971,15 @@ router.patch('/invoices/:id', async (req, res) => {
       invoice.outstandingBalance = Math.max(0, invoice.totalAmount - (invoice.amountPaid || 0));
     }
 
-    const manualPaymentAmount = status === "paid" && previousStatus !== "paid"
+    const manualPaymentDate = status === "paid" && previousStatus !== "paid" ? new Date() : null;
+    const manualPaymentAmount = manualPaymentDate
       ? Math.max(0, Number(invoice.outstandingBalance || 0))
       : 0;
 
     // Status changes use the shared helper so amountPaid/outstandingBalance stay consistent.
     if (status) {
       setInvoiceStatusFields(invoice, status, {
+        paymentDate: manualPaymentDate,
         resetPaidAmount: previousStatus === "paid" && status === "pending"
       });
     }
@@ -873,17 +989,28 @@ router.patch('/invoices/:id', async (req, res) => {
     }
 
     await invoice.save();
+    if (dueDateChanged) {
+      await syncPendingUtilitiesToInvoiceDueDate(invoice);
+    }
+    const shouldClearPaymentRecords = status === "pending" && Number(invoice.amountPaid || 0) <= 0;
+    const removedPaymentRecords = shouldClearPaymentRecords
+      ? (await PaymentRecord.deleteMany({ invoice: invoice._id })).deletedCount || 0
+      : 0;
     await syncContractStatusFromInvoices(invoice.contract);
     await invoice.populate('tenant');
     await invoice.populate('contract');
 
     if (manualPaymentAmount > 0) {
+      if (previousAmountPaid <= 0) {
+        await PaymentRecord.deleteMany({ invoice: invoice._id });
+      }
+
       await createPaymentRecordIfMissing({
         building: invoice.building,
         tenant: invoice.tenant?._id || invoice.tenant,
         invoice: invoice._id,
         amount: manualPaymentAmount,
-        paymentDate: invoice.paymentDate || new Date(),
+        paymentDate: manualPaymentDate || invoice.paymentDate || new Date(),
         notes: "Recorded from paid invoice status",
         skipExisting: false
       });
@@ -899,6 +1026,7 @@ router.patch('/invoices/:id', async (req, res) => {
       metadata: {
         dueDateChanged,
         remindersCleared,
+        removedPaymentRecords,
         previousStatus,
         status: invoice.status
       }

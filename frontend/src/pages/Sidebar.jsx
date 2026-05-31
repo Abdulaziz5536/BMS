@@ -1,7 +1,12 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { SidebarSuppressContext } from "../components/sidebarContext";
-import { clearCurrentUser, getCurrentUser, getRoleLabel, isReadOnlyUser } from "../authSession";
+import {
+  clearAuthToken,
+  clearCurrentUser,
+  getCurrentUser,
+  isReadOnlyUser
+} from "../authSession";
 import { portLabel } from "../utils/portLabels";
 import {
   API_BASE,
@@ -88,7 +93,7 @@ export default function Sidebar({ persistent = false }) {
 
   const logout = async () => {
     await apiFetch(`${API_BASE}/logout`, { method: "POST" }).catch(() => {});
-    localStorage.removeItem("token");
+    clearAuthToken();
     clearCurrentUser();
     navigate("/login", { replace: true });
   };
@@ -99,9 +104,6 @@ export default function Sidebar({ persistent = false }) {
 
       {currentUser && (
         <div className="sidebar-user">
-          <span>{portLabel("Signed in as", "የገባው")}</span>
-          <strong>{currentUser.name || currentUser.email}</strong>
-          <small>{getRoleLabel(currentUser.role)}</small>
         </div>
       )}
 
@@ -172,12 +174,8 @@ export default function Sidebar({ persistent = false }) {
           </NavLink>
         </li>
 
-        <li>
-          <NavLink to="/accounts" className={({ isActive }) => (isActive ? "active" : "")}>
-            Accounts
-          </NavLink>
-        </li>
-
+        
+        
         <li>
           <NavLink to="/announcements" className={({ isActive }) => (isActive ? "active" : "")}>
             Announcements

@@ -525,6 +525,7 @@ button:disabled {
 }
 
 .sidebar-user {
+  display: none;
   margin: 0 0.75rem 0.75rem;
   padding: 0.8rem;
   border: 1px solid rgba(203, 213, 225, 0.18);
@@ -532,12 +533,15 @@ button:disabled {
   background: rgba(15, 23, 42, 0.32);
 }
 
-.sidebar-user span,
 .sidebar-user small {
   display: block;
   color: #cbd5e1;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.sidebar-user span {
+  display: none;
 }
 
 .sidebar-user strong {
@@ -2197,7 +2201,9 @@ button:disabled {
 .tenant-table th:nth-child(7),
 .tenant-table td:nth-child(7),
 .tenant-table th:nth-child(8),
-.tenant-table td:nth-child(8) {
+.tenant-table td:nth-child(8),
+.tenant-table th:nth-child(9),
+.tenant-table td:nth-child(9) {
   min-width: 115px;
   white-space: nowrap;
 }

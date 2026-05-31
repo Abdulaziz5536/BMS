@@ -15,7 +15,6 @@ import Invoice from "./pages/Invoice";
 import Announcements from "./pages/Announcements";
 import Activity from "./pages/Activity";
 import SystemTools from "./pages/SystemTools";
-import Accounts from "./pages/Accounts";
 import Sidebar from "./pages/Sidebar";
 
 import ConfirmDialogProvider from "./components/ConfirmDialog";
@@ -173,11 +172,7 @@ function App() {
       />
       <Route
         path="/accounts"
-        element={
-          <ProtectedAppPage>
-            <Accounts />
-          </ProtectedAppPage>
-        }
+        element={<Navigate to="/system#accounts" replace />}
       />
     </Routes>
     </ErrorBoundary>

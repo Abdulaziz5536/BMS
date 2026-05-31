@@ -9,7 +9,7 @@ import {
   UserCircleIcon
 } from "@heroicons/react/24/outline";
 import { useNavigate } from "react-router-dom";
-import { clearCurrentUser, getCurrentUser } from "../authSession";
+import { clearAuthToken, clearCurrentUser } from "../authSession";
 import {
   API_BASE,
   apiFetch,
@@ -56,7 +56,6 @@ const matchesSearch = (item, searchTerm) => {
 export default function PaymentStatus() {
   const navigate = useNavigate();
   const selectedBuildingId = useSelectedBuilding();
-  const currentUser = getCurrentUser();
   const [buildings, setBuildings] = useState([]);
   const [statusData, setStatusData] = useState(emptyStatus);
   const [activeList, setActiveList] = useState("notPaid");
@@ -95,7 +94,7 @@ export default function PaymentStatus() {
       }),
       setError,
       "Failed to load payment status",
-      { cacheTtl: 15000 }
+      { useCache: false }
     );
   }, [selectedBuildingId, setError]);
 
@@ -107,9 +106,25 @@ export default function PaymentStatus() {
     fetchPaymentStatus();
   }, [fetchPaymentStatus]);
 
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (!document.hidden) {
+        fetchPaymentStatus();
+      }
+    };
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [fetchPaymentStatus]);
+
   const logout = async () => {
     await apiFetch(`${API_BASE}/logout`, { method: "POST" }).catch(() => {});
-    localStorage.removeItem("token");
+    clearAuthToken();
     clearCurrentUser();
     navigate("/login", { replace: true });
   };
@@ -129,11 +144,6 @@ export default function PaymentStatus() {
         <div>
           <span className="payment-status-eyebrow">Payment Status / የክፍያ ሁኔታ </span>
           <h1>Who paid and who did not pay</h1>
-          {currentUser && (
-            <p>
-              Logged in: <strong>{currentUser.name || currentUser.email}</strong>
-            </p>
-          )}
         </div>
 
         <div className="payment-status-actions">
@@ -239,12 +249,18 @@ export default function PaymentStatus() {
                 <div className="payment-row-facts payment-row-key-facts">
                   <span className="payment-row-fact-large">
                     <CurrencyDollarIcon />
-                    Amount / ብዛት: {formatCurrency(item.outstandingBalance || item.totalAmount)}
+                     {formatCurrency(item.amountDue ?? item.outstandingBalance ?? item.totalAmount)}
                   </span>
                   <span className="payment-row-fact-large">
                     <CalendarDaysIcon />
-                    Due / የክፍያ ቀን: {item.dueDate ? formatEthiopianDate(item.dueDate) : "No invoice"}
+                    የክፍያ ቀን: {item.dueDate ? formatEthiopianDate(item.dueDate) : "No invoice"}
                   </span>
+                  {item.status === "paid" && item.paymentDate && (
+                    <span className="payment-row-fact-large">
+                      <CalendarDaysIcon />
+                      የተከፈለበት ቀን: {formatEthiopianDate(item.paymentDate)}
+                    </span>
+                  )}
                 </div>
 
                 <strong className={`payment-status-pill ${item.status === "paid" ? "is-paid" : "is-unpaid"}`}>

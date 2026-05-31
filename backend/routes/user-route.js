@@ -44,11 +44,15 @@ router.post("/users/viewers", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Password should be 6 digits" });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
     const existingUser = await User.findOne({ email });
 
     if (existingUser) {
+      if (existingUser.role !== "viewer") {
+        return res.status(409).json({ error: "That email already belongs to a manager account" });
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
       existingUser.name = name;
       existingUser.password = hashedPassword;
       existingUser.role = "viewer";
@@ -65,6 +69,8 @@ router.post("/users/viewers", requireAdmin, async (req, res) => {
       });
     }
 
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
     const user = await User.create({
       name,
       email,

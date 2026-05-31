@@ -7,7 +7,9 @@ const PaymentRecord = require("../models/payment-record-model");
 const { recordAuditLog } = require("../services/audit-log-service");
 const { createPaymentRecordIfMissing } = require("../services/payment-record-service");
 const {
-  normalizeDateOnlyString,
+  getSyncedUtilityDueDate
+} = require("../services/utility-invoice-sync-service");
+const {
   parseFlexibleDateInput,
   toIsoDate
 } = require("../utils/date-utils");
@@ -137,7 +139,11 @@ router.post("/utilities", async (req, res) => {
       return res.status(400).json({ error: "Invalid due date" });
     }
 
-    const normalizedDueDate = normalizeDateOnlyString(dueDate);
+    const normalizedDueDate = await getSyncedUtilityDueDate({
+      tenant,
+      building,
+      fallbackDueDate: dueDate
+    });
 
     const utility = await Utility.create({
       building,
@@ -214,7 +220,11 @@ router.put("/utilities/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid due date" });
     }
 
-    const normalizedDueDate = normalizeDateOnlyString(dueDate);
+    const normalizedDueDate = await getSyncedUtilityDueDate({
+      tenant,
+      building,
+      fallbackDueDate: dueDate
+    });
 
     const previousUtility = await Utility.findById(req.params.id);
 
@@ -336,7 +346,12 @@ router.patch("/utilities/:id/pay", async (req, res) => {
     });
 
     // Create the next pending utility using the same amounts and frequency.
-    const nextDueDate = calculateNextDueDate(utility.dueDate, utility.paymentFrequency);
+    const nextDueDate = await getSyncedUtilityDueDate({
+      tenant: utility.tenant,
+      building: utility.building,
+      fallbackDueDate: calculateNextDueDate(utility.dueDate, utility.paymentFrequency),
+      afterDate: utility.dueDate
+    });
 
     const nextUtility = await Utility.create({
       building: utility.building,
