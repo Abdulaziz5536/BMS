@@ -257,10 +257,10 @@ export default function Contracts() {
                     </button>
                     <button className="danger-btn" onClick={() => deleteContract(contract._id)}>
                       Delete
-                    </button>
+                    </button> 
                     {contract.status === "pending" && (
-                         <button onClick={() => markAsPaid(contract._id)}>
-                                     Mark as Paid </button> )}
+                         <button onClick={() => markAsPaid(contract._id)}> Mark as Paid </button> )}
+                   
                   </td>
                 </tr>
               ))
