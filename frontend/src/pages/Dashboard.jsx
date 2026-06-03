@@ -316,7 +316,7 @@ export default function Dashboard() {
       <Sidebar />
 
       <div className="main-content">
-        <h1>Dashboarddd</h1>
+        <h1>Dashboard</h1>
 
         {!selectedBuildingId && (
           <p className="error">Add or select a building to see dashboard data.</p>
