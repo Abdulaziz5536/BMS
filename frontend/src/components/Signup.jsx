@@ -1,19 +1,30 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
+import { API_BASE, apiFetch, readResponse } from "../buildingSelection";
+import { SIGNUP_ENABLED } from "../config";
+import useShortError from "../hooks/useShortError";
+import { portLabel } from "../utils/portLabels";
 import "../style.css";
 
+// Signup page creates a basic user account before redirecting to login.
 export default function Signup() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("viewer");
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
 
+  if (!SIGNUP_ENABLED) {
+    return <Navigate to="/login" replace />;
+  }
+
   const signup = async () => {
+    // Keep frontend validation aligned with backend auth rules.
 
     setMessage("");
     setError("");
@@ -23,13 +34,13 @@ export default function Signup() {
       return;
     }
 
-    if (!email.includes("@")) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Enter a valid email");
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+    if (!/^\d{6}$/.test(password)) {
+      setError("Password must be exactly 6 digits");
       return;
     }
 
@@ -37,15 +48,15 @@ export default function Signup() {
 
     try {
 
-      const res = await fetch("http://localhost:3000/signup", {
+      const res = await apiFetch(`${API_BASE}/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name, email, password, role })
       });
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
 
@@ -61,7 +72,7 @@ export default function Signup() {
 
       }
 
-    } catch (error) {
+    } catch {
 
       setError("Server error. Please try again.");
 
@@ -75,10 +86,10 @@ export default function Signup() {
 
     <div className="signup">
 
-      <h1>Sign Up</h1>
+      <h1>{portLabel("Sign Up", "መለያ ይፍጠሩ")}</h1>
 
       <input
-        placeholder="name"
+        placeholder={portLabel("name", "ስም")}
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
@@ -86,7 +97,7 @@ export default function Signup() {
       <br />
 
       <input
-        placeholder="email"
+        placeholder={portLabel("email", "ኢሜይል")}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
       />
@@ -95,15 +106,23 @@ export default function Signup() {
 
       <input
         type="password"
-        placeholder="password"
+        placeholder={portLabel("password", "የይለፍ ቁጥር")}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
 
       <br />
 
+      <label className="field-label signup-role-field">
+        {portLabel("Account Type", "የመለያ አይነት")}
+        <select value={role} onChange={(e) => setRole(e.target.value)}>
+          <option value="viewer">{portLabel("Read only", "ማየት ብቻ")}</option>
+          <option value="admin">{portLabel("Manager", "አስተዳዳሪ")}</option>
+        </select>
+      </label>
+
       <button onClick={signup} disabled={loading}>
-        {loading ? "Signing up..." : "Sign Up"}
+        {loading ? "Signing up..." : portLabel("Sign Up", "መዝግብ")}
       </button>
 
       <br />
@@ -112,7 +131,7 @@ export default function Signup() {
         id="navigate"
         onClick={() => navigate("/login")}
       >
-        Already have an account? Login
+        {portLabel("Already have an account? Login", "ግባ")}
       </button>
 
       <h2 className="message">{message}</h2>

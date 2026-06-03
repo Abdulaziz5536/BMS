@@ -1,170 +1,304 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  PencilSquareIcon,
+  TrashIcon
+} from "@heroicons/react/24/outline";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
+import FilePreviewLink from "../components/FilePreviewLink";
+import {
+  API_BASE,
+  apiFetch,
+  invalidateCache,
+  loadCachedJson,
+  readResponse,
+  withBuilding
+} from "../buildingSelection";
+import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import useShortError from "../hooks/useShortError";
+import {
+  dateInputProps,
+  formatEthiopianDate,
+  normalizeDateInputForApi
+} from "../utils/dateUtils";
 import "../style.css";
 
+const MAX_UPLOAD_SIZE = 7 * 1024 * 1024; // 7MB
+
+// Contracts page manages rent agreements. Contract date/frequency changes can recalculate invoices.
+
+const readUploadFile = (file) => {
+  // Browser FileReader converts uploaded PDFs/photos into data URLs for the backend.
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve(undefined);
+      return;
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE) {
+      reject(new Error("File must be 7MB or smaller"));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve({
+        name: file.name,
+        type: file.type,
+        data: reader.result
+      });
+    };
+    reader.onerror = () => reject(new Error("Failed to read uploaded file"));
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function Contracts() {
+  const selectedBuildingId = useSelectedBuilding();
   const [tenants, setTenants] = useState([]);
   const [contracts, setContracts] = useState([]);
 
   const [tenantId, setTenantId] = useState("");
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState("");
-  const [contractLength, setContractLength] = useState("");
+  const [leaseStartDate, setLeaseStartDate] = useState("");
+  const [leaseEndDate, setLeaseEndDate] = useState("");
   const [paymentFrequency, setPaymentFrequency] = useState("");
+  const [contractStatus, setContractStatus] = useState("pending");
+
+  const [contractFile, setContractFile] = useState(undefined);
+
   const [editingId, setEditingId] = useState(null);
+  const contractFormRef = useRef(null);
 
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useShortError();
 
-  const API = "http://localhost:3000";
-
-  const fetchContract = async () => {
-    try {
-      const res = await fetch(`${API}/contract`);
-      const data = await res.json();
-
-      if (res.ok) {
-        setContracts(data);
-        setError("");
-      } else {
-        setError(data.error || data.err || "Failed to load contracts");
-      }
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
-  const fetchTenants = async () => {
-    try {
-      const res = await fetch(`${API}/tenants`);
-      const data = await res.json();
-
-      if (res.ok) {
-        setTenants(data);
-        setError("");
-      } else {
-        setError(data.error || data.err || "Failed to load tenants");
-      }
-    } catch (error) {
-      setError(error.message);
-    }
-  };
-
-  useEffect(() => {
-    fetchContract();
-    fetchTenants();
-  }, []);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState("status");
+  const [sortDirection, setSortDirection] = useState("desc");
 
   const clearForm = () => {
     setTenantId("");
     setAmount("");
-    setDate("");
-    setContractLength("");
+    setLeaseStartDate("");
+    setLeaseEndDate("");
     setPaymentFrequency("");
+    setContractStatus("pending");
+    setContractFile(undefined);
     setEditingId(null);
   };
 
+  const fetchContract = async (useCache = true) => {
+    // Contracts are building-scoped and include populated tenant/unit data.
+    if (!selectedBuildingId) {
+      setContracts([]);
+      return;
+    }
+
+    await loadCachedJson(
+      withBuilding("/contract", selectedBuildingId),
+      setContracts,
+      setError,
+      "Failed to load contracts",
+      { useCache }
+    );
+  };
+
+  const fetchTenants = async (useCache = true) => {
+    if (!selectedBuildingId) {
+      setTenants([]);
+      return;
+    }
+
+    await loadCachedJson(
+      withBuilding("/tenants", selectedBuildingId),
+      setTenants,
+      setError,
+      "Failed to load tenants",
+      { useCache }
+    );
+  };
+
+  useEffect(() => {
+    clearForm();
+    setMessage("");
+    setError("");
+    fetchContract();
+    fetchTenants();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBuildingId]);
+
+  useEffect(() => {
+    if (editingId) {
+      contractFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [editingId]);
+
+  const filteredAndSortedContracts = contracts
+    .filter(
+      (contract) =>
+        contract.tenant?.tenantName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        contract.tenant?.tenantId?.toString().includes(searchTerm) ||
+        contract.paymentFrequency?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        contract.status?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      let aValue = a[sortField];
+      let bValue = b[sortField];
+
+      if (sortField === "tenant") {
+        aValue = a.tenant?.tenantName || "";
+        bValue = b.tenant?.tenantName || "";
+      } else if (sortField === "amount") {
+        aValue = Number(a.amount) || 0;
+        bValue = Number(b.amount) || 0;
+      }
+
+      if (typeof aValue === "string") {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
   const saveContract = async () => {
+    // The backend validates dates/tenant ownership and syncs related invoice periods.
     setMessage("");
     setError("");
 
-    if (!tenantId || !amount || !date || !contractLength || !paymentFrequency) {
+    if (!selectedBuildingId) {
+      setError("Add or select a building first");
+      return;
+    }
+
+    if (!tenantId || !amount || !leaseStartDate || !leaseEndDate || !paymentFrequency) {
       setError("Please fill in all fields");
       return;
     }
 
     try {
-      const res = await fetch(
-        editingId ? `${API}/contract/${editingId}` : `${API}/contract`,
+      const res = await apiFetch(
+        editingId ? `${API_BASE}/contract/${editingId}` : `${API_BASE}/contract`,
         {
           method: editingId ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            building: selectedBuildingId,
             tenant: tenantId,
             amount,
-            date,
-            contractLength,
-            paymentFrequency
+            date: leaseStartDate,
+            leaseStartDate,
+            leaseEndDate,
+            paymentFrequency,
+            status: contractStatus,
+            contractFile
           })
         }
       );
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
         setMessage(data.message || (editingId ? "Contract updated" : "Contract added"));
         clearForm();
-        fetchContract();
+        invalidateCache(selectedBuildingId);
+        fetchContract(false);
       } else {
         setError(data.error || data.err || "Failed to save contract");
       }
-    } catch (error) {
-      setError(error.message);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
   const editContract = (contract) => {
+    // Editing copies stored values into the form and scrolls the user back to it.
     setTenantId(contract.tenant?._id || contract.tenant || "");
     setAmount(contract.amount || "");
-    setDate(contract.date || "");
-    setContractLength(contract.contractLength || "");
+    setLeaseStartDate(normalizeDateInputForApi(contract.leaseStartDate || contract.date));
+    setLeaseEndDate(normalizeDateInputForApi(contract.leaseEndDate));
     setPaymentFrequency(contract.paymentFrequency || "");
+    setContractStatus(contract.status || "pending");
+    setContractFile(contract.contractFile || undefined);
     setEditingId(contract._id);
     setMessage("");
     setError("");
   };
 
   const deleteContract = async (id) => {
+    // Backend blocks deletion when invoices/payments still reference this contract.
+    const shouldDelete = await confirmAction({
+      title: "Delete contract?",
+      message: "Are you sure you want to delete this contract?",
+      confirmText: "Yes",
+      cancelText: "No"
+    });
+
+    if (!shouldDelete) {
+      return;
+    }
+
     try {
       setMessage("");
       setError("");
 
-      const res = await fetch(`${API}/contract/${id}`, {
+      const res = await apiFetch(`${API_BASE}/contract/${id}`, {
         method: "DELETE"
       });
 
-      const data = await res.json();
+      const data = await readResponse(res);
 
       if (res.ok) {
         setMessage(data.message || "Contract deleted");
-        fetchContract();
+        invalidateCache(selectedBuildingId);
+        fetchContract(false);
       } else {
         setError(data.error || data.err || "Failed to delete contract");
       }
-    } catch (error) {
-      setError(error.message);
+    } catch (err) {
+      setError(err.message);
     }
   };
-  const markAsPaid = async (id) => {
-  const res = await fetch(`${API}/contract/${id}`, {
-    method: "PUT"
-  });
 
-  const data = await res.json();
-
-  if (res.ok) {
-    setMessage(data.message);
-    fetchContract(); 
-  } else {
-    console.log(data.error);
-    setError(error.message);
-  }
-};
+  const renderFileLink = (file) => {
+    if (!file?.data) return "-";
+    return <FilePreviewLink file={file} />;
+  };
 
   return (
     <div className="app-layout">
       <Sidebar />
-
       <div className="main-content">
         <h1>Contracts</h1>
 
-        <section className="panel">
+        {!selectedBuildingId && (
+          <p className="error">Add or select a building before managing contracts.</p>
+        )}
+
+        <section className="panel" ref={contractFormRef}>
           <h2>{editingId ? "Edit Contract" : "Add Contract"}</h2>
 
-          <div className="form-grid">
-            <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+          <div className="form-grid contract-form-grid">
+            <select
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              disabled={!selectedBuildingId}
+            >
               <option value="">Select Tenant</option>
               {tenants.map((tenant) => (
                 <option key={tenant._id} value={tenant._id}>
@@ -175,28 +309,36 @@ export default function Contracts() {
 
             <input
               type="number"
-              placeholder="Amount"
+              placeholder="Amount (Br)"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              disabled={!selectedBuildingId}
             />
 
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <label className="field-label">
+              Lease Start Date
+              <input
+                {...dateInputProps}
+                value={leaseStartDate}
+                onChange={(e) => setLeaseStartDate(e.target.value)}
+                disabled={!selectedBuildingId}
+              />
+            </label>
 
-            <input
-              type="number"
-              min="1"
-              placeholder="Contract Length (Years)"
-              value={contractLength}
-              onChange={(e) => setContractLength(e.target.value)}
-            />
+            <label className="field-label">
+              Lease End Date
+              <input
+                {...dateInputProps}
+                value={leaseEndDate}
+                onChange={(e) => setLeaseEndDate(e.target.value)}
+                disabled={!selectedBuildingId}
+              />
+            </label>
 
             <select
               value={paymentFrequency}
               onChange={(e) => setPaymentFrequency(e.target.value)}
+              disabled={!selectedBuildingId}
             >
               <option value="">Payment Frequency</option>
               <option value="Monthly">Monthly</option>
@@ -204,10 +346,48 @@ export default function Contracts() {
               <option value="Every 6 months">Every 6 months</option>
               <option value="Yearly">Yearly</option>
             </select>
+
+            <select
+              value={contractStatus}
+              onChange={(e) => setContractStatus(e.target.value)}
+              disabled={!selectedBuildingId}
+            >
+              <option value="pending">pending</option>
+              <option value="paid">paid</option>
+            </select>
+          </div>
+
+          <div style={{ marginTop: "1rem" }}>
+            <label className="field-label file-field">
+              Contract Photo/PDF
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={async (e) => {
+                  setError("");
+                  setMessage("");
+                  try {
+                    const file = e.target.files?.[0];
+                    const uploaded = await readUploadFile(file);
+                    setContractFile(uploaded);
+                  } catch (err) {
+                    setContractFile(undefined);
+                    setError(err.message);
+                    e.target.value = "";
+                  }
+                }}
+                disabled={!selectedBuildingId}
+              />
+              {contractFile?.name && <span>{contractFile.name}</span>}
+            </label>
+
+            <div style={{ marginTop: "0.5rem" }}>
+              {editingId ? renderFileLink(contracts.find((c) => c._id === editingId)?.contractFile) : "-"}
+            </div>
           </div>
 
           <div className="form-actions">
-            <button onClick={saveContract}>
+            <button onClick={saveContract} disabled={!selectedBuildingId}>
               {editingId ? "Update Contract" : "Add Contract"}
             </button>
 
@@ -224,53 +404,82 @@ export default function Contracts() {
 
         <h2>Contracts List</h2>
 
+        <div className="table-controls">
+          <input
+            type="text"
+            placeholder="Search contracts..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="search-input"
+          />
+        </div>
+
+        <div className="floors-table-wrapper">
         <table className="floors-table">
           <thead>
             <tr>
-              <th>Tenant</th>
-              <th>Amount</th>
-              <th>Start Date</th>
-              <th>Length</th>
-              <th>Payment</th>
-              <th>Status</th>
+              <th onClick={() => handleSort("tenant")} className="sortable-header">
+                Tenant {sortField === "tenant" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("amount")} className="sortable-header">
+                Amount {sortField === "amount" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("leaseStartDate")} className="sortable-header">
+                Lease Start {sortField === "leaseStartDate" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("leaseEndDate")} className="sortable-header">
+                Lease End {sortField === "leaseEndDate" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("paymentFrequency")} className="sortable-header">
+                Payment {sortField === "paymentFrequency" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("status")} className="sortable-header">
+                Status {sortField === "status" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th>File</th>
               <th>Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            {contracts.length > 0 ? (
-              contracts.map((contract) => (
+            {filteredAndSortedContracts.length > 0 ? (
+              filteredAndSortedContracts.map((contract) => (
                 <tr key={contract._id}>
                   <td>{contract.tenant?.tenantName || "Tenant"}</td>
-                  <td>{contract.amount}</td>
-                  <td>{contract.date}</td>
-                  <td>{contract.contractLength ? `${contract.contractLength} years` : "-"}</td>
+                  <td>Br {contract.amount}</td>
+                  <td>{formatEthiopianDate(contract.leaseStartDate || contract.date)}</td>
+                  <td>{formatEthiopianDate(contract.leaseEndDate)}</td>
                   <td>{contract.paymentFrequency || "-"}</td>
-                    <td> {contract.status === "paid" ? (
-                      <span style={{ color: "green" }}>Paid</span>
-                     ) : (
-                         <span style={{ color: "orange" }}>Pending</span> )}</td>
-                         
                   <td>
-                    <button onClick={() => editContract(contract)}>
-                      Edit
-                    </button>
-                    <button className="danger-btn" onClick={() => deleteContract(contract._id)}>
-                      Delete
-                    </button> 
-                    {contract.status === "pending" && (
-                         <button onClick={() => markAsPaid(contract._id)}> Mark as Paid </button> )}
-                   
+                    {contract.status === "paid" ? (
+                      <span className="paid-status">Paid</span>
+                    ) : (
+                      <span className="pending-status">Pending</span>
+                    )}
+                  </td>
+                  <td>{renderFileLink(contract.contractFile)}</td>
+                  <td>
+                    <div className="table-action-stack">
+                      <div className="table-action-row">
+                        <button className="table-action-btn" onClick={() => editContract(contract)} title="Edit">
+                          <PencilSquareIcon />
+                        </button>
+                        <button className="table-action-btn danger-btn" onClick={() => deleteContract(contract._id)} title="Delete">
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="6">No contracts added yet</td>
+                <td colSpan="8">No contracts found</td>
               </tr>
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

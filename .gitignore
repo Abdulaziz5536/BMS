@@ -1,6 +1,10 @@
 node_modules
+frontend/dist
+logs
 .env
 vite-dev*.log
 vite-dev*.err
 backend-dev*.log
 backend-dev*.err
+codex-*.log
+codex-*.err

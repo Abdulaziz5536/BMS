@@ -4,10 +4,16 @@
   "main": "index.js",
   "scripts": {
     "dev": "start \"bms-backend\" /B node backend/index.js && npm.cmd --prefix frontend run dev",
-    "dev:frontend": "npm.cmd --prefix frontend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "node backend/index.js",
-    "build": "npm.cmd --prefix frontend run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node backend/index.js",
+    "build": "npm --prefix frontend run build",
+    "test": "node --test backend/tests/*.test.js && npm --prefix frontend run test && node verify_backend_routes.js",
+    "install:frontend": "npm --prefix frontend install"
+  },
+  "engines": {
+    "node": ">=20 <26",
+    "npm": ">=10"
   },
   "repository": {
     "type": "git",
@@ -27,7 +33,7 @@
     "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "mogoose": "^0.0.1-security",
-    "mongoose": "^9.4.1"
+    "mongoose": "^9.4.1",
+    "nodemailer": "^6.9.8"
   }
 }
