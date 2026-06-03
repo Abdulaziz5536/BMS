@@ -61,13 +61,38 @@ test("receipt FS numbers stay unique and stable per payment", () => {
   assert.equal(formatFsNumber(payment), "FS-20260526-00112233");
 });
 
-test("payroll uses employee salary as gross pay", () => {
+test("payroll uses employee salary as basic pay", () => {
   const row = calculatePayrollRow({ name: "Alem", salary: 10000 });
 
   assert.equal(row.grossSalary, 10000);
+  assert.equal(row.basicSalary, 10000);
+  assert.equal(row.transportAllowance, 0);
+  assert.equal(row.taxableIncome, 10000);
   assert.equal(row.incomeTax, 1650);
   assert.equal(row.employeePension, 700);
   assert.equal(row.employerPension, 1100);
+  assert.equal(row.loan, 0);
+  assert.equal(row.totalDeduct, 2350);
   assert.equal(row.netPay, 7650);
   assert.equal(row.governmentRemittance, 3450);
+});
+
+test("payroll includes transport allowance and loan", () => {
+  const row = calculatePayrollRow({
+    name: "Alem",
+    salary: 10000,
+    transportAllowance: 2000,
+    loan: 500
+  });
+
+  assert.equal(row.basicSalary, 10000);
+  assert.equal(row.transportAllowance, 2000);
+  assert.equal(row.taxableIncome, 12000);
+  assert.equal(row.grossSalary, 12000);
+  assert.equal(row.employeePension, 840);
+  assert.equal(row.employerPension, 1320);
+  assert.equal(row.incomeTax, 2250);
+  assert.equal(row.loan, 500);
+  assert.equal(row.totalDeduct, 3590);
+  assert.equal(row.netPay, 8410);
 });

@@ -31,6 +31,7 @@ import {
   calculatePayrollRow,
   calculatePayrollTotals
 } from "../utils/payrollUtils";
+import { gregorianToEthiopian } from "../utils/dateUtils";
 import "../style.css";
 
 // Employees page manages staff records and generates a payroll report for the selected building.
@@ -40,7 +41,28 @@ const formatCurrency = (amount) => `Br ${Number(amount || 0).toLocaleString(unde
   maximumFractionDigits: 2
 })}`;
 
+const formatPayrollAmount = (amount) => Number(amount || 0).toLocaleString(undefined, {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
+
 const currentPayrollMonth = () => new Date().toISOString().slice(0, 7);
+
+const ETHIOPIAN_MONTH_NAMES = [
+  "Meskerem",
+  "Tikimt",
+  "Hidar",
+  "Tahsas",
+  "Tir",
+  "Yekatit",
+  "Megabit",
+  "Miazia",
+  "Ginbot",
+  "Sene",
+  "Hamle",
+  "Nehase",
+  "Pagume"
+];
 
 const formatPayrollMonth = (value) => {
   if (!value) return "-";
@@ -52,11 +74,21 @@ const formatPayrollMonth = (value) => {
   });
 };
 
-const formatGeneratedDate = () => new Date().toLocaleDateString([], {
-  year: "numeric",
-  month: "short",
-  day: "2-digit"
-});
+const formatPayrollSheetMonth = (value) => {
+  if (!value) return "-";
+  const [year, month] = value.split("-").map(Number);
+  if (!year || !month) return value;
+
+  const gregorianMonth = new Date(year, month - 1, 1).toLocaleDateString([], {
+    month: "long"
+  });
+  const ethiopianDate = gregorianToEthiopian(new Date(Date.UTC(year, month - 1, 15)));
+  const ethiopianMonth = ETHIOPIAN_MONTH_NAMES[(ethiopianDate?.month || 1) - 1] || "";
+  const ethiopianLabel = ethiopianDate ? `${ethiopianMonth}, ${ethiopianDate.year}` : "";
+  const gregorianLabel = `${gregorianMonth}, ${year}`;
+
+  return ethiopianLabel ? `${ethiopianLabel} (${gregorianLabel})` : gregorianLabel;
+};
 
 export default function Employees() {
   const selectedBuildingId = useSelectedBuilding();
@@ -67,6 +99,8 @@ export default function Employees() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
   const [salary, setSalary] = useState("");
+  const [transportAllowance, setTransportAllowance] = useState("");
+  const [loan, setLoan] = useState("");
   const [emergencyContactName, setEmergencyContactName] = useState("");
   const [emergencyContactPhone, setEmergencyContactPhone] = useState("");
   const [payrollMonth, setPayrollMonth] = useState(currentPayrollMonth());
@@ -88,6 +122,8 @@ export default function Employees() {
     setPhoneNumber("");
     setEmail("");
     setSalary("");
+    setTransportAllowance("");
+    setLoan("");
     setEmergencyContactName("");
     setEmergencyContactPhone("");
     setEditingId(null);
@@ -207,7 +243,7 @@ export default function Employees() {
   }, [editingId]);
 
   const saveEmployee = async () => {
-    // Phone/email/gross-salary validation runs before calling the backend.
+    // Phone/email/payroll validation runs before calling the backend.
     setMessage("");
     setError("");
 
@@ -218,6 +254,22 @@ export default function Employees() {
 
     if (!name || !position || salary === "") {
       setError("Please fill in all fields");
+      return;
+    }
+
+    const salaryAmount = Number(salary);
+    const transportAllowanceAmount = Number(transportAllowance || 0);
+    const loanAmount = Number(loan || 0);
+
+    if (
+      !Number.isFinite(salaryAmount) ||
+      !Number.isFinite(transportAllowanceAmount) ||
+      !Number.isFinite(loanAmount) ||
+      salaryAmount < 0 ||
+      transportAllowanceAmount < 0 ||
+      loanAmount < 0
+    ) {
+      setError("Payroll amounts must be valid numbers");
       return;
     }
 
@@ -247,7 +299,9 @@ export default function Employees() {
             position,
             phoneNumber: normalizedPhone,
             email,
-            salary: Number(salary),
+            salary: salaryAmount,
+            transportAllowance: transportAllowanceAmount,
+            loan: loanAmount,
             emergencyContactName,
             emergencyContactPhone: normalizedEmergencyPhone
           })
@@ -276,6 +330,8 @@ export default function Employees() {
     setPhoneNumber(formatEthiopianPhoneInput(employee.phoneNumber || ""));
     setEmail(employee.email || "");
     setSalary(employee.salary ?? "");
+    setTransportAllowance(employee.transportAllowance ?? "");
+    setLoan(employee.loan ?? "");
     setEmergencyContactName(employee.emergencyContactName || "");
     setEmergencyContactPhone(formatEthiopianPhoneInput(employee.emergencyContactPhone || ""));
     setEditingId(employee._id);
@@ -349,7 +405,14 @@ export default function Employees() {
   };
 
   const payrollMonthLabel = formatPayrollMonth(payrollMonth);
-  const payrollGeneratedDate = formatGeneratedDate();
+  const payrollSheetMonthLabel = formatPayrollSheetMonth(payrollMonth);
+  const payrollAccountingDebitTotal = payrollTotals.basicSalary
+    + payrollTotals.transportAllowance
+    + payrollTotals.employerPension;
+  const payrollAccountingCreditTotal = payrollTotals.incomeTax
+    + payrollTotals.employeePension
+    + payrollTotals.employerPension
+    + payrollTotals.netPay;
   const allPayrollEmployeesSelected = employees.length > 0 && selectedPayrollEmployees.length === employees.length;
   const payrollSelectionLabel = employees.length === 0
     ? "No employees"
@@ -409,9 +472,27 @@ export default function Employees() {
             <input
               type="number"
               min="0"
-              placeholder="Gross Monthly Salary (Br)"
+              placeholder="Basic Salary (Br)"
               value={salary}
               onChange={(e) => setSalary(e.target.value)}
+              disabled={!selectedBuildingId}
+            />
+
+            <input
+              type="number"
+              min="0"
+              placeholder="Transport Allowance (Br)"
+              value={transportAllowance}
+              onChange={(e) => setTransportAllowance(e.target.value)}
+              disabled={!selectedBuildingId}
+            />
+
+            <input
+              type="number"
+              min="0"
+              placeholder="Loan (Br)"
+              value={loan}
+              onChange={(e) => setLoan(e.target.value)}
               disabled={!selectedBuildingId}
             />
 
@@ -467,7 +548,13 @@ export default function Employees() {
                 Email {sortField === "email" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
               <th onClick={() => handleSort("salary")} className="sortable-header">
-                Gross Salary {sortField === "salary" && (sortDirection === "asc" ? "↑" : "↓")}
+                Basic Salary {sortField === "salary" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("transportAllowance")} className="sortable-header">
+                Transport Allowance {sortField === "transportAllowance" && (sortDirection === "asc" ? "↑" : "↓")}
+              </th>
+              <th onClick={() => handleSort("loan")} className="sortable-header">
+                Loan {sortField === "loan" && (sortDirection === "asc" ? "↑" : "↓")}
               </th>
               <th onClick={() => handleSort("emergencyContactName")} className="sortable-header">
                 Emergency Contact {sortField === "emergencyContactName" && (sortDirection === "asc" ? "↑" : "↓")}
@@ -485,6 +572,8 @@ export default function Employees() {
                   <td>{formatEthiopianPhoneDisplay(employee.phoneNumber) || "-"}</td>
                   <td>{employee.email || "-"}</td>
                   <td>{formatCurrency(employee.salary)}</td>
+                  <td>{formatCurrency(employee.transportAllowance)}</td>
+                  <td>{formatCurrency(employee.loan)}</td>
                   <td>
                     {employee.emergencyContactName || employee.emergencyContactPhone
                       ? `${employee.emergencyContactName || "-"} / ${formatEthiopianPhoneDisplay(employee.emergencyContactPhone) || "-"}`
@@ -506,7 +595,7 @@ export default function Employees() {
               ))
             ) : (
               <tr>
-                <td colSpan="7">No employees added yet</td>
+                <td colSpan="9">No employees added yet</td>
               </tr>
             )}
           </tbody>
@@ -585,6 +674,8 @@ export default function Employees() {
                   {filteredPayrollSelectionEmployees.length > 0 ? (
                     filteredPayrollSelectionEmployees.map((employee) => {
                       const employeeId = String(employee._id);
+                      const payrollPreviewAmount = (Number(employee.salary) || 0)
+                        + (Number(employee.transportAllowance) || 0);
 
                       return (
                         <label className="payroll-employee-option" key={employee._id}>
@@ -595,7 +686,7 @@ export default function Employees() {
                           />
                           <span>
                             <strong>{employee.name}</strong>
-                            <small>{employee.position || "Employee"} - {formatCurrency(employee.salary)}</small>
+                            <small>{employee.position || "Employee"} - {formatCurrency(payrollPreviewAmount)}</small>
                           </span>
                         </label>
                       );
@@ -637,88 +728,68 @@ export default function Employees() {
 
           <div className="floors-table-wrapper payroll-report">
             <div className="payroll-document-header">
-              <div>
-                <p className="document-kicker">{buildingName}</p>
-                <h2>Payroll Report</h2>
-                <p className="document-subtitle">Monthly salary, tax, pension, and remittance statement.</p>
-              </div>
-              <div className="document-meta-grid">
-                <div>
-                  <span>Payroll Month</span>
-                  <strong>{payrollMonthLabel}</strong>
-                </div>
-                <div>
-                  <span>Generated</span>
-                  <strong>{payrollGeneratedDate}</strong>
-                </div>
-                <div>
-                  <span>Employees</span>
-                  <strong>{payrollRows.length}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="payroll-report-summary">
-              <div>
-                <span>Total Gross</span>
-                <strong>{formatCurrency(payrollTotals.grossSalary)}</strong>
-              </div>
-              <div>
-                <span>Total Net Pay</span>
-                <strong>{formatCurrency(payrollTotals.netPay)}</strong>
-              </div>
-              <div>
-                <span>PAYE Tax</span>
-                <strong>{formatCurrency(payrollTotals.incomeTax)}</strong>
-              </div>
-              <div>
-                <span>Gov. Remittance</span>
-                <strong>{formatCurrency(payrollTotals.governmentRemittance)}</strong>
-              </div>
+              <h2>{buildingName}</h2>
+              <p>Payroll Sheet for the month {payrollSheetMonthLabel}</p>
             </div>
 
             <table className="floors-table payroll-table">
               <thead>
                 <tr>
-                  <th>Employee</th>
-                  <th>Position</th>
-                  <th>Gross</th>
-                  <th>PAYE</th>
-                  <th>Emp. Pension 7%</th>
-                  <th>Employer Pension 11%</th>
+                  <th>No</th>
+                  <th>Employee Name</th>
+                  <th>Basic Salary</th>
+                  <th>Transport Allowance</th>
+                  <th>Taxable Income</th>
+                  <th>Gross Salary</th>
+                  <th>Pension 7% By the employee</th>
+                  <th>Pension 11% by the employer</th>
+                  <th>Income Tax</th>
+                  <th>Loan</th>
+                  <th>Total Deduct</th>
                   <th>Net Pay</th>
-                  <th>Gov. Remittance</th>
+                  <th>Signiture</th>
                 </tr>
               </thead>
               <tbody>
                 {payrollRows.length > 0 ? (
-                  payrollRows.map((row) => (
+                  payrollRows.map((row, index) => (
                     <tr key={row.employee._id}>
+                      <td>{index + 1}</td>
                       <td>{row.employee.name}</td>
-                      <td>{row.employee.position || "-"}</td>
-                      <td>{formatCurrency(row.grossSalary)}</td>
-                      <td>{formatCurrency(row.incomeTax)}</td>
-                      <td>{formatCurrency(row.employeePension)}</td>
-                      <td>{formatCurrency(row.employerPension)}</td>
-                      <td>{formatCurrency(row.netPay)}</td>
-                      <td>{formatCurrency(row.governmentRemittance)}</td>
+                      <td>{formatPayrollAmount(row.basicSalary)}</td>
+                      <td>{formatPayrollAmount(row.transportAllowance)}</td>
+                      <td>{formatPayrollAmount(row.taxableIncome)}</td>
+                      <td>{formatPayrollAmount(row.grossSalary)}</td>
+                      <td>{formatPayrollAmount(row.employeePension)}</td>
+                      <td>{formatPayrollAmount(row.employerPension)}</td>
+                      <td>{formatPayrollAmount(row.incomeTax)}</td>
+                      <td>{formatPayrollAmount(row.loan)}</td>
+                      <td>{formatPayrollAmount(row.totalDeduct)}</td>
+                      <td>{formatPayrollAmount(row.netPay)}</td>
+                      <td></td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="8">No employees available for payroll.</td>
+                    <td colSpan="13">No employees available for payroll.</td>
                   </tr>
                 )}
               </tbody>
               <tfoot>
                 <tr>
-                  <th colSpan="2">Totals</th>
-                  <th>{formatCurrency(payrollTotals.grossSalary)}</th>
-                  <th>{formatCurrency(payrollTotals.incomeTax)}</th>
-                  <th>{formatCurrency(payrollTotals.employeePension)}</th>
-                  <th>{formatCurrency(payrollTotals.employerPension)}</th>
-                  <th>{formatCurrency(payrollTotals.netPay)}</th>
-                  <th>{formatCurrency(payrollTotals.governmentRemittance)}</th>
+                  <th></th>
+                  <th>Totals</th>
+                  <th>{formatPayrollAmount(payrollTotals.basicSalary)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.transportAllowance)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.taxableIncome)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.grossSalary)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.employeePension)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.employerPension)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.incomeTax)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.loan)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.totalDeduct)}</th>
+                  <th>{formatPayrollAmount(payrollTotals.netPay)}</th>
+                  <th></th>
                 </tr>
               </tfoot>
             </table>
@@ -728,12 +799,56 @@ export default function Employees() {
                 <span>Prepared by</span>
               </div>
               <div>
-                <span>Reviewed by</span>
-              </div>
-              <div>
-                <span>Approved by</span>
+                <span>Approved By</span>
               </div>
             </div>
+
+            <table className="payroll-accounting-summary" aria-label="Payroll accounting summary">
+              <tbody>
+                <tr>
+                  <td>Salary Expense</td>
+                  <td>{formatPayrollAmount(payrollTotals.basicSalary)}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>Transport Allowance</td>
+                  <td>{formatPayrollAmount(payrollTotals.transportAllowance)}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>Pension Expense</td>
+                  <td>{formatPayrollAmount(payrollTotals.employerPension)}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>Position Allowance</td>
+                  <td>-</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td>Income Payable Tax</td>
+                  <td></td>
+                  <td>{formatPayrollAmount(payrollTotals.incomeTax)}</td>
+                </tr>
+                <tr>
+                  <td>Pension Payable</td>
+                  <td></td>
+                  <td>{formatPayrollAmount(payrollTotals.employeePension + payrollTotals.employerPension)}</td>
+                </tr>
+                <tr>
+                  <td>Net Pay</td>
+                  <td></td>
+                  <td>{formatPayrollAmount(payrollTotals.netPay)}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th></th>
+                  <th>{formatPayrollAmount(payrollAccountingDebitTotal)}</th>
+                  <th>{formatPayrollAmount(payrollAccountingCreditTotal)}</th>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </section>
       </div>

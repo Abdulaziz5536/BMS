@@ -200,7 +200,9 @@ router.get("/exports/:resource", async (req, res) => {
         { label: "Position", value: (row) => row.position },
         { label: "Phone", value: (row) => row.phoneNumber },
         { label: "Email", value: (row) => row.email },
-        { label: "Gross Salary", value: (row) => row.salary },
+        { label: "Basic Salary", value: (row) => row.salary },
+        { label: "Transport Allowance", value: (row) => row.transportAllowance },
+        { label: "Loan", value: (row) => row.loan },
         { label: "Emergency Contact", value: (row) => row.emergencyContactName },
         { label: "Emergency Phone", value: (row) => row.emergencyContactPhone }
       ];

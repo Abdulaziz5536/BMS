@@ -11,8 +11,10 @@ const {
 
 // Convert raw form values into the exact shape the database expects.
 const normalizeEmployeePayload = (body) => {
-  // Salary is stored as gross monthly salary; payroll later calculates deductions from it.
+  // Salary is stored as basic monthly salary; payroll adds allowances and calculates deductions from it.
   const salary = Number(body.salary || 0);
+  const transportAllowance = Number(body.transportAllowance || 0);
+  const loan = Number(body.loan || 0);
 
   return {
     building: body.building,
@@ -21,6 +23,8 @@ const normalizeEmployeePayload = (body) => {
     phoneNumber: normalizeEthiopianPhone(body.phoneNumber, { required: false }),
     email: String(body.email || "").trim().toLowerCase(),
     salary: Number.isFinite(salary) ? salary : NaN,
+    transportAllowance: Number.isFinite(transportAllowance) ? transportAllowance : NaN,
+    loan: Number.isFinite(loan) ? loan : NaN,
     emergencyContactName: String(body.emergencyContactName || "").trim(),
     emergencyContactPhone: normalizeEthiopianPhone(body.emergencyContactPhone, { required: false })
   };
@@ -61,7 +65,15 @@ router.post('/employees', async (req,res) => {
        }
 
        if(!Number.isFinite(employeeData.salary) || employeeData.salary < 0){
-        return res.status(400).json({error:"Gross salary must be a valid number"});
+        return res.status(400).json({error:"Basic salary must be a valid number"});
+       }
+
+       if(!Number.isFinite(employeeData.transportAllowance) || employeeData.transportAllowance < 0){
+        return res.status(400).json({error:"Transport allowance must be a valid number"});
+       }
+
+       if(!Number.isFinite(employeeData.loan) || employeeData.loan < 0){
+        return res.status(400).json({error:"Loan must be a valid number"});
        }
 
        // Avoid accidental duplicates when the same person is entered twice in one building.
@@ -112,7 +124,15 @@ router.put('/employees/:id', async (req,res) => {
     }
 
     if(!Number.isFinite(employeeData.salary) || employeeData.salary < 0){
-      return res.status(400).json({error:"Gross salary must be a valid number"});
+      return res.status(400).json({error:"Basic salary must be a valid number"});
+    }
+
+    if(!Number.isFinite(employeeData.transportAllowance) || employeeData.transportAllowance < 0){
+      return res.status(400).json({error:"Transport allowance must be a valid number"});
+    }
+
+    if(!Number.isFinite(employeeData.loan) || employeeData.loan < 0){
+      return res.status(400).json({error:"Loan must be a valid number"});
     }
 
     // Same duplicate check as create, excluding the employee being edited.
