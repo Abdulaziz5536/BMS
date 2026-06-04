@@ -1,6 +1,14 @@
 const AUTH_COOKIE_NAME = "bms_session";
 const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+const safeDecodeCookiePart = (value) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 const parseCookies = (cookieHeader = "") =>
   String(cookieHeader)
     .split(";")
@@ -13,8 +21,8 @@ const parseCookies = (cookieHeader = "") =>
         return cookies;
       }
 
-      const name = decodeURIComponent(part.slice(0, separatorIndex).trim());
-      const value = decodeURIComponent(part.slice(separatorIndex + 1).trim());
+      const name = safeDecodeCookiePart(part.slice(0, separatorIndex).trim());
+      const value = safeDecodeCookiePart(part.slice(separatorIndex + 1).trim());
       cookies[name] = value;
       return cookies;
     }, {});

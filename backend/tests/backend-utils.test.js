@@ -240,6 +240,18 @@ test("backend auth can read direct-page login cookies", () => {
   );
 });
 
+test("backend auth ignores malformed URI cookie values", () => {
+  assert.equal(
+    getAuthTokenFromRequest({
+      headers: {
+        host: "localhost:3001",
+        cookie: `bad=%E0%A4%A; ${AUTH_COOKIE_NAME}_3001=cookie-token`
+      }
+    }),
+    "cookie-token"
+  );
+});
+
 test("manual reminder force option bypasses duplicate skip check", () => {
   const invoice = {
     remindersSent: [

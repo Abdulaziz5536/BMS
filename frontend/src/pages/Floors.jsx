@@ -3,7 +3,6 @@ import {
   PencilSquareIcon,
   TrashIcon
 } from "@heroicons/react/24/outline";
-import Sidebar from "./Sidebar";
 import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
@@ -207,10 +206,7 @@ export default function Floors() {
   };
 
   return (
-    <div className="app-layout">
-      <Sidebar />
-
-      <div className="main-content">
+    <>
         <h1>Floors Management</h1>
 
         {!selectedBuildingId && (
@@ -306,7 +302,6 @@ export default function Floors() {
           </tbody>
         </table>
         </div>
-      </div>
-    </div>
+    </>
   );
 }

@@ -18,6 +18,25 @@ import {
   setSelectedBuildingId
 } from "../buildingSelection";
 
+// ============================================
+// HEROICON IMPORTS (ADDED)
+// ============================================
+import { 
+  HomeIcon,
+  BuildingOfficeIcon,
+  ViewColumnsIcon,
+  Square3Stack3DIcon,
+  UserGroupIcon,
+  DocumentTextIcon,
+  CurrencyDollarIcon,
+  BoltIcon,
+  UsersIcon,
+  MegaphoneIcon,
+  Cog6ToothIcon,
+  ArrowRightOnRectangleIcon,
+  ReceiptPercentIcon
+} from '@heroicons/react/24/outline';
+
 // Sidebar owns navigation and the active-building selector used by every protected page.
 export default function Sidebar({ persistent = false }) {
   const navigate = useNavigate();
@@ -122,74 +141,84 @@ export default function Sidebar({ persistent = false }) {
       <ul>
         <li>
           <NavLink to="/buildings" className={({ isActive }) => (isActive ? "active" : "")}>
+            <BuildingOfficeIcon className="sidebar-icon" />
             Buildings
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>
+            <HomeIcon className="sidebar-icon" />
             Dashboard
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/invoice" className={({ isActive }) => (isActive ? "active" : "")}>
-          Invoice
+            <ReceiptPercentIcon className="sidebar-icon" />
+            Invoice
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/utilities" className={({ isActive }) => (isActive ? "active" : "")}>
+            <BoltIcon className="sidebar-icon" />
             Utilities
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/floors" className={({ isActive }) => (isActive ? "active" : "")}>
+            <ViewColumnsIcon className="sidebar-icon" />
             Floors
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/units" className={({ isActive }) => (isActive ? "active" : "")}>
+            <Square3Stack3DIcon className="sidebar-icon" />
             Units
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/tenants" className={({ isActive }) => (isActive ? "active" : "")}>
+            <UserGroupIcon className="sidebar-icon" />
             Tenants
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/contracts" className={({ isActive }) => (isActive ? "active" : "")}>
+            <DocumentTextIcon className="sidebar-icon" />
             Contracts
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/employees" className={({ isActive }) => (isActive ? "active" : "")}>
+            <UsersIcon className="sidebar-icon" />
             Employees
           </NavLink>
         </li>
 
-        
-        
         <li>
           <NavLink to="/announcements" className={({ isActive }) => (isActive ? "active" : "")}>
+            <MegaphoneIcon className="sidebar-icon" />
             Announcements
           </NavLink>
         </li>
 
         <li>
           <NavLink to="/system" className={({ isActive }) => (isActive ? "active" : "")}>
+            <Cog6ToothIcon className="sidebar-icon" />
             System
           </NavLink>
         </li>
       </ul>
 
       <button className="sidebar-logout-btn" onClick={logout}>
+        <ArrowRightOnRectangleIcon className="sidebar-icon" />
         {portLabel("Logout", "ውጣ")}
       </button>
     </div>

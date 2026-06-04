@@ -4,7 +4,8 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 
-require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
+const envPath = path.join(__dirname, ".env");
+require("dotenv").config({ path: envPath, quiet: true });
 
 // Main API entry point. This file wires middleware, all route groups, shared error handling,
 // and the background reminder job after MongoDB connects.
@@ -37,12 +38,18 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const mongoUri = (process.env.MONGO_URI || "").trim();
 const frontendDistPath = path.join(__dirname, "..", "frontend", "dist");
 const frontendIndexPath = path.join(frontendDistPath, "index.html");
 const shouldServeBundledFrontend =
   process.env.SERVE_FRONTEND !== "false" && fs.existsSync(frontendIndexPath);
 const requiredProductionEnv = ["MONGO_URI", "JWT_SECRET"];
 const missingProductionEnv = requiredProductionEnv.filter((name) => !process.env[name]);
+
+if (!mongoUri) {
+  console.error(`Missing MONGO_URI. Add it to ${envPath} or set it in the server environment.`);
+  process.exit(1);
+}
 
 if (process.env.NODE_ENV === "production" && missingProductionEnv.length > 0) {
   // Production should fail fast instead of running with broken login/database settings.
@@ -127,7 +134,7 @@ app.use((err, req, res, next) => {
 });
 
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect(mongoUri)
   .then(() => {
     console.log("mongoDB is connected");
     if (shouldServeBundledFrontend) {
@@ -142,9 +149,12 @@ mongoose
         console.warn(`System check warning: ${check.name} - ${check.message}`);
       });
     startDueDateReminderJob();
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
   })
-  .catch((err) => console.log(err));
-
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+  .catch((err) => {
+    console.error("Failed to connect to MongoDB. Check MONGO_URI in backend/.env.");
+    console.error(err);
+    process.exit(1);
+  });
