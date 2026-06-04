@@ -2,6 +2,8 @@ node_modules
 frontend/dist
 logs
 .env
+backend/.env
+frontend/.env
 vite-dev*.log
 vite-dev*.err
 backend-dev*.log

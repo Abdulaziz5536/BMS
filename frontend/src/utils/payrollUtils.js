@@ -13,28 +13,38 @@ export const EMPLOYER_PENSION_RATE = 0.11;
 const roundMoney = (amount) => Math.round((Number(amount || 0) + Number.EPSILON) * 100) / 100;
 
 export const calculateIncomeTax = (salary) => {
-  // Ethiopian payroll-style bracket calculation using gross salary and deduction amounts.
-  const grossSalary = Math.max(0, Number(salary) || 0);
-  const bracket = TAX_BRACKETS.find((item) => grossSalary > item.min && grossSalary <= item.max) || TAX_BRACKETS[0];
-  const tax = Math.max(0, grossSalary * bracket.rate - bracket.deduction);
+  // Ethiopian payroll-style bracket calculation using taxable income and deduction amounts.
+  const taxableIncome = Math.max(0, Number(salary) || 0);
+  const bracket = TAX_BRACKETS.find((item) => taxableIncome > item.min && taxableIncome <= item.max) || TAX_BRACKETS[0];
+  const tax = Math.max(0, taxableIncome * bracket.rate - bracket.deduction);
   return roundMoney(tax);
 };
 
 export const calculatePayrollRow = (employee) => {
-  // Employee salary is stored as gross pay; payroll deductions are calculated from that amount.
-  const grossSalary = roundMoney(Math.max(0, Number(employee?.salary) || 0));
+  // Existing employee records store one salary value, so it is used as basic salary.
+  const basicSalary = roundMoney(Math.max(0, Number(employee?.basicSalary ?? employee?.salary) || 0));
+  const transportAllowance = roundMoney(Math.max(0, Number(employee?.transportAllowance) || 0));
+  const taxableIncome = roundMoney(basicSalary + transportAllowance);
+  const grossSalary = taxableIncome;
   const employeePension = roundMoney(grossSalary * EMPLOYEE_PENSION_RATE);
   const employerPension = roundMoney(grossSalary * EMPLOYER_PENSION_RATE);
-  const incomeTax = calculateIncomeTax(grossSalary);
-  const netPay = roundMoney(grossSalary - employeePension - incomeTax);
+  const incomeTax = calculateIncomeTax(taxableIncome);
+  const loan = roundMoney(Math.max(0, Number(employee?.loan) || 0));
+  const totalDeduct = roundMoney(employeePension + incomeTax + loan);
+  const netPay = roundMoney(grossSalary - totalDeduct);
   const governmentRemittance = roundMoney(employeePension + employerPension + incomeTax);
 
   return {
     employee,
+    basicSalary,
+    transportAllowance,
+    taxableIncome,
     grossSalary,
     employeePension,
     employerPension,
     incomeTax,
+    loan,
+    totalDeduct,
     netPay,
     governmentRemittance
   };
@@ -42,17 +52,27 @@ export const calculatePayrollRow = (employee) => {
 
 export const calculatePayrollTotals = (rows) =>
   rows.reduce((totals, row) => ({
+    basicSalary: roundMoney(totals.basicSalary + row.basicSalary),
+    transportAllowance: roundMoney(totals.transportAllowance + row.transportAllowance),
+    taxableIncome: roundMoney(totals.taxableIncome + row.taxableIncome),
     grossSalary: roundMoney(totals.grossSalary + row.grossSalary),
     employeePension: roundMoney(totals.employeePension + row.employeePension),
     employerPension: roundMoney(totals.employerPension + row.employerPension),
     incomeTax: roundMoney(totals.incomeTax + row.incomeTax),
+    loan: roundMoney(totals.loan + row.loan),
+    totalDeduct: roundMoney(totals.totalDeduct + row.totalDeduct),
     netPay: roundMoney(totals.netPay + row.netPay),
     governmentRemittance: roundMoney(totals.governmentRemittance + row.governmentRemittance)
   }), {
+    basicSalary: 0,
+    transportAllowance: 0,
+    taxableIncome: 0,
     grossSalary: 0,
     employeePension: 0,
     employerPension: 0,
     incomeTax: 0,
+    loan: 0,
+    totalDeduct: 0,
     netPay: 0,
     governmentRemittance: 0
   });
