@@ -16,6 +16,7 @@ import Announcements from "./pages/Announcements";
 import Activity from "./pages/Activity";
 import SystemTools from "./pages/SystemTools";
 import Sidebar from "./pages/Sidebar";
+import Maintenance from "./pages/Maintenance";  // ← ADD THIS LINE
 
 import ConfirmDialogProvider from "./components/ConfirmDialog";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -23,7 +24,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { SidebarSuppressContext } from "./components/sidebarContext";
 import { SIGNUP_ENABLED } from "./config";
 
-// ProtectedAppPage wraps every logged-in screen with the shared sidebar layout.
+
 function ProtectedAppPage({ children }) {
   return (
     <ProtectedRoute>
@@ -170,6 +171,19 @@ function App() {
           </ProtectedAppPage>
         }
       />
+
+      {/* ============================================ */}
+      {/* ADD THIS MAINTENANCE ROUTE */}
+      {/* ============================================ */}
+      <Route
+        path="/maintenance"
+        element={
+          <ProtectedAppPage>
+            <Maintenance />
+          </ProtectedAppPage>
+        }
+      />
+
       <Route
         path="/accounts"
         element={<Navigate to="/system#accounts" replace />}

@@ -1,5 +1,3 @@
-import Sidebar from "./Sidebar";
-import "../style.css";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -27,6 +25,8 @@ import { clearAuthToken, clearCurrentUser } from "../authSession";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import useShortError from "../hooks/useShortError";
 import { formatEthiopianDate } from "../utils/dateUtils";
+import Sidebar from "./Sidebar";
+import "../style.css";
 
 const formatCurrency = (amount) => `Br ${Number(amount || 0).toLocaleString()}`;
 const firstDefined = (...values) => values.find((value) => value !== undefined && value !== null);
@@ -129,6 +129,7 @@ export default function Dashboard() {
         });
 
         if (!shouldForceSend) {
+          setReminderLoading(false);
           return;
         }
       }
@@ -238,7 +239,7 @@ export default function Dashboard() {
           <input
             type="checkbox"
             checked={forceReminderSend}
-            onChange={(event) => setForceReminderSend(event.target.checked)}
+            onChange={(e) => setForceReminderSend(e.target.checked)}
             disabled={reminderLoading || !selectedBuildingId}
           />
           <span>Force resend</span>
@@ -257,9 +258,9 @@ export default function Dashboard() {
 
       {duePayments.length > 0 ? (
         <div className="dashboard-due-list">
-          {duePayments.map((item) => (
+          {duePayments.map((item, idx) => (
             <article
-              key={`${item.alertType}-${item.invoiceId}`}
+              key={`${item.alertType}-${item.invoiceId || idx}`}
               className={`dashboard-due-item ${item.alertType === "overdue" ? "is-overdue" : ""}`}
             >
               <div className="dashboard-due-main">
@@ -328,73 +329,111 @@ export default function Dashboard() {
         <div className="dashboard-container">
           <div className="card" onClick={() => navigate("/units")} style={{ cursor: "pointer" }}>
             <BuildingOfficeIcon className="card-icon" />
-            Total Units <br /> {dashboard?.totalUnits || 0}
+            <div>
+              <div>Total Units</div>
+              <strong>{dashboard?.totalUnits || 0}</strong>
+            </div>
           </div>
 
           <div className="card" onClick={() => navigate("/units")} style={{ cursor: "pointer" }}>
             <KeyIcon className="card-icon" />
-            Occupied Units <br /> {dashboard?.totalUnitsOccupied || 0}
+            <div>
+              <div>Occupied Units</div>
+              <strong>{dashboard?.totalUnitsOccupied || 0}</strong>
+            </div>
           </div>
 
           <div className="card" onClick={() => navigate("/units")} style={{ cursor: "pointer" }}>
             <BuildingOfficeIcon className="card-icon" />
-            Available Units <br /> {dashboard?.totalUnitsAvailable || 0}
+            <div>
+              <div>Available Units</div>
+              <strong>{dashboard?.totalUnitsAvailable || 0}</strong>
+            </div>
           </div>
 
           <div className="card" onClick={() => navigate("/tenants")} style={{ cursor: "pointer" }}>
-            <KeyIcon className="card-icon" />
-            Total Tenants <br /> {dashboard?.totalTenants || 0}
+            <UserGroupIcon className="card-icon" />
+            <div>
+              <div>Total Tenants</div>
+              <strong>{dashboard?.totalTenants || 0}</strong>
+            </div>
           </div>
 
           <div className="card" onClick={() => navigate("/employees")} style={{ cursor: "pointer" }}>
             <UserGroupIcon className="card-icon" />
-            Total Employees <br /> {dashboard?.totalEmployees || 0}
+            <div>
+              <div>Total Employees</div>
+              <strong>{dashboard?.totalEmployees || 0}</strong>
+            </div>
           </div>
         </div>
 
-        <h1 style={{ marginTop: 100 }}>Financial Summary</h1>
+        <h1 style={{ marginTop: 60 }}>Financial Summary</h1>
 
         <div className="revenue-container">
           <div className="card">
             <CurrencyDollarIcon className="card-icon" />
-            Monthly Revenue: {formatCurrency(monthlyRevenue)}
+            <div>
+              <div>Monthly Revenue</div>
+              <strong>{formatCurrency(monthlyRevenue)}</strong>
+            </div>
           </div>
 
           <div className="card">
             <CurrencyDollarIcon className="card-icon" />
-            Rent Collected This Month: {formatCurrency(monthlyRentCollected)}
+            <div>
+              <div>Rent Collected</div>
+              <strong>{formatCurrency(monthlyRentCollected)}</strong>
+            </div>
           </div>
 
           <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
             <CurrencyDollarIcon className="card-icon" />
-            Outstanding Rent Due: {formatCurrency(dashboard?.outstandingRent)}
+            <div>
+              <div>Outstanding Rent</div>
+              <strong>{formatCurrency(dashboard?.outstandingRent)}</strong>
+            </div>
           </div>
 
           <div className="card">
             <ArrowPathIcon className="card-icon" />
-            Rent Due: {dashboard?.pendingPayments || 0}
+            <div>
+              <div>Rent Due</div>
+              <strong>{dashboard?.pendingPayments || 0}</strong>
+            </div>
           </div>
 
           <div className="card" onClick={() => navigate("/utilities")} style={{ cursor: "pointer" }}>
             <ArrowPathIcon className="card-icon" />
-            Utilities Due: {dashboard?.pendingUtilityPayments || 0}
+            <div>
+              <div>Utilities Due</div>
+              <strong>{dashboard?.pendingUtilityPayments || 0}</strong>
+            </div>
           </div>
 
           <div className="card">
             <ScaleIcon className="card-icon" />
-            Occupancy: {dashboard?.occupancyRate || 0}%
+            <div>
+              <div>Occupancy Rate</div>
+              <strong>{dashboard?.occupancyRate || 0}%</strong>
+            </div>
           </div>
 
           <div className="card">
             <CurrencyDollarIcon className="card-icon" />
-            Utility Revenue: {formatCurrency(monthlyUtilityCollected)}
+            <div>
+              <div>Utility Revenue</div>
+              <strong>{formatCurrency(monthlyUtilityCollected)}</strong>
+            </div>
           </div>
 
           <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
             <BellAlertIcon className="card-icon" />
-            Overdue Invoices: {dashboard?.overdueInvoices || 0}
+            <div>
+              <div>Overdue Invoices</div>
+              <strong>{dashboard?.overdueInvoices || 0}</strong>
+            </div>
           </div>
-
         </div>
 
         <section className="panel dashboard-activity-panel">
@@ -410,8 +449,8 @@ export default function Dashboard() {
 
           {dashboard?.recentActivity?.length > 0 ? (
             <div className="activity-list compact-list">
-              {dashboard.recentActivity.map((item) => (
-                <div key={item._id} className="activity-row">
+              {dashboard.recentActivity.map((item, idx) => (
+                <div key={item._id || idx} className="activity-row">
                   <strong>{item.entityLabel || item.entityType}</strong>
                   <span>{item.message || item.action}</span>
                   <small>{formatEthiopianDate(item.createdAt)}</small>
