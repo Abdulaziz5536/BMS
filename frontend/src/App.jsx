@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 
 import Login from "./components/Login";
 import Signup from "./components/Signup";
@@ -25,14 +25,14 @@ import { SidebarSuppressContext } from "./components/sidebarContext";
 import { SIGNUP_ENABLED } from "./config";
 
 
-function ProtectedAppPage({ children }) {
+function ProtectedAppLayout() {
   return (
     <ProtectedRoute>
       <div className="app-layout persistent-app-layout">
         <Sidebar persistent />
         <SidebarSuppressContext.Provider value={true}>
           <main className="main-content route-content">
-            {children}
+            <Outlet />
           </main>
         </SidebarSuppressContext.Provider>
       </div>
@@ -52,15 +52,6 @@ function App() {
       <Route path="/signup" element={SIGNUP_ENABLED ? <Signup /> : <Navigate to="/login" replace />} />
 
       <Route
-        path="/dashboard"
-        element={
-          <ProtectedAppPage>
-            <Dashboard />
-          </ProtectedAppPage>
-        }
-      />
-
-      <Route
         path="/payment-status"
         element={
           <ProtectedRoute>
@@ -69,125 +60,24 @@ function App() {
         }
       />
 
-      <Route
-        path="/buildings"
-        element={
-          <ProtectedAppPage>
-            <Buildings />
-          </ProtectedAppPage>
-        }
-      />
-
-      {/* Old rent route is kept as a redirect so saved bookmarks still work. */}
-      <Route
-        path="/rent"
-        element={<Navigate to="/invoice" replace />}
-      />
-
-      <Route
-        path="/floors"
-        element={
-          <ProtectedAppPage>
-            <Floors />
-          </ProtectedAppPage>
-        }
-      />
-
-      <Route
-        path="/units"
-        element={
-          <ProtectedAppPage>
-            <Unit />
-          </ProtectedAppPage>
-        }
-      />
-
-      <Route
-        path="/tenants"
-        element={
-          <ProtectedAppPage>
-            <Tenants />
-          </ProtectedAppPage>
-        }
-      />
-
-      
-      <Route
-        path="/contracts"
-        element={
-          <ProtectedAppPage>
-            <Contracts />
-          </ProtectedAppPage>
-        }
-      />
-      <Route
-        path="/employees"
-        element={ 
-          <ProtectedAppPage>
-            <Employees />
-          </ProtectedAppPage>
-        }
-      />
-
-      <Route
-        path="/utilities"
-        element={
-          <ProtectedAppPage>
-            <Utilities />
-          </ProtectedAppPage>
-        }
-      />
-
-      <Route
-        path="/invoice"
-        element={
-          <ProtectedAppPage>
-            <Invoice />
-          </ProtectedAppPage>
-        }
-      />
-
-      <Route
-        path="/announcements"
-        element={
-          <ProtectedAppPage>
-            <Announcements />
-          </ProtectedAppPage>
-        }
-      />
-      <Route
-        path="/activity"
-        element={
-          <ProtectedAppPage>
-            <Activity />
-          </ProtectedAppPage>
-        }
-      />
-      <Route
-        path="/system"
-        element={
-          <ProtectedAppPage>
-            <SystemTools />
-          </ProtectedAppPage>
-        }
-      />
-
-      {/* ============================================ */}
-      {/* ADD THIS MAINTENANCE ROUTE */}
-      {/* ============================================ */}
-      <Route
-        path="/maintenance"
-        element={
-          <ProtectedAppPage>
-            <Maintenance />
-          </ProtectedAppPage>
-        }
-      />
-
-      <Route
-        path="/accounts"
-        element={<Navigate to="/system#accounts" replace />}
-      />
+      <Route element={<ProtectedAppLayout />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/buildings" element={<Buildings />} />
+        {/* Old rent route is kept as a redirect so saved bookmarks still work. */}
+        <Route path="/rent" element={<Navigate to="/invoice" replace />} />
+        <Route path="/floors" element={<Floors />} />
+        <Route path="/units" element={<Unit />} />
+        <Route path="/tenants" element={<Tenants />} />
+        <Route path="/contracts" element={<Contracts />} />
+        <Route path="/employees" element={<Employees />} />
+        <Route path="/utilities" element={<Utilities />} />
+        <Route path="/invoice" element={<Invoice />} />
+        <Route path="/announcements" element={<Announcements />} />
+        <Route path="/activity" element={<Activity />} />
+        <Route path="/system" element={<SystemTools />} />
+        <Route path="/maintenance" element={<Maintenance />} />
+        <Route path="/accounts" element={<Navigate to="/system#accounts" replace />} />
+      </Route>
     </Routes>
     </ErrorBoundary>
   );

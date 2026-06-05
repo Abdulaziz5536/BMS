@@ -14,6 +14,7 @@ const FRONTEND_ROUTES = new Set([
   "/utilities",
   "/invoice",
   "/announcements",
+  "/maintenance",
   "/activity",
   "/accounts",
   "/system"

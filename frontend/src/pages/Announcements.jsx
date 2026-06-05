@@ -537,7 +537,7 @@ export default function Announcements() {
           <h1>Announcements</h1>
           <button
             type="button"
-            className="primary-btn icon-btn"
+            className="primary-btn icon-text-btn"
             onClick={() => setShowForm((value) => !value)}
             disabled={!selectedBuildingId}
           >
@@ -672,7 +672,7 @@ export default function Announcements() {
               <div className="form-actions">
                 <button
                   type="submit"
-                  className="primary-btn icon-btn"
+                  className="primary-btn icon-text-btn"
                   disabled={!selectedBuildingId || loadingAction === "create"}
                 >
                   <PlusIcon />
@@ -739,7 +739,7 @@ export default function Announcements() {
                       {canSend && (
                         <button
                           type="button"
-                          className="primary-btn icon-btn"
+                          className="primary-btn icon-text-btn"
                           onClick={() => handleSend(announcement._id)}
                           disabled={Boolean(loadingAction)}
                         >
@@ -750,7 +750,7 @@ export default function Announcements() {
 
                       <button
                         type="button"
-                        className="danger-btn icon-btn"
+                        className="danger-btn icon-text-btn"
                         onClick={() => handleDelete(announcement._id)}
                         disabled={Boolean(loadingAction)}
                       >

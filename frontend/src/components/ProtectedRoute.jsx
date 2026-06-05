@@ -58,7 +58,7 @@ export default function ProtectedRoute({ children }) {
     return () => {
       ignore = true;
     };
-  }, [token, location.pathname]);
+  }, [token]);
 
   if (!token || authStatus === "guest") {
     return <Navigate to="/login" replace />;

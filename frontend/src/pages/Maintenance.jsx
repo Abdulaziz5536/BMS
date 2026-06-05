@@ -1,18 +1,21 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
+import { confirmAction } from "../components/confirmAction";
 import {
   API_BASE,
+  apiFetch,
   invalidateCache,
   loadCachedJson,
   readResponse,
   withBuilding
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
+import { formatFloorLabel } from "../utils/floorUtils";
 import "../style.css";
 
 // Heroicon Imports - Using only the ones that exist
 import { 
-  WrenchSvgIcon,
+  WrenchIcon,
   ClockIcon,
   CheckCircleIcon,
   PlusIcon,
@@ -29,12 +32,14 @@ export default function Maintenance() {
   const selectedBuildingId = useSelectedBuilding();
   const [requests, setRequests] = useState([]);
   const [tenants, setTenants] = useState([]);
-  const [units, setUnits] = useState([]);
+  const [floors, setFloors] = useState([]);
 
   // Form states
   const [requestId, setRequestId] = useState("");
+  const [requestTarget, setRequestTarget] = useState("tenant");
   const [tenantId, setTenantId] = useState("");
   const [unitId, setUnitId] = useState("");
+  const [floorId, setFloorId] = useState("");
   const [category, setCategory] = useState("plumbing");
   const [priority, setPriority] = useState("medium");
   const [title, setTitle] = useState("");
@@ -52,6 +57,8 @@ export default function Maintenance() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [referenceDataLoading, setReferenceDataLoading] = useState(false);
+  const [activeRequestId, setActiveRequestId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -61,6 +68,11 @@ export default function Maintenance() {
   // Modal states
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
+  const [costDialogRequest, setCostDialogRequest] = useState(null);
+  const [costDialogMode, setCostDialogMode] = useState("complete");
+  const [costDialogValue, setCostDialogValue] = useState("");
+  const [costDialogError, setCostDialogError] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   const MAX_UPLOAD_SIZE = 5 * 1024 * 1024;
@@ -177,10 +189,15 @@ export default function Maintenance() {
     return icons[cat] || "🔧";
   };
 
+  const getRequestFloorLabel = (request) =>
+    formatFloorLabel(request.floor?.floor ?? request.unit?.floor?.floor);
+
   const clearForm = () => {
     setRequestId("");
+    setRequestTarget("tenant");
     setTenantId("");
     setUnitId("");
+    setFloorId("");
     setCategory("plumbing");
     setPriority("medium");
     setTitle("");
@@ -227,36 +244,66 @@ export default function Maintenance() {
     );
   };
 
-  const fetchUnits = async (useCache = true) => {
+  const fetchFloors = async (useCache = true) => {
     if (!selectedBuildingId) {
-      setUnits([]);
+      setFloors([]);
       return;
     }
 
     await loadCachedJson(
-      withBuilding("/units", selectedBuildingId),
-      setUnits,
+      withBuilding("/floors", selectedBuildingId),
+      setFloors,
       setError,
-      "Failed to load units",
+      "Failed to load floors",
       { useCache }
     );
+  };
+
+  const loadReferenceData = async (useCache = true) => {
+    if (!selectedBuildingId) {
+      return;
+    }
+
+    setReferenceDataLoading(true);
+
+    try {
+      await Promise.all([
+        fetchTenants(useCache),
+        fetchFloors(useCache)
+      ]);
+    } finally {
+      setReferenceDataLoading(false);
+    }
+  };
+
+  const fetchRequestDetails = async (id) => {
+    const res = await apiFetch(`${API_BASE}/maintenance/${id}`);
+    const data = await readResponse(res);
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to load request details");
+    }
+
+    return data.maintenance || data;
   };
 
   useEffect(() => {
     clearForm();
     setMessage("");
     setError("");
+    setTenants([]);
+    setFloors([]);
     fetchRequests();
-    fetchTenants();
-    fetchUnits();
   }, [selectedBuildingId]);
 
   const filteredRequests = requests
     .filter((req) => {
+      const floorLabel = String(getRequestFloorLabel(req)).toLowerCase();
       const matchesSearch =
         req.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         req.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         req.tenant?.tenantName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        floorLabel.includes(searchTerm.toLowerCase()) ||
         req.requestId?.toString().includes(searchTerm);
       
       const matchesStatus = statusFilter === "all" || req.status === statusFilter;
@@ -274,6 +321,9 @@ export default function Maintenance() {
       } else if (sortField === "unit") {
         aValue = a.unit?.unitId || "";
         bValue = b.unit?.unitId || "";
+      } else if (sortField === "floor") {
+        aValue = a.floor?.floor ?? a.unit?.floor?.floor ?? "";
+        bValue = b.floor?.floor ?? b.unit?.floor?.floor ?? "";
       } else if (sortField === "priority") {
         aValue = priorityOrder[a.priority] || 999;
         bValue = priorityOrder[b.priority] || 999;
@@ -307,7 +357,10 @@ export default function Maintenance() {
       return;
     }
 
-    if (!tenantId || !title || !description) {
+    const hasLocation =
+      requestTarget === "tenant" ? Boolean(tenantId) : Boolean(floorId);
+
+    if (!hasLocation || !title || !description) {
       setError("Please fill in all required fields");
       return;
     }
@@ -315,7 +368,7 @@ export default function Maintenance() {
     setLoading(true);
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         editingId ? `${API_BASE}/maintenance/${editingId}` : `${API_BASE}/maintenance`,
         {
           method: editingId ? "PUT" : "POST",
@@ -325,8 +378,9 @@ export default function Maintenance() {
           body: JSON.stringify({
             building: selectedBuildingId,
             requestId: requestId || `REQ-${Date.now()}`,
-            tenant: tenantId,
-            unit: unitId,
+            tenant: requestTarget === "tenant" ? tenantId : "",
+            unit: requestTarget === "tenant" ? unitId : "",
+            floor: requestTarget === "floor" ? floorId : "",
             category,
             priority,
             title,
@@ -360,19 +414,23 @@ export default function Maintenance() {
     }
   };
 
-  const updateStatus = async (id, newStatus) => {
+  const updateStatus = async (id, newStatus, extraPayload = {}) => {
     setLoading(true);
+    setActiveRequestId(id);
     try {
-      const res = await fetch(`${API_BASE}/maintenance/${id}/status`, {
+      const res = await apiFetch(`${API_BASE}/maintenance/${id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus, ...extraPayload })
       });
 
       const data = await readResponse(res);
 
       if (res.ok) {
         setMessage(`Request marked as ${getStatusText(newStatus)}`);
+        if (selectedRequest?._id === id && data.maintenance) {
+          setSelectedRequest(data.maintenance);
+        }
         invalidateCache(selectedBuildingId);
         fetchRequests(false);
       } else {
@@ -382,15 +440,97 @@ export default function Maintenance() {
       setError(error.message);
     } finally {
       setLoading(false);
+      setActiveRequestId("");
     }
   };
 
-  const deleteRequest = async (id) => {
-    const shouldDelete = window.confirm("Delete this maintenance request?");
-    if (!shouldDelete) return;
+  const updateActualCost = async (id, nextActualCost) => {
+    setLoading(true);
+    setActiveRequestId(id);
 
     try {
-      const res = await fetch(`${API_BASE}/maintenance/${id}`, {
+      const res = await apiFetch(`${API_BASE}/maintenance/${id}/cost`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actualCost: nextActualCost })
+      });
+
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        setMessage("Actual cost updated");
+        if (selectedRequest?._id === id && data.maintenance) {
+          setSelectedRequest(data.maintenance);
+        }
+        invalidateCache(selectedBuildingId);
+        fetchRequests(false);
+      } else {
+        setError(data.error || "Failed to update actual cost");
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+      setActiveRequestId("");
+    }
+  };
+
+  const openActualCostDialog = (req, mode = "complete") => {
+    setCostDialogRequest(req);
+    setCostDialogMode(mode);
+    const currentActualCost =
+      req.actualCost !== undefined && req.actualCost !== null ? String(req.actualCost) : "";
+    const suggestedCompletionCost =
+      Number(req.actualCost) > 0
+        ? String(req.actualCost)
+        : req.estimatedCost !== undefined && req.estimatedCost !== null
+          ? String(req.estimatedCost)
+          : "";
+
+    setCostDialogValue(mode === "cost" ? currentActualCost : suggestedCompletionCost);
+    setCostDialogError("");
+  };
+
+  const closeActualCostDialog = () => {
+    setCostDialogRequest(null);
+    setCostDialogValue("");
+    setCostDialogError("");
+  };
+
+  const saveActualCostDialog = async () => {
+    if (!costDialogRequest) return;
+
+    const nextActualCost = Number(costDialogValue || 0);
+
+    if (!Number.isFinite(nextActualCost) || nextActualCost < 0) {
+      setCostDialogError("Actual cost must be a valid non-negative number");
+      return;
+    }
+
+    closeActualCostDialog();
+
+    if (costDialogMode === "complete") {
+      await updateStatus(costDialogRequest._id, "completed", { actualCost: nextActualCost });
+      return;
+    }
+
+    await updateActualCost(costDialogRequest._id, nextActualCost);
+  };
+
+  const deleteRequest = async (id) => {
+    const shouldDelete = await confirmAction({
+      title: "Delete maintenance request?",
+      message: "Are you sure you want to delete this maintenance request?",
+      confirmText: "Delete",
+      cancelText: "Cancel"
+    });
+
+    if (!shouldDelete) return;
+
+    setActiveRequestId(id);
+
+    try {
+      const res = await apiFetch(`${API_BASE}/maintenance/${id}`, {
         method: "DELETE"
       });
 
@@ -409,6 +549,8 @@ export default function Maintenance() {
       }
     } catch (error) {
       setError(error.message);
+    } finally {
+      setActiveRequestId("");
     }
   };
 
@@ -439,11 +581,36 @@ export default function Maintenance() {
     completed: requests.filter(r => r.status === "completed").length
   };
 
-  const editRequest = (req) => {
+  const openNewRequestForm = async () => {
+    setMessage("");
+    setError("");
+    setShowForm(true);
+    await loadReferenceData();
+  };
+
+  const openRequestDetails = async (req) => {
+    setMessage("");
+    setError("");
+    setActiveRequestId(req._id);
+
+    try {
+      const detail = await fetchRequestDetails(req._id);
+      setSelectedRequest(detail);
+      setShowDetailsModal(true);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setActiveRequestId("");
+    }
+  };
+
+  const fillRequestForm = (req) => {
     setEditingId(req._id);
     setRequestId(req.requestId || "");
+    setRequestTarget(req.floor && !req.tenant ? "floor" : "tenant");
     setTenantId(req.tenant?._id || "");
     setUnitId(req.unit?._id || "");
+    setFloorId(req.floor?._id || "");
     setCategory(req.category || "plumbing");
     setPriority(req.priority || "medium");
     setTitle(req.title || "");
@@ -460,6 +627,22 @@ export default function Maintenance() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const editRequest = async (req) => {
+    setMessage("");
+    setError("");
+    setActiveRequestId(req._id);
+
+    try {
+      await loadReferenceData();
+      const detail = await fetchRequestDetails(req._id);
+      fillRequestForm(detail);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setActiveRequestId("");
+    }
+  };
+
   return (
     <div className="app-layout">
       <Sidebar />
@@ -467,9 +650,13 @@ export default function Maintenance() {
       <div className="main-content">
         <div className="page-header">
           <h1>Maintenance Requests</h1>
-          <button className="primary-btn" onClick={() => setShowForm(true)}>
+          <button
+            className="primary-btn"
+            onClick={openNewRequestForm}
+            disabled={!selectedBuildingId || referenceDataLoading}
+          >
             <PlusIcon className="w-4 h-4" />
-            New Request
+            {referenceDataLoading ? "Loading..." : "New Request"}
           </button>
         </div>
 
@@ -480,7 +667,7 @@ export default function Maintenance() {
         {/* Stats Summary */}
         <div className="dashboard-container" style={{ marginBottom: "2rem" }}>
           <div className="card">
-            <WrenchSvgIcon className="card-icon" />
+            <WrenchIcon className="card-icon" />
             <div>
               <div>Total Requests</div>
               <strong style={{ fontSize: "28px" }}>{stats.total}</strong>
@@ -494,7 +681,7 @@ export default function Maintenance() {
             </div>
           </div>
           <div className="card" style={{ borderTop: `4px solid #8B5CF6` }}>
-            <WrenchSvgIcon className="card-icon" style={{ color: "#8B5CF6" }} />
+            <WrenchIcon className="card-icon" style={{ color: "#8B5CF6" }} />
             <div>
               <div>In Progress</div>
               <strong style={{ fontSize: "28px", color: "#8B5CF6" }}>{stats.inProgress}</strong>
@@ -516,23 +703,50 @@ export default function Maintenance() {
 
             <div className="form-grid">
               <select
-                value={tenantId}
+                value={requestTarget}
                 onChange={(e) => {
-                  setTenantId(e.target.value);
-                  const tenant = tenants.find(t => t._id === e.target.value);
-                  if (tenant && tenant.unit) {
-                    setUnitId(tenant.unit);
-                  }
+                  setRequestTarget(e.target.value);
+                  setTenantId("");
+                  setUnitId("");
+                  setFloorId("");
                 }}
-                disabled={!selectedBuildingId}
+                disabled={!selectedBuildingId || referenceDataLoading}
               >
-                <option value="">Select Tenant</option>
-                {tenants.map((tenant) => (
-                  <option key={tenant._id} value={tenant._id}>
-                    {tenant.tenantName} - Unit {tenant.unit?.unitId || "Unassigned"}
-                  </option>
-                ))}
+                <option value="tenant">Tenant / Unit</option>
+                <option value="floor">Floor / Common Area</option>
               </select>
+
+              {requestTarget === "tenant" ? (
+                <select
+                  value={tenantId}
+                  onChange={(e) => {
+                    setTenantId(e.target.value);
+                    const tenant = tenants.find(t => t._id === e.target.value);
+                    setUnitId(tenant?.unit?._id || tenant?.unit || "");
+                  }}
+                  disabled={!selectedBuildingId || referenceDataLoading}
+                >
+                  <option value="">Select Tenant</option>
+                  {tenants.map((tenant) => (
+                    <option key={tenant._id} value={tenant._id}>
+                      {tenant.tenantName} - Unit {tenant.unit?.unitId || "Unassigned"}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={floorId}
+                  onChange={(e) => setFloorId(e.target.value)}
+                  disabled={!selectedBuildingId || referenceDataLoading}
+                >
+                  <option value="">Select Floor</option>
+                  {floors.map((floor) => (
+                    <option key={floor._id} value={floor._id}>
+                      Floor {formatFloorLabel(floor.floor)}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               <input
                 placeholder="Request Title"
@@ -590,9 +804,17 @@ export default function Maintenance() {
 
               <input
                 type="number"
-                placeholder="Estimated Cost (Br)"
+                placeholder="Expected Cost (Br)"
                 value={estimatedCost}
                 onChange={(e) => setEstimatedCost(e.target.value)}
+                disabled={!selectedBuildingId}
+              />
+
+              <input
+                type="number"
+                placeholder="Actual Cost (Br)"
+                value={actualCost}
+                onChange={(e) => setActualCost(e.target.value)}
                 disabled={!selectedBuildingId}
               />
             </div>
@@ -615,20 +837,13 @@ export default function Maintenance() {
                   rows="3"
                   style={{ width: "100%", marginTop: "1rem", padding: "0.75rem" }}
                 />
-                <input
-                  type="number"
-                  placeholder="Actual Cost (Br)"
-                  value={actualCost}
-                  onChange={(e) => setActualCost(e.target.value)}
-                  style={{ marginTop: "1rem" }}
-                />
               </>
             )}
 
             {/* Image Upload */}
             <div className="image-upload-section" style={{ marginTop: "1rem" }}>
               <label className="field-label file-field">
-                <CameraIcon className="w-4 h-4" style={{ display: "inline", marginRight: "8px" }} />
+                <CameraIcon className="upload-camera-icon" />
                 Upload Photos (Max {MAX_IMAGES})
                 <input
                   type="file"
@@ -651,7 +866,7 @@ export default function Maintenance() {
             </div>
 
             <div className="form-actions">
-              <button onClick={saveRequest} disabled={!selectedBuildingId || loading}>
+              <button onClick={saveRequest} disabled={!selectedBuildingId || loading || referenceDataLoading}>
                 {loading ? "Saving..." : editingId ? "Update Request" : "Submit Request"}
               </button>
               <button className="secondary-btn" onClick={clearForm}>
@@ -709,6 +924,7 @@ export default function Maintenance() {
                 <th onClick={() => handleSort("title")} className="sortable-header">Title</th>
                 <th onClick={() => handleSort("tenant")} className="sortable-header">Tenant</th>
                 <th onClick={() => handleSort("unit")} className="sortable-header">Unit</th>
+                <th onClick={() => handleSort("floor")} className="sortable-header">Floor</th>
                 <th onClick={() => handleSort("category")} className="sortable-header">Category</th>
                 <th onClick={() => handleSort("priority")} className="sortable-header">Priority</th>
                 <th onClick={() => handleSort("status")} className="sortable-header">Status</th>
@@ -724,6 +940,7 @@ export default function Maintenance() {
                     <td>{req.title}</td>
                     <td>{req.tenant?.tenantName || "-"}</td>
                     <td>{req.unit?.unitId || "-"}</td>
+                    <td>{getRequestFloorLabel(req)}</td>
                     <td>{getCategoryEmoji(req.category)} {req.category}</td>
                     <td>
                       <span 
@@ -762,10 +979,8 @@ export default function Maintenance() {
                       <div className="action-buttons">
                         <button 
                           className="icon-btn" 
-                          onClick={() => {
-                            setSelectedRequest(req);
-                            setShowDetailsModal(true);
-                          }}
+                          onClick={() => openRequestDetails(req)}
+                          disabled={activeRequestId === req._id}
                           title="View Details"
                         >
                           <EyeIcon className="w-4 h-4" />
@@ -773,6 +988,7 @@ export default function Maintenance() {
                         <button 
                           className="icon-btn" 
                           onClick={() => editRequest(req)}
+                          disabled={activeRequestId === req._id}
                           title="Edit Request"
                         >
                           <PencilIcon className="w-4 h-4" />
@@ -781,15 +997,17 @@ export default function Maintenance() {
                           <button 
                             className="icon-btn" 
                             onClick={() => updateStatus(req._id, "in_progress")}
+                            disabled={activeRequestId === req._id}
                             title="Start Work"
                           >
-                            <WrenchSvgIcon className="w-4 h-4" />
+                            <WrenchIcon className="w-4 h-4" />
                           </button>
                         )}
                         {req.status === "in_progress" && (
                           <button 
                             className="icon-btn success" 
-                            onClick={() => updateStatus(req._id, "completed")}
+                            onClick={() => openActualCostDialog(req, "complete")}
+                            disabled={activeRequestId === req._id}
                             title="Mark Complete"
                           >
                             <CheckCircleIcon className="w-4 h-4" />
@@ -798,6 +1016,7 @@ export default function Maintenance() {
                         <button 
                           className="icon-btn danger" 
                           onClick={() => deleteRequest(req._id)}
+                          disabled={activeRequestId === req._id}
                           title="Delete"
                         >
                           <TrashIcon className="w-4 h-4" />
@@ -808,7 +1027,7 @@ export default function Maintenance() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="9" className="empty-state">No maintenance requests found</td>
+                  <td colSpan="10" className="empty-state">No maintenance requests found</td>
                 </tr>
               )}
             </tbody>
@@ -826,14 +1045,15 @@ export default function Maintenance() {
               <div className="modal-body">
                 <div className="detail-grid">
                   <div><strong>Title:</strong> {selectedRequest.title}</div>
-                  <div><strong>Tenant:</strong> {selectedRequest.tenant?.tenantName}</div>
-                  <div><strong>Unit:</strong> {selectedRequest.unit?.unitId}</div>
+                  <div><strong>Tenant:</strong> {selectedRequest.tenant?.tenantName || "-"}</div>
+                  <div><strong>Unit:</strong> {selectedRequest.unit?.unitId || "-"}</div>
+                  <div><strong>Floor:</strong> {getRequestFloorLabel(selectedRequest)}</div>
                   <div><strong>Category:</strong> {getCategoryEmoji(selectedRequest.category)} {selectedRequest.category}</div>
                   <div><strong>Priority:</strong> <span style={{ color: getPriorityColor(selectedRequest.priority), fontWeight: "bold" }}>{selectedRequest.priority}</span></div>
                   <div><strong>Status:</strong> <span style={{ color: getStatusColor(selectedRequest.status) }}>{getStatusText(selectedRequest.status)}</span></div>
                   <div><strong>Submitted:</strong> {formatDateTime(selectedRequest.createdAt)}</div>
                   <div><strong>Scheduled:</strong> {formatDate(selectedRequest.scheduledDate)}</div>
-                  <div><strong>Estimated Cost:</strong> Br {selectedRequest.estimatedCost || 0}</div>
+                  <div><strong>Expected Cost:</strong> Br {selectedRequest.estimatedCost || 0}</div>
                   <div><strong>Actual Cost:</strong> Br {selectedRequest.actualCost || 0}</div>
                 </div>
                 <div className="detail-section">
@@ -849,9 +1069,21 @@ export default function Maintenance() {
                 {selectedRequest.images && selectedRequest.images.length > 0 && (
                   <div className="detail-section">
                     <strong>Photos:</strong>
-                    <div className="image-preview">
+                    <div className="maintenance-photo-grid">
                       {selectedRequest.images.map((img, idx) => (
-                        <img key={idx} src={img.data} alt={`Request ${idx}`} />
+                        <div key={idx} className="maintenance-photo-card">
+                          <img src={img.data} alt={`Request ${idx + 1}`} />
+                          <div>
+                            <span>{img.name || `Photo ${idx + 1}`}</span>
+                            <button
+                              type="button"
+                              className="secondary-btn compact-action-btn"
+                              onClick={() => setPreviewImage(img)}
+                            >
+                              Preview
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -859,18 +1091,79 @@ export default function Maintenance() {
               </div>
               <div className="modal-footer">
                 {selectedRequest.status === "pending" && (
-                  <button onClick={() => updateStatus(selectedRequest._id, "in_progress")}>
-                    <WrenchSvgIcon className="w-4 h-4" />
+                  <button
+                    onClick={() => updateStatus(selectedRequest._id, "in_progress")}
+                    disabled={activeRequestId === selectedRequest._id}
+                  >
+                    <WrenchIcon className="w-4 h-4" />
                     Start Work
                   </button>
                 )}
                 {selectedRequest.status === "in_progress" && (
-                  <button onClick={() => updateStatus(selectedRequest._id, "completed")}>
+                  <button
+                    onClick={() => openActualCostDialog(selectedRequest, "complete")}
+                    disabled={activeRequestId === selectedRequest._id}
+                  >
                     <CheckCircleIcon className="w-4 h-4" />
                     Mark Complete
                   </button>
                 )}
+                <button
+                  className="secondary-btn"
+                  onClick={() => openActualCostDialog(selectedRequest, "cost")}
+                  disabled={activeRequestId === selectedRequest._id}
+                >
+                  Edit Actual Cost
+                </button>
                 <button className="secondary-btn" onClick={() => setShowDetailsModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {previewImage && (
+          <div className="modal-overlay" onClick={() => setPreviewImage(null)}>
+            <div className="modal-content maintenance-image-preview-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>{previewImage.name || "Photo preview"}</h2>
+                <button className="modal-close" onClick={() => setPreviewImage(null)}>✖</button>
+              </div>
+              <div className="modal-body maintenance-image-preview-body">
+                <img src={previewImage.data} alt={previewImage.name || "Maintenance photo"} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {costDialogRequest && (
+          <div className="modal-overlay" onClick={closeActualCostDialog}>
+            <div className="modal-content actual-cost-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>{costDialogMode === "complete" ? "Complete Request" : "Edit Actual Cost"}</h2>
+                <button className="modal-close" onClick={closeActualCostDialog}>✖</button>
+              </div>
+              <div className="modal-body">
+                <div className="detail-grid">
+                  <div><strong>Request:</strong> {costDialogRequest.title}</div>
+                  <div><strong>Expected Cost:</strong> Br {costDialogRequest.estimatedCost || 0}</div>
+                </div>
+                <label className="field-label actual-cost-field">
+                  Actual Cost (Br)
+                  <input
+                    type="number"
+                    min="0"
+                    value={costDialogValue}
+                    onChange={(e) => setCostDialogValue(e.target.value)}
+                    placeholder="Enter actual cost"
+                  />
+                </label>
+                {costDialogError && <p className="error">{costDialogError}</p>}
+              </div>
+              <div className="modal-footer">
+                <button className="secondary-btn" onClick={closeActualCostDialog}>Cancel</button>
+                <button onClick={saveActualCostDialog} disabled={loading}>
+                  {costDialogMode === "complete" ? "Save and Complete" : "Save Cost"}
+                </button>
               </div>
             </div>
           </div>

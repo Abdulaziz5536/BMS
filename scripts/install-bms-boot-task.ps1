@@ -1,3 +1,7 @@
+param(
+  [switch] $NoPause
+)
+
 $ErrorActionPreference = "Stop"
 
 # Run this script as Administrator to make BMS start when Windows boots,
@@ -74,4 +78,7 @@ Write-InstallLog "Boot task installed and started."
 
 Write-Host "BMS boot task installed. The backend watchdog will start when Windows boots."
 Write-Host "Install log: $InstallLog"
-Read-Host "Press Enter to close"
+
+if (-not $NoPause) {
+  Read-Host "Press Enter to close"
+}

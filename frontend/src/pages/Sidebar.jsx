@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SidebarSuppressContext } from "../components/sidebarContext";
 import {
   clearAuthToken,
@@ -18,24 +18,7 @@ import {
   setSelectedBuildingId
 } from "../buildingSelection";
 
-// ============================================
-// HEROICON IMPORTS (ADDED)
-// ============================================
-import { 
-  HomeIcon,
-  BuildingOfficeIcon,
-  ViewColumnsIcon,
-  Square3Stack3DIcon,
-  UserGroupIcon,
-  DocumentTextIcon,
-  CurrencyDollarIcon,
-  BoltIcon,
-  UsersIcon,
-  MegaphoneIcon,
-  Cog6ToothIcon,
-  ArrowRightOnRectangleIcon,
-  ReceiptPercentIcon
-} from '@heroicons/react/24/outline';
+let sidebarNavScrollTop = 0;
 
 // Sidebar owns navigation and the active-building selector used by every protected page.
 export default function Sidebar({ persistent = false }) {
@@ -45,6 +28,7 @@ export default function Sidebar({ persistent = false }) {
   const [buildings, setBuildings] = useState([]);
   const [selectedBuilding, setSelectedBuilding] = useState(getSelectedBuildingId());
   const [currentUser] = useState(getCurrentUser());
+  const navListRef = useRef(null);
   const readOnly = isReadOnlyUser(currentUser);
 
   const loadBuildings = useCallback(async () => {
@@ -97,6 +81,24 @@ export default function Sidebar({ persistent = false }) {
     };
   }, [isSuppressed, loadBuildings]);
 
+  useLayoutEffect(() => {
+    if (isSuppressed) {
+      return undefined;
+    }
+
+    const navList = navListRef.current;
+
+    if (!navList) {
+      return undefined;
+    }
+
+    navList.scrollTop = sidebarNavScrollTop;
+
+    return () => {
+      sidebarNavScrollTop = navList.scrollTop;
+    };
+  }, [isSuppressed]);
+
   if (isSuppressed) {
     return null;
   }
@@ -116,6 +118,31 @@ export default function Sidebar({ persistent = false }) {
     clearCurrentUser();
     navigate("/login", { replace: true });
   };
+
+  const keepSidebarScrollStable = (event) => {
+    if (event.button === 0) {
+      event.preventDefault();
+    }
+  };
+
+  const rememberSidebarScroll = (event) => {
+    sidebarNavScrollTop = event.currentTarget.scrollTop;
+  };
+
+  const navItems = [
+    { to: "/buildings", label: "Buildings" },
+    { to: "/dashboard", label: "Dashboard" },
+    { to: "/invoice", label: "Invoice" },
+    { to: "/utilities", label: "Utilities" },
+    { to: "/floors", label: "Floors" },
+    { to: "/units", label: "Units" },
+    { to: "/tenants", label: "Tenants" },
+    { to: "/contracts", label: "Contracts" },
+    { to: "/employees", label: "Employees" },
+    { to: "/announcements", label: "Announcements" },
+    { to: "/maintenance", label: "Maintenance" },
+    { to: "/system", label: "System" }
+  ];
 
   return (
     <div className="sidebar">
@@ -138,87 +165,21 @@ export default function Sidebar({ persistent = false }) {
         </select>
       </div>
 
-      <ul>
-        <li>
-          <NavLink to="/buildings" className={({ isActive }) => (isActive ? "active" : "")}>
-            <BuildingOfficeIcon className="sidebar-icon" />
-            Buildings
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/dashboard" className={({ isActive }) => (isActive ? "active" : "")}>
-            <HomeIcon className="sidebar-icon" />
-            Dashboard
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/invoice" className={({ isActive }) => (isActive ? "active" : "")}>
-            <ReceiptPercentIcon className="sidebar-icon" />
-            Invoice
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/utilities" className={({ isActive }) => (isActive ? "active" : "")}>
-            <BoltIcon className="sidebar-icon" />
-            Utilities
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/floors" className={({ isActive }) => (isActive ? "active" : "")}>
-            <ViewColumnsIcon className="sidebar-icon" />
-            Floors
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/units" className={({ isActive }) => (isActive ? "active" : "")}>
-            <Square3Stack3DIcon className="sidebar-icon" />
-            Units
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/tenants" className={({ isActive }) => (isActive ? "active" : "")}>
-            <UserGroupIcon className="sidebar-icon" />
-            Tenants
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/contracts" className={({ isActive }) => (isActive ? "active" : "")}>
-            <DocumentTextIcon className="sidebar-icon" />
-            Contracts
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/employees" className={({ isActive }) => (isActive ? "active" : "")}>
-            <UsersIcon className="sidebar-icon" />
-            Employees
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/announcements" className={({ isActive }) => (isActive ? "active" : "")}>
-            <MegaphoneIcon className="sidebar-icon" />
-            Announcements
-          </NavLink>
-        </li>
-
-        <li>
-          <NavLink to="/system" className={({ isActive }) => (isActive ? "active" : "")}>
-            <Cog6ToothIcon className="sidebar-icon" />
-            System
-          </NavLink>
-        </li>
+      <ul ref={navListRef} onScroll={rememberSidebarScroll}>
+        {navItems.map((item) => (
+          <li key={item.to}>
+            <NavLink
+              to={item.to}
+              className={({ isActive }) => (isActive ? "active" : "")}
+              onMouseDown={keepSidebarScrollStable}
+            >
+              {item.label}
+            </NavLink>
+          </li>
+        ))}
       </ul>
 
       <button className="sidebar-logout-btn" onClick={logout}>
-        <ArrowRightOnRectangleIcon className="sidebar-icon" />
         {portLabel("Logout", "ውጣ")}
       </button>
     </div>

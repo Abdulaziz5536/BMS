@@ -20,6 +20,7 @@ const dashboardRouter = require("./routes/dashboard-route");
 const utilityRouter = require("./routes/utility-route");
 const invoiceRouter = require("./routes/invoice-route");
 const announcementRouter = require("./routes/announcement-route");
+const maintenanceRouter = require("./routes/maintenance-route");
 const systemRouter = require("./routes/system-route");
 const userRouter = require("./routes/user-route");
 const { requireAuth, isRequestAuthenticated } = require("./middleware/auth-middleware");
@@ -114,6 +115,7 @@ app.use(dashboardRouter);
 app.use(utilityRouter);
 app.use(invoiceRouter);
 app.use('/announcements', announcementRouter);
+app.use(maintenanceRouter);
 app.use(userRouter);
 app.use(systemRouter);
 

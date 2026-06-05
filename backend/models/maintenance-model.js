@@ -5,7 +5,8 @@ const maintenanceFileSchema = new mongoose.Schema(
   {
     name: String,
     type: String,
-    data: String
+    data: String,
+    size: Number
   },
   { _id: false }
 );
@@ -22,6 +23,11 @@ const maintenanceSchema = new mongoose.Schema(
       ref: "Unit",
       index: true
     },
+    floor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Floor",
+      index: true
+    },
     tenant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Tenant",
@@ -30,6 +36,11 @@ const maintenanceSchema = new mongoose.Schema(
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Employee"
+    },
+    requestId: {
+      type: String,
+      trim: true,
+      index: true
     },
     title: {
       type: String,
@@ -43,8 +54,21 @@ const maintenanceSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ["plumbing", "electrical", "hvac", "cleaning", "security", "general", "other"],
-      default: "general"
+      enum: [
+        "plumbing",
+        "electric",
+        "electrical",
+        "water",
+        "hvac",
+        "appliance",
+        "furniture",
+        "pest",
+        "cleaning",
+        "security",
+        "general",
+        "other"
+      ],
+      default: "plumbing"
     },
     priority: {
       type: String,
@@ -53,8 +77,8 @@ const maintenanceSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["open", "in_progress", "completed", "cancelled"],
-      default: "open",
+      enum: ["pending", "approved", "in_progress", "completed", "cancelled", "open"],
+      default: "pending",
       index: true
     },
     requestedBy: {
@@ -85,6 +109,12 @@ const maintenanceSchema = new mongoose.Schema(
       trim: true,
       default: ""
     },
+    resolution: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+    images: [maintenanceFileSchema],
     attachments: [maintenanceFileSchema]
   },
   { timestamps: true }
