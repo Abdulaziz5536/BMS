@@ -72,4 +72,6 @@ const tenantSchema = new mongoose.Schema({
   }
 
 })
+tenantSchema.index({ building: 1, unit: 1 });
+
 module.exports = mongoose.model('Tenant', tenantSchema);

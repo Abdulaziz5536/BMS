@@ -25,6 +25,7 @@ import {
   formatEthiopianDate,
   normalizeDateInputForApi
 } from "../utils/dateUtils";
+import { formatPaymentFrequency } from "../utils/paymentFrequencyUtils";
 import { calculateVatBreakdown, VAT_RATE_LABEL } from "../utils/taxUtils";
 import { formatFsNumber } from "../utils/receiptUtils";
 import "../style.css";
@@ -35,6 +36,13 @@ import "../style.css";
 const formatCurrency = (amount) => {
   return `Br ${Number(amount || 0).toLocaleString()}`;
 };
+
+const getInvoiceDueTime = (invoice) => {
+  const dueTime = new Date(invoice?.dueDate || 0).getTime();
+  return Number.isNaN(dueTime) ? Number.POSITIVE_INFINITY : dueTime;
+};
+
+const getPendingPriority = (invoice) => (invoice?.status === "pending" ? 0 : 1);
 
 const escapeReceiptHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;",
@@ -253,6 +261,20 @@ export default function Invoice() {
       invoice.status?.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
+      const pendingPriority = getPendingPriority(a) - getPendingPriority(b);
+
+      if (pendingPriority !== 0) {
+        return pendingPriority;
+      }
+
+      if (a.status === "pending" && b.status === "pending") {
+        const dueDatePriority = getInvoiceDueTime(a) - getInvoiceDueTime(b);
+
+        if (dueDatePriority !== 0) {
+          return dueDatePriority;
+        }
+      }
+
       let aValue = a[sortField];
       let bValue = b[sortField];
 
@@ -795,7 +817,7 @@ export default function Invoice() {
                 </div>
                 <div class="detail-card">
                   <span class="detail-label">Invoice</span>
-                  <strong>${formatReceiptValue(invoice?.invoiceNumber || payment.contract?.paymentFrequency || "Payment record")}</strong>
+                  <strong>${formatReceiptValue(invoice?.invoiceNumber || formatPaymentFrequency(payment.contract?.paymentFrequency) || "Payment record")}</strong>
                 </div>
                 <div class="detail-card">
                   <span class="detail-label">Tenant</span>
@@ -934,7 +956,7 @@ export default function Invoice() {
                   .filter((contract) => String(contract.tenant?._id) === String(selectedTenant))
                   .map((contract) => (
                     <option key={contract._id} value={contract._id}>
-                      {contract.paymentFrequency} - {formatCurrency(contract.amount)}
+                      {formatPaymentFrequency(contract.paymentFrequency)} - {formatCurrency(contract.amount)}
                     </option>
                   ))}
               </select>
@@ -1137,7 +1159,7 @@ export default function Invoice() {
                         <td>{payment.tenant?.tenantName || "-"}</td>
                         <td>
                           {payment.invoice?.invoiceNumber ||
-                            payment.contract?.paymentFrequency ||
+                            formatPaymentFrequency(payment.contract?.paymentFrequency) ||
                             (payment.utility ? "Utility payment" : "Payment")}
                         </td>
                         <td>{formatCurrency(payment.amount)}</td>

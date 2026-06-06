@@ -15,6 +15,7 @@ const {
   ETHIOPIAN_PHONE_ERROR,
   normalizeEthiopianPhone
 } = require('../utils/phone-utils');
+const { normalizePaymentFrequency } = require('../utils/payment-frequency-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -302,7 +303,7 @@ router.get('/tenants/:id/payment-history', async (req,res) => {
       date: contract.leaseStartDate || contract.date || contract.createdAt,
       amount: contract.amount || 0,
       status: contract.status || "pending",
-      details: contract.paymentFrequency || "Rent payment"
+      details: normalizePaymentFrequency(contract.paymentFrequency) || "Rent payment"
     }));
 
     const utilityHistory = utilities.map((utility) => ({
@@ -323,7 +324,7 @@ router.get('/tenants/:id/payment-history', async (req,res) => {
       date: payment.paymentDate,
       amount: payment.amount || 0,
       status: "paid",
-      details: payment.invoice?.invoiceNumber || payment.contract?.paymentFrequency || payment.reference || "Payment record"
+      details: payment.invoice?.invoiceNumber || normalizePaymentFrequency(payment.contract?.paymentFrequency) || payment.reference || "Payment record"
     }));
 
     const paymentHistory = [...paymentRecordHistory, ...rentHistory, ...utilityHistory].sort(

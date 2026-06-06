@@ -21,6 +21,12 @@ import {
   formatEthiopianDate,
   normalizeDateInputForApi
 } from "../utils/dateUtils";
+import {
+  buildCustomPaymentFrequency,
+  CUSTOM_PAYMENT_FREQUENCY,
+  getPaymentFrequencyFormState,
+  PAYMENT_FREQUENCY_OPTIONS
+} from "../utils/paymentFrequencyUtils";
 import "../style.css";
 
 // Utilities page tracks non-rent charges and can create the next utility cycle after payment.
@@ -36,6 +42,7 @@ export default function Utilities() {
   const [generatorGasAmount, setGeneratorGasAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [paymentFrequency, setPaymentFrequency] = useState("Monthly");
+  const [customPaymentFrequencyMonths, setCustomPaymentFrequencyMonths] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState("pending");
   const [utilityFile, setUtilityFile] = useState(undefined);
@@ -85,6 +92,7 @@ export default function Utilities() {
     setGeneratorGasAmount("");
     setDueDate("");
     setPaymentFrequency("Monthly");
+    setCustomPaymentFrequencyMonths("");
     setUtilityFile(undefined);
     setNotes("");
     setStatus("pending");
@@ -211,6 +219,15 @@ export default function Utilities() {
       return;
     }
 
+    const savedPaymentFrequency = paymentFrequency === CUSTOM_PAYMENT_FREQUENCY
+      ? buildCustomPaymentFrequency(customPaymentFrequencyMonths)
+      : paymentFrequency;
+
+    if (!savedPaymentFrequency) {
+      setError("Enter a valid payment frequency");
+      return;
+    }
+
     try {
       const res = await apiFetch(
         editingId ? `${API_BASE}/utilities/${editingId}` : `${API_BASE}/utilities`,
@@ -224,7 +241,7 @@ export default function Utilities() {
             lightAmount,
             generatorGasAmount,
             dueDate,
-            paymentFrequency,
+            paymentFrequency: savedPaymentFrequency,
             status,
             notes,
             utilityFile
@@ -254,7 +271,9 @@ export default function Utilities() {
     setLightAmount(utility.lightAmount || "");
     setGeneratorGasAmount(utility.generatorGasAmount || "");
     setDueDate(normalizeDateInputForApi(utility.dueDate));
-    setPaymentFrequency(utility.paymentFrequency || "Monthly");
+    const frequencyState = getPaymentFrequencyFormState(utility.paymentFrequency || "Monthly");
+    setPaymentFrequency(frequencyState.paymentFrequency || "Monthly");
+    setCustomPaymentFrequencyMonths(frequencyState.customMonths);
     setNotes(utility.notes || "");
     setStatus(utility.status || "pending");
     setUtilityFile(utility.utilityFile || undefined);
@@ -363,14 +382,30 @@ export default function Utilities() {
 
             <select
               value={paymentFrequency}
-              onChange={(e) => setPaymentFrequency(e.target.value)}
+              onChange={(e) => {
+                setPaymentFrequency(e.target.value);
+                if (e.target.value !== CUSTOM_PAYMENT_FREQUENCY) {
+                  setCustomPaymentFrequencyMonths("");
+                }
+              }}
               disabled={!selectedBuildingId}
             >
-              <option value="Monthly">Monthly</option>
-              <option value="Quarterly">Quarterly</option>
-              <option value="Every 6 months">Every 6 months</option>
-              <option value="Yearly">Yearly</option>
+              {PAYMENT_FREQUENCY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
+
+            {paymentFrequency === CUSTOM_PAYMENT_FREQUENCY && (
+              <input
+                type="number"
+                min="2"
+                step="1"
+                placeholder="Every X months"
+                value={customPaymentFrequencyMonths}
+                onChange={(e) => setCustomPaymentFrequencyMonths(e.target.value)}
+                disabled={!selectedBuildingId}
+              />
+            )}
 
             <select
               value={status}

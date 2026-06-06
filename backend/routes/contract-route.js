@@ -19,6 +19,11 @@ const {
   parseFlexibleDateInput,
   toIsoDate
 } = require('../utils/date-utils');
+const {
+  CUSTOM_PAYMENT_FREQUENCY,
+  getFrequencyMonths,
+  normalizePaymentFrequency
+} = require('../utils/payment-frequency-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -86,6 +91,12 @@ router.post('/contract', async (req, res) => {
       return res.status(400).json({ error: "Please fill in all fields" });
     }
 
+    const normalizedPaymentFrequency = normalizePaymentFrequency(paymentFrequency);
+
+    if (!normalizedPaymentFrequency || normalizedPaymentFrequency === CUSTOM_PAYMENT_FREQUENCY) {
+      return res.status(400).json({ error: "Enter a valid payment frequency" });
+    }
+
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
       return res.status(400).json({ error: "Contract amount must be greater than zero" });
     }
@@ -125,7 +136,7 @@ router.post('/contract', async (req, res) => {
       leaseStartDate: normalizedStartDate,
       leaseEndDate: normalizedLeaseEndDate,
       contractLength,
-      paymentFrequency,
+      paymentFrequency: normalizedPaymentFrequency,
       status: status || "pending",
       contractFile: normalizedContractFile
     });
@@ -176,6 +187,12 @@ router.put('/contract/:id', async (req, res) => {
       return res.status(400).json({ error: "Please fill in all fields" });
     }
 
+    const normalizedPaymentFrequency = normalizePaymentFrequency(paymentFrequency);
+
+    if (!normalizedPaymentFrequency || normalizedPaymentFrequency === CUSTOM_PAYMENT_FREQUENCY) {
+      return res.status(400).json({ error: "Enter a valid payment frequency" });
+    }
+
     if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) {
       return res.status(400).json({ error: "Contract amount must be greater than zero" });
     }
@@ -221,7 +238,7 @@ router.put('/contract/:id', async (req, res) => {
         leaseStartDate: normalizedStartDate,
         leaseEndDate: normalizedLeaseEndDate,
         contractLength,
-        paymentFrequency,
+        paymentFrequency: normalizedPaymentFrequency,
         status: status || "pending",
         contractFile: normalizedContractFile
       },
@@ -294,21 +311,10 @@ const addFrequency = (date, paymentFrequency) => {
   const freq = (paymentFrequency || "").toLowerCase();
 
   // This helper is used when "pay contract" creates the next billing contract.
-  switch (freq) {
-    case 'monthly':
-      next.setMonth(next.getMonth() + 1);
-      break;
-    case 'quarterly':
-      next.setMonth(next.getMonth() + 3);
-      break;
-    case 'every 6 months':
-      next.setMonth(next.getMonth() + 6);
-      break;
-    case 'yearly':
-      next.setFullYear(next.getFullYear() + 1);
-      break;
-    default:
-      next.setMonth(next.getMonth() + 1);
+  if (freq === "yearly") {
+    next.setFullYear(next.getFullYear() + 1);
+  } else {
+    next.setMonth(next.getMonth() + getFrequencyMonths(paymentFrequency));
   }
 
   return next;
@@ -403,7 +409,7 @@ router.patch('/contract/:id/pay', async (req, res) => {
       leaseStartDate: nextStart ? toIsoDate(nextStart) : "",
       leaseEndDate: nextEnd ? toIsoDate(nextEnd) : "",
       contractLength: contract.contractLength,
-      paymentFrequency: contract.paymentFrequency,
+      paymentFrequency: normalizePaymentFrequency(contract.paymentFrequency),
       status: "pending",
       contractFile: contract.contractFile
     });

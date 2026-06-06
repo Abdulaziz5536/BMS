@@ -11,6 +11,7 @@ const BUILDING_STORAGE_KEY = "selectedBuildingId";
 const BUILDING_CHANGED_EVENT = "buildingChanged";
 const BUILDINGS_UPDATED_EVENT = "buildingsUpdated";
 const responseCache = new Map();
+const inFlightRequests = new Map();
 const prefetchedBuildings = new Map();
 const RESPONSE_CACHE_TTL = 45000;
 const PREFETCH_TTL = 30000;
@@ -115,15 +116,29 @@ export const invalidateCache = (match) => {
 };
 
 export const fetchJsonData = async (url, fallbackMessage = "Request failed") => {
-  const res = await apiFetch(url);
-  const data = await readResponse(res);
-
-  if (!res.ok) {
-    throw new Error(getApiErrorMessage(data, fallbackMessage));
+  if (inFlightRequests.has(url)) {
+    return inFlightRequests.get(url);
   }
 
-  setCachedData(url, data);
-  return data;
+  const request = (async () => {
+    const res = await apiFetch(url);
+    const data = await readResponse(res);
+
+    if (!res.ok) {
+      throw new Error(getApiErrorMessage(data, fallbackMessage));
+    }
+
+    setCachedData(url, data);
+    return data;
+  })();
+
+  inFlightRequests.set(url, request);
+
+  try {
+    return await request;
+  } finally {
+    inFlightRequests.delete(url);
+  }
 };
 
 export const loadCachedJson = async (
@@ -184,7 +199,7 @@ export const prefetchBuildingData = (buildingId = getSelectedBuildingId()) => {
 
   prefetchedBuildings.set(buildingId, Date.now());
 
-  [
+  const prefetch = () => [
     withBuilding("/dashboard", buildingId),
     withBuilding("/floors", buildingId),
     withBuilding("/units", buildingId),
@@ -195,4 +210,16 @@ export const prefetchBuildingData = (buildingId = getSelectedBuildingId()) => {
   ].forEach((url) => {
     fetchJsonData(url).catch(() => {});
   });
+
+  if (typeof window === "undefined") {
+    prefetch();
+    return;
+  }
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(prefetch, { timeout: 2500 });
+    return;
+  }
+
+  window.setTimeout(prefetch, 400);
 };

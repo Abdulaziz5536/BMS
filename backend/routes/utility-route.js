@@ -13,6 +13,11 @@ const {
   parseFlexibleDateInput,
   toIsoDate
 } = require("../utils/date-utils");
+const {
+  CUSTOM_PAYMENT_FREQUENCY,
+  getFrequencyMonths,
+  normalizePaymentFrequency
+} = require("../utils/payment-frequency-utils");
 
 const getBuildingFilter = (building) => (building ? { building } : {});
 
@@ -41,21 +46,10 @@ const calculateNextDueDate = (dueDate, paymentFrequency) => {
   const next = new Date(base);
 
   // Payment frequency determines the next utility bill created after a payment.
-  switch ((paymentFrequency || "").toLowerCase()) {
-    case "monthly":
-      next.setMonth(next.getMonth() + 1);
-      break;
-    case "quarterly":
-      next.setMonth(next.getMonth() + 3);
-      break;
-    case "every 6 months":
-      next.setMonth(next.getMonth() + 6);
-      break;
-    case "yearly":
-      next.setFullYear(next.getFullYear() + 1);
-      break;
-    default:
-      next.setMonth(next.getMonth() + 1);
+  if (String(paymentFrequency || "").trim().toLowerCase() === "yearly") {
+    next.setFullYear(next.getFullYear() + 1);
+  } else {
+    next.setMonth(next.getMonth() + getFrequencyMonths(paymentFrequency));
   }
 
   return toIsoDate(next);
@@ -124,6 +118,12 @@ router.post("/utilities", async (req, res) => {
       return res.status(400).json({ error: "Utility amounts cannot be negative" });
     }
 
+    const normalizedPaymentFrequency = normalizePaymentFrequency(paymentFrequency || "Monthly");
+
+    if (!normalizedPaymentFrequency || normalizedPaymentFrequency === CUSTOM_PAYMENT_FREQUENCY) {
+      return res.status(400).json({ error: "Enter a valid payment frequency" });
+    }
+
     // Never allow a utility bill to reference a tenant from another building.
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
     if (!tenantRecord) {
@@ -152,7 +152,7 @@ router.post("/utilities", async (req, res) => {
       lightAmount: Number(lightAmount) || 0,
       generatorGasAmount: Number(generatorGasAmount) || 0,
       dueDate: normalizedDueDate,
-      paymentFrequency: paymentFrequency || undefined,
+      paymentFrequency: normalizedPaymentFrequency,
       status: status || "pending",
       notes,
       utilityFile: normalizedUtilityFile
@@ -206,6 +206,12 @@ router.put("/utilities/:id", async (req, res) => {
       return res.status(400).json({ error: "Utility amounts cannot be negative" });
     }
 
+    const normalizedPaymentFrequency = normalizePaymentFrequency(paymentFrequency || "Monthly");
+
+    if (!normalizedPaymentFrequency || normalizedPaymentFrequency === CUSTOM_PAYMENT_FREQUENCY) {
+      return res.status(400).json({ error: "Enter a valid payment frequency" });
+    }
+
     const tenantRecord = await Tenant.findOne({ _id: tenant, building });
     if (!tenantRecord) {
       return res.status(400).json({ error: "Tenant does not belong to this building" });
@@ -241,7 +247,7 @@ router.put("/utilities/:id", async (req, res) => {
         lightAmount: Number(lightAmount) || 0,
         generatorGasAmount: Number(generatorGasAmount) || 0,
         dueDate: normalizedDueDate,
-        paymentFrequency: paymentFrequency || undefined,
+        paymentFrequency: normalizedPaymentFrequency,
         status: status || "pending",
         notes,
         utilityFile: normalizedUtilityFile
@@ -360,7 +366,7 @@ router.patch("/utilities/:id/pay", async (req, res) => {
       lightAmount: utility.lightAmount,
       generatorGasAmount: utility.generatorGasAmount,
       dueDate: nextDueDate || "",
-      paymentFrequency: utility.paymentFrequency || "Monthly",
+      paymentFrequency: normalizePaymentFrequency(utility.paymentFrequency || "Monthly"),
       status: "pending",
       notes: utility.notes,
       // copy attachment into next record

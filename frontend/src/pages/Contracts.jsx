@@ -21,6 +21,13 @@ import {
   formatEthiopianDate,
   normalizeDateInputForApi
 } from "../utils/dateUtils";
+import {
+  buildCustomPaymentFrequency,
+  CUSTOM_PAYMENT_FREQUENCY,
+  formatPaymentFrequency,
+  getPaymentFrequencyFormState,
+  PAYMENT_FREQUENCY_OPTIONS
+} from "../utils/paymentFrequencyUtils";
 import "../style.css";
 
 const MAX_UPLOAD_SIZE = 7 * 1024 * 1024; // 7MB
@@ -63,6 +70,7 @@ export default function Contracts() {
   const [leaseStartDate, setLeaseStartDate] = useState("");
   const [leaseEndDate, setLeaseEndDate] = useState("");
   const [paymentFrequency, setPaymentFrequency] = useState("");
+  const [customPaymentFrequencyMonths, setCustomPaymentFrequencyMonths] = useState("");
   const [contractStatus, setContractStatus] = useState("pending");
 
   const [contractFile, setContractFile] = useState(undefined);
@@ -83,6 +91,7 @@ export default function Contracts() {
     setLeaseStartDate("");
     setLeaseEndDate("");
     setPaymentFrequency("");
+    setCustomPaymentFrequencyMonths("");
     setContractStatus("pending");
     setContractFile(undefined);
     setEditingId(null);
@@ -142,7 +151,7 @@ export default function Contracts() {
       (contract) =>
         contract.tenant?.tenantName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         contract.tenant?.tenantId?.toString().includes(searchTerm) ||
-        contract.paymentFrequency?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        formatPaymentFrequency(contract.paymentFrequency).toLowerCase().includes(searchTerm.toLowerCase()) ||
         contract.status?.toLowerCase().includes(searchTerm.toLowerCase())
     )
     .sort((a, b) => {
@@ -186,7 +195,11 @@ export default function Contracts() {
       return;
     }
 
-    if (!tenantId || !amount || !leaseStartDate || !leaseEndDate || !paymentFrequency) {
+    const savedPaymentFrequency = paymentFrequency === CUSTOM_PAYMENT_FREQUENCY
+      ? buildCustomPaymentFrequency(customPaymentFrequencyMonths)
+      : paymentFrequency;
+
+    if (!tenantId || !amount || !leaseStartDate || !leaseEndDate || !savedPaymentFrequency) {
       setError("Please fill in all fields");
       return;
     }
@@ -204,7 +217,7 @@ export default function Contracts() {
             date: leaseStartDate,
             leaseStartDate,
             leaseEndDate,
-            paymentFrequency,
+            paymentFrequency: savedPaymentFrequency,
             status: contractStatus,
             contractFile
           })
@@ -232,7 +245,9 @@ export default function Contracts() {
     setAmount(contract.amount || "");
     setLeaseStartDate(normalizeDateInputForApi(contract.leaseStartDate || contract.date));
     setLeaseEndDate(normalizeDateInputForApi(contract.leaseEndDate));
-    setPaymentFrequency(contract.paymentFrequency || "");
+    const frequencyState = getPaymentFrequencyFormState(contract.paymentFrequency);
+    setPaymentFrequency(frequencyState.paymentFrequency);
+    setCustomPaymentFrequencyMonths(frequencyState.customMonths);
     setContractStatus(contract.status || "pending");
     setContractFile(contract.contractFile || undefined);
     setEditingId(contract._id);
@@ -337,15 +352,31 @@ export default function Contracts() {
 
             <select
               value={paymentFrequency}
-              onChange={(e) => setPaymentFrequency(e.target.value)}
+              onChange={(e) => {
+                setPaymentFrequency(e.target.value);
+                if (e.target.value !== CUSTOM_PAYMENT_FREQUENCY) {
+                  setCustomPaymentFrequencyMonths("");
+                }
+              }}
               disabled={!selectedBuildingId}
             >
               <option value="">Payment Frequency</option>
-              <option value="Monthly">Monthly</option>
-              <option value="Quarterly">Quarterly</option>
-              <option value="Every 6 months">Every 6 months</option>
-              <option value="Yearly">Yearly</option>
+              {PAYMENT_FREQUENCY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
+
+            {paymentFrequency === CUSTOM_PAYMENT_FREQUENCY && (
+              <input
+                type="number"
+                min="2"
+                step="1"
+                placeholder="Every X months"
+                value={customPaymentFrequencyMonths}
+                onChange={(e) => setCustomPaymentFrequencyMonths(e.target.value)}
+                disabled={!selectedBuildingId}
+              />
+            )}
 
             <select
               value={contractStatus}
@@ -449,7 +480,7 @@ export default function Contracts() {
                   <td>Br {contract.amount}</td>
                   <td>{formatEthiopianDate(contract.leaseStartDate || contract.date)}</td>
                   <td>{formatEthiopianDate(contract.leaseEndDate)}</td>
-                  <td>{contract.paymentFrequency || "-"}</td>
+                  <td>{formatPaymentFrequency(contract.paymentFrequency) || "-"}</td>
                   <td>
                     {contract.status === "paid" ? (
                       <span className="paid-status">Paid</span>

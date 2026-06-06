@@ -172,6 +172,8 @@ export default function Dashboard() {
       ...item,
       alertType: "overdue",
       amountDue: item.totalAmount || item.amount,
+      baseAmount: item.amount,
+      latePenalty: Number(item.latePenalty || 0),
       timingLabel: `${item.daysOverdue} day${item.daysOverdue === 1 ? "" : "s"} overdue`
     })),
     ...paymentAlerts.dueSoon.map((item) => ({
@@ -286,6 +288,12 @@ export default function Dashboard() {
                   <CurrencyDollarIcon />
                   {formatCurrency(item.amountDue)}
                 </span>
+                {item.alertType === "overdue" && Number(item.latePenalty || 0) > 0 && (
+                  <span className="dashboard-penalty-meta">
+                    <CurrencyDollarIcon />
+                    + {formatCurrency(item.latePenalty)} Penalty
+                  </span>
+                )}
                 <span>
                   <CalendarDaysIcon />
                   {formatEthiopianDate(item.dueDate)}
@@ -382,7 +390,7 @@ export default function Dashboard() {
           <div className="card">
             <CurrencyDollarIcon className="card-icon" />
             <div>
-              <div>Rent Collected</div>
+              <div>Rent Collected This Month</div>
               <strong>{formatCurrency(monthlyRentCollected)}</strong>
             </div>
           </div>

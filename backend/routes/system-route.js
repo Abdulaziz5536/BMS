@@ -14,6 +14,7 @@ const Unit = require("../models/unit-model");
 const Utility = require("../models/utility-model");
 const { buildCsv } = require("../utils/csv-utils");
 const { formatFloorLabel } = require("../utils/floor-label-utils");
+const { normalizePaymentFrequency } = require("../utils/payment-frequency-utils");
 const { getSystemChecks } = require("../services/system-check-service");
 
 // System routes are operational tools: health checks, audit logs, JSON backup,
@@ -177,7 +178,7 @@ router.get("/exports/:resource", async (req, res) => {
         { label: "Amount", value: (row) => row.amount },
         { label: "Lease Start", value: (row) => row.leaseStartDate || row.date },
         { label: "Lease End", value: (row) => row.leaseEndDate },
-        { label: "Payment Frequency", value: (row) => row.paymentFrequency },
+        { label: "Payment Frequency", value: (row) => normalizePaymentFrequency(row.paymentFrequency) },
         { label: "Status", value: (row) => row.status }
       ];
     } else if (resource === "payments") {
@@ -186,7 +187,7 @@ router.get("/exports/:resource", async (req, res) => {
         { label: "Payment Date", value: (row) => row.paymentDate },
         { label: "Tenant", value: (row) => row.tenant?.tenantName },
         { label: "Invoice", value: (row) => row.invoice?.invoiceNumber },
-        { label: "Contract", value: (row) => row.contract?.paymentFrequency },
+        { label: "Contract", value: (row) => normalizePaymentFrequency(row.contract?.paymentFrequency) },
         { label: "Utility", value: (row) => row.utility ? "Utility payment" : "" },
         { label: "Amount", value: (row) => row.amount },
         { label: "Method", value: (row) => row.paymentMethod },

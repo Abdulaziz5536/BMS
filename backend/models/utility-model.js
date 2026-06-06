@@ -40,7 +40,6 @@ const utilitySchema = new mongoose.Schema(
     },
     paymentFrequency: {
       type: String,
-      enum: ["Monthly", "Quarterly", "Every 6 months", "Yearly"],
       default: "Monthly"
     },
     status: {
@@ -58,5 +57,7 @@ const utilitySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+utilitySchema.index({ building: 1, status: 1 });
 
 module.exports = mongoose.model("Utility", utilitySchema);

@@ -23,7 +23,8 @@ import {
   PencilIcon,
   EyeIcon,
   TrashIcon,
-  CameraIcon
+  CameraIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 
 const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -574,6 +575,26 @@ export default function Maintenance() {
     setImages(images.filter((_, i) => i !== index));
   };
 
+  const getImageDownloadName = (img, index) => {
+    const fallbackExtension = img.type?.split("/")[1] || "jpg";
+    const fallbackName = `${selectedRequest?.requestId || requestId || "maintenance"}-photo-${index + 1}.${fallbackExtension}`;
+    return String(img.name || fallbackName).replace(/[\\/:*?"<>|]/g, "-");
+  };
+
+  const downloadImage = (img, index = 0) => {
+    if (!img?.data) {
+      setError("Photo is not available for download");
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = img.data;
+    link.download = getImageDownloadName(img, index);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   const stats = {
     total: requests.length,
     pending: requests.filter(r => r.status === "pending").length,
@@ -1082,6 +1103,14 @@ export default function Maintenance() {
                             >
                               Preview
                             </button>
+                            <button
+                              type="button"
+                              className="secondary-btn compact-action-btn"
+                              onClick={() => downloadImage(img, idx)}
+                            >
+                              <ArrowDownTrayIcon className="w-4 h-4" />
+                              Download
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -1089,7 +1118,7 @@ export default function Maintenance() {
                   </div>
                 )}
               </div>
-              <div className="modal-footer">
+              <div className="modal-footer maintenance-details-actions">
                 {selectedRequest.status === "pending" && (
                   <button
                     onClick={() => updateStatus(selectedRequest._id, "in_progress")}
@@ -1130,6 +1159,13 @@ export default function Maintenance() {
               </div>
               <div className="modal-body maintenance-image-preview-body">
                 <img src={previewImage.data} alt={previewImage.name || "Maintenance photo"} />
+              </div>
+              <div className="modal-footer">
+                <button className="secondary-btn" onClick={() => downloadImage(previewImage)}>
+                  <ArrowDownTrayIcon className="w-4 h-4" />
+                  Download
+                </button>
+                <button className="secondary-btn" onClick={() => setPreviewImage(null)}>Close</button>
               </div>
             </div>
           </div>

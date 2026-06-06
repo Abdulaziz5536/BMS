@@ -28,6 +28,11 @@ const {
 const { formatFloorLabel } = require("../utils/floor-label-utils");
 const { calculateLatePenalty } = require("../utils/late-penalty-utils");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
+const {
+  getFrequencyMonths,
+  getMonthlyRevenueValue,
+  normalizePaymentFrequency
+} = require("../utils/payment-frequency-utils");
 const { getSystemChecks } = require("../services/system-check-service");
 const { normalizeDueDateValue } = require("../services/utility-invoice-sync-service");
 const {
@@ -82,6 +87,15 @@ test("getEthiopianMonthRange returns Ethiopian month boundaries", () => {
 
 test("utility invoice sync stores due dates as date-only values", () => {
   assert.equal(normalizeDueDateValue("2026-05-31T12:00:00.000Z"), "2026-05-31");
+});
+
+test("payment frequency labels and monthly values normalize old and custom values", () => {
+  assert.equal(normalizePaymentFrequency("Quarterly"), "Every 3 months");
+  assert.equal(normalizePaymentFrequency("quartely"), "Every 3 months");
+  assert.equal(normalizePaymentFrequency("Every 4 months"), "Every 4 months");
+  assert.equal(getFrequencyMonths("Every 4 months"), 4);
+  assert.equal(getMonthlyRevenueValue(120000, "Every 3 months"), 40000);
+  assert.equal(getMonthlyRevenueValue(120000, "Yearly"), 10000);
 });
 
 test("normalizeEthiopianPhone accepts local and international mobile numbers", () => {

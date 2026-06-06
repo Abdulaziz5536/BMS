@@ -4,25 +4,12 @@ const {
   isEthiopianLeapYear,
   parseFlexibleDateInput
 } = require("../utils/date-utils");
+const { getFrequencyMonths } = require("../utils/payment-frequency-utils");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Invoice period service turns a contract into exact billing periods.
 // It uses Ethiopian month rules because rent cycles are entered in Ethiopian dates.
-
-const getFrequencyMonths = (paymentFrequency) => {
-  switch (String(paymentFrequency || "").toLowerCase()) {
-    case "quarterly":
-      return 3;
-    case "every 6 months":
-      return 6;
-    case "yearly":
-      return 13;
-    case "monthly":
-    default:
-      return 1;
-  }
-};
 
 const getMaxEthiopianDay = (year, month) => {
   if (month === 13) {
@@ -63,7 +50,7 @@ const getPeriodEnd = (periodStart, contract, leaseEnd) => {
   // Period end is the day before the next period begins, capped by lease end.
   const nextPeriodStart = addEthiopianMonths(
     periodStart,
-    getFrequencyMonths(contract.paymentFrequency)
+    getFrequencyMonths(contract.paymentFrequency, { yearlyMonths: 13 })
   );
 
   if (!nextPeriodStart) {

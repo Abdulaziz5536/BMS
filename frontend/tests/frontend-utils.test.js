@@ -9,6 +9,11 @@ import { compareSortValues, nextSortDirection } from "../src/utils/sortUtils.js"
 import { calculateVatBreakdown } from "../src/utils/taxUtils.js";
 import { formatFsNumber } from "../src/utils/receiptUtils.js";
 import { calculatePayrollRow } from "../src/utils/payrollUtils.js";
+import {
+  buildCustomPaymentFrequency,
+  formatPaymentFrequency,
+  getPaymentFrequencyFormState
+} from "../src/utils/paymentFrequencyUtils.js";
 
 test("frontend floor labels show ground and basement levels", () => {
   assert.equal(formatFloorLabel(-1), "B1");
@@ -35,6 +40,17 @@ test("frontend error messages stay short and user-safe", () => {
 test("frontend date normalization accepts explicit Ethiopian dates", () => {
   assert.equal(normalizeDateInputForApi("2018-08-16 EC"), "2026-04-24");
   assert.equal(normalizeDateInputForApi("bad-date"), "");
+});
+
+test("frontend payment frequency labels normalize old and custom values", () => {
+  assert.equal(formatPaymentFrequency("Quarterly"), "Every 3 months");
+  assert.equal(formatPaymentFrequency("quartely"), "Every 3 months");
+  assert.equal(formatPaymentFrequency("Every 4 months"), "Every 4 months");
+  assert.deepEqual(getPaymentFrequencyFormState("Every 4 months"), {
+    paymentFrequency: "Custom",
+    customMonths: "4"
+  });
+  assert.equal(buildCustomPaymentFrequency("4"), "Every 4 months");
 });
 
 test("frontend sorting handles numeric strings and direction flips", () => {

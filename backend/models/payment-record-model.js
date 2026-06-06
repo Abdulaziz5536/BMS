@@ -66,6 +66,7 @@ const paymentRecordSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Indexes support tenant payment history and deleting checks for linked records.
+paymentRecordSchema.index({ building: 1, paymentDate: -1 });
 paymentRecordSchema.index({ tenant: 1, paymentDate: -1 });
 paymentRecordSchema.index({ invoice: 1 });
 paymentRecordSchema.index({ contract: 1 });

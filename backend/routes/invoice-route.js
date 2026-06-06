@@ -76,12 +76,36 @@ const isInvoiceDueBy = (invoice, referenceDate = new Date()) => {
   return !Number.isNaN(dueDate.getTime()) && dueDate <= startOfDay(referenceDate);
 };
 
+const getDateOnlyTime = (value) => {
+  const date = parseFlexibleDateInput(value);
+  return date ? date.getTime() : null;
+};
+
+const isInvoiceDueBefore = (invoice, cutoffDate) => {
+  const dueTime = getDateOnlyTime(invoice?.dueDate);
+  const cutoffTime = getDateOnlyTime(cutoffDate);
+
+  return dueTime !== null && cutoffTime !== null && dueTime < cutoffTime;
+};
+
+const isDateInRange = (value, startDate, endDate) => {
+  const dateTime = getDateOnlyTime(value);
+  const startTime = getDateOnlyTime(startDate);
+  const endTime = getDateOnlyTime(endDate);
+
+  return dateTime !== null && startTime !== null && endTime !== null && dateTime >= startTime && dateTime < endTime;
+};
+
 const getInvoiceOutstandingBalance = (invoice) =>
   Number(invoice?.outstandingBalance ?? Math.max(0, Number(invoice?.totalAmount || 0) - Number(invoice?.amountPaid || 0)));
 
 const getPaymentStatusItem = (tenant, invoice = null, options = {}) => {
   const rawOutstandingBalance = invoice ? getInvoiceOutstandingBalance(invoice) : 0;
-  const hasDueInvoice = Boolean(invoice) && isInvoiceDueBy(invoice, options.referenceDate);
+  const hasDueInvoice = Boolean(invoice) && (
+    options.dueCutoffDate
+      ? isInvoiceDueBefore(invoice, options.dueCutoffDate)
+      : isInvoiceDueBy(invoice, options.referenceDate)
+  );
   const outstandingBalance = hasDueInvoice ? rawOutstandingBalance : 0;
   const isPaid = invoice?.status === "paid";
   const amountPaid = Number(invoice?.amountPaid || 0);
@@ -141,18 +165,60 @@ router.get('/payment-status', async (req, res) => {
       })
       .sort({ dueDate: -1, createdAt: -1 });
 
-    const latestInvoiceByTenant = new Map();
-    const latestDueInvoiceByTenant = new Map();
+    const paidInvoiceByTenant = new Map();
+    const notPaidInvoiceByTenant = new Map();
     const invoicesWithoutTenant = [];
     let totalOutstanding = 0;
+    const currentMonthStart = ethiopianMonthRange.start;
+    const nextMonthStart = ethiopianMonthRange.end;
+
+    const shouldReplacePaidInvoice = (currentInvoice, nextInvoice) => {
+      if (!currentInvoice) {
+        return true;
+      }
+
+      const currentPaymentTime = getDateOnlyTime(currentInvoice.paymentDate) || 0;
+      const nextPaymentTime = getDateOnlyTime(nextInvoice.paymentDate) || 0;
+
+      return nextPaymentTime > currentPaymentTime;
+    };
+
+    const shouldReplaceNotPaidInvoice = (currentInvoice, nextInvoice) => {
+      if (!currentInvoice) {
+        return true;
+      }
+
+      const currentDueTime = getDateOnlyTime(currentInvoice.dueDate) || 0;
+      const nextDueTime = getDateOnlyTime(nextInvoice.dueDate) || 0;
+
+      return nextDueTime < currentDueTime;
+    };
+
+    const getPaymentStatusVisibility = (invoice) => {
+      if (!invoice || invoice.status === "cancelled") {
+        return false;
+      }
+
+      if (invoice.status === "paid") {
+        return isDateInRange(invoice.paymentDate, currentMonthStart, nextMonthStart) ? "paid" : false;
+      }
+
+      return isInvoiceDueBefore(invoice, nextMonthStart) && getInvoiceOutstandingBalance(invoice) > 0
+        ? "not_paid"
+        : false;
+    };
 
     invoices.forEach((invoice) => {
       const tenantId = invoice.tenant?._id ? String(invoice.tenant._id) : "";
-      const isDue = isInvoiceDueBy(invoice, today);
+      const visibility = getPaymentStatusVisibility(invoice);
       const outstandingBalance = getInvoiceOutstandingBalance(invoice);
 
-      if (isDue && outstandingBalance > 0) {
+      if (visibility === "not_paid" && outstandingBalance > 0) {
         totalOutstanding += outstandingBalance;
+      }
+
+      if (!visibility) {
+        return;
       }
 
       if (!tenantId) {
@@ -160,27 +226,45 @@ router.get('/payment-status', async (req, res) => {
         return;
       }
 
-      if (!latestInvoiceByTenant.has(tenantId)) {
-        latestInvoiceByTenant.set(tenantId, invoice);
+      if (visibility === "paid") {
+        if (shouldReplacePaidInvoice(paidInvoiceByTenant.get(tenantId), invoice)) {
+          paidInvoiceByTenant.set(tenantId, invoice);
+        }
+        return;
       }
 
-      if (isDue && !latestDueInvoiceByTenant.has(tenantId)) {
-        latestDueInvoiceByTenant.set(tenantId, invoice);
+      if (shouldReplaceNotPaidInvoice(notPaidInvoiceByTenant.get(tenantId), invoice)) {
+        notPaidInvoiceByTenant.set(tenantId, invoice);
       }
     });
 
-    const items = tenants.map((tenant) => {
+    const items = tenants.flatMap((tenant) => {
       const tenantId = String(tenant._id);
-      const invoice = latestDueInvoiceByTenant.get(tenantId) || latestInvoiceByTenant.get(tenantId);
+      const tenantItems = [];
+      const notPaidInvoice = notPaidInvoiceByTenant.get(tenantId);
+      const paidInvoice = paidInvoiceByTenant.get(tenantId);
 
-      return getPaymentStatusItem(tenant, invoice, {
-        referenceDate: today
-      });
+      if (notPaidInvoice) {
+        tenantItems.push(getPaymentStatusItem(tenant, notPaidInvoice, {
+          referenceDate: today,
+          dueCutoffDate: nextMonthStart
+        }));
+      }
+
+      if (paidInvoice) {
+        tenantItems.push(getPaymentStatusItem(tenant, paidInvoice, {
+          referenceDate: today,
+          dueCutoffDate: nextMonthStart
+        }));
+      }
+
+      return tenantItems;
     });
 
     invoicesWithoutTenant.forEach((invoice) => {
       items.push(getPaymentStatusItem(invoice.tenant, invoice, {
-        referenceDate: today
+        referenceDate: today,
+        dueCutoffDate: nextMonthStart
       }));
     });
 

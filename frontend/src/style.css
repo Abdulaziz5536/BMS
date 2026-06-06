@@ -1358,6 +1358,12 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.dashboard-due-meta .dashboard-penalty-meta {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
 
 .message {
   color: #15803d;
@@ -4446,6 +4452,13 @@ span.secondary-btn {
   font-size: 0.8rem;
 }
 
+.maintenance-photo-card .compact-action-btn svg,
+.maintenance-image-preview-modal .modal-footer svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 .maintenance-image-preview-modal {
   width: min(760px, 92vw);
 }
@@ -4543,6 +4556,25 @@ span.secondary-btn {
   position: sticky;
   bottom: 0;
   background: white;
+}
+
+.maintenance-details-actions {
+  gap: 0.45rem;
+}
+
+.maintenance-details-actions button {
+  min-height: 32px;
+  padding: 0.42rem 0.62rem;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  line-height: 1.15;
+  gap: 0.35rem;
+}
+
+.maintenance-details-actions svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
 }
 
 .detail-grid {

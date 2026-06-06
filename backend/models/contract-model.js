@@ -53,4 +53,6 @@ const contractSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+contractSchema.index({ building: 1, status: 1 });
+
 module.exports = mongoose.model("Contract", contractSchema);

@@ -98,5 +98,7 @@ const invoiceSchema = new mongoose.Schema({
 invoiceSchema.index({ tenant: 1, periodStart: 1, periodEnd: 1 });
 invoiceSchema.index({ contract: 1, periodStart: 1, periodEnd: 1 }, { unique: true });
 invoiceSchema.index({ dueDate: 1, status: 1 });
+invoiceSchema.index({ building: 1, dueDate: 1, status: 1 });
+invoiceSchema.index({ building: 1, dueDate: 1, outstandingBalance: 1 });
 
 module.exports = mongoose.model("Invoice", invoiceSchema);

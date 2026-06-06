@@ -61,6 +61,27 @@ test("getNextInvoicePeriod continues after the latest invoice period", async () 
   assert.equal(formatEthiopianDate(period.periodEnd), "30/02/2018 EC");
 });
 
+test("getNextInvoicePeriod supports every 3 months and custom frequencies", async () => {
+  const everyThreeMonthsContract = {
+    _id: "contract-1",
+    leaseStartDate: "01/01/2018",
+    leaseEndDate: "30/06/2018",
+    paymentFrequency: "Every 3 months"
+  };
+  const customContract = {
+    _id: "contract-2",
+    leaseStartDate: "01/01/2018",
+    leaseEndDate: "30/06/2018",
+    paymentFrequency: "Every 4 months"
+  };
+
+  const everyThreeMonthsPeriod = await getNextInvoicePeriod(createFindOneModel(), everyThreeMonthsContract);
+  const customPeriod = await getNextInvoicePeriod(createFindOneModel(), customContract);
+
+  assert.equal(formatEthiopianDate(everyThreeMonthsPeriod.periodEnd), "30/03/2018 EC");
+  assert.equal(formatEthiopianDate(customPeriod.periodEnd), "30/04/2018 EC");
+});
+
 test("recalculateInvoicePeriodsForContract rewrites invoice dates and clears reminders", async () => {
   let saved = 0;
   const contract = {
