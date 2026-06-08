@@ -256,10 +256,10 @@ export default function Contracts() {
   };
 
   const deleteContract = async (id) => {
-    // Backend blocks deletion when invoices/payments still reference this contract.
+    // Backend cascades contract deletion through related invoices and payment records.
     const shouldDelete = await confirmAction({
       title: "Delete contract?",
-      message: "Are you sure you want to delete this contract?",
+      message: "Are you sure you want to delete this contract? Related invoices and payment records will also be removed.",
       confirmText: "Yes",
       cancelText: "No"
     });

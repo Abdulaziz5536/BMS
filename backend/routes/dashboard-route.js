@@ -15,6 +15,16 @@ const { getMonthlyRevenueValue } = require("../utils/payment-frequency-utils");
 // Dashboard route builds a compact summary for the selected building.
 // It reads from several collections, so every query must use the same building filter.
 
+const getUtilityTotal = (utility) =>
+  (Number(utility.waterAmount) || 0) +
+  (Number(utility.lightAmount) || 0) +
+  (Number(utility.generatorGasAmount) || 0);
+
+const isDateInRange = (value, startDate, endDate) => {
+  const date = parseFlexibleDateInput(value);
+  return Boolean(date && date >= startDate && date < endDate);
+};
+
 router.get("/dashboard", async (req, res) => {
   try {
     const filter = req.query.building ? { building: req.query.building } : {};
@@ -27,9 +37,6 @@ router.get("/dashboard", async (req, res) => {
     const currentDate = parseFlexibleDateInput(today) || today;
     const ethiopianMonthRange = getEthiopianMonthRange(today);
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
     const dueSoonEnd = new Date(today);
     dueSoonEnd.setDate(dueSoonEnd.getDate() + 7);
     dueSoonEnd.setHours(23, 59, 59, 999);
@@ -41,8 +48,9 @@ router.get("/dashboard", async (req, res) => {
       totalEmployees,
       occupiedUnits,
       monthlyRevenueContracts,
+      utilityRevenueBills,
       rentRevenueResult,
-      utilityRevenueResult,
+      monthlyUtilityCollectedResult,
       pendingPayments,
       pendingUtilityPayments,
       invoiceOutstanding,
@@ -64,6 +72,10 @@ router.get("/dashboard", async (req, res) => {
       Tenant.distinct("unit", filter),
       Contract.find(aggregateFilter)
         .select("tenant amount paymentFrequency date leaseStartDate leaseEndDate createdAt")
+        .lean(),
+      // Utility revenue is the value of utility bills due in the current Ethiopian month, paid or pending.
+      Utility.find(aggregateFilter)
+        .select("tenant waterAmount lightAmount generatorGasAmount dueDate status")
         .lean(),
       // Monthly rent revenue follows the current Ethiopian month and excludes utility payments.
       PaymentRecord.aggregate([
@@ -118,7 +130,7 @@ router.get("/dashboard", async (req, res) => {
           }
         }
       ]),
-      // Utility revenue is also month-scoped using the Ethiopian calendar.
+      // Utility collected is month-scoped using the Ethiopian calendar.
       PaymentRecord.aggregate([
         {
           $match: {
@@ -128,6 +140,19 @@ router.get("/dashboard", async (req, res) => {
               $lt: ethiopianMonthRange.end
             },
             utility: { $exists: true, $ne: null }
+          }
+        },
+        {
+          $lookup: {
+            from: "utilities",
+            localField: "utility",
+            foreignField: "_id",
+            as: "utilityDoc"
+          }
+        },
+        {
+          $match: {
+            "utilityDoc.status": "paid"
           }
         },
         {
@@ -146,13 +171,13 @@ router.get("/dashboard", async (req, res) => {
         ...filter,
         status: "pending"
       }),
-      // Outstanding rent is based on invoice balances that are already due, not future invoices.
+      // Outstanding rent matches the viewer Not Paid rule: unpaid invoices due this Ethiopian month or earlier.
       Invoice.aggregate([
         {
           $match: {
             ...aggregateFilter,
             outstandingBalance: { $gt: 0 },
-            dueDate: { $lt: tomorrow }
+            dueDate: { $lt: ethiopianMonthRange.end }
           }
         },
         { $group: { _id: null, total: { $sum: "$outstandingBalance" }, count: { $sum: 1 } } }
@@ -205,8 +230,16 @@ router.get("/dashboard", async (req, res) => {
         ), 0)
         .toFixed(2)
     );
+    const utilityRevenue = Number(
+      utilityRevenueBills
+        .filter((utility) => isDateInRange(utility.dueDate, ethiopianMonthRange.start, ethiopianMonthRange.end))
+        .reduce((sum, utility) => (
+          sum + getUtilityTotal(utility)
+        ), 0)
+        .toFixed(2)
+    );
     const totalRevenue = Number((rentRevenueResult[0]?.total || 0).toFixed(2));
-    const utilityRevenue = Number((utilityRevenueResult[0]?.total || 0).toFixed(2));
+    const monthlyUtilityCollected = Number((monthlyUtilityCollectedResult[0]?.total || 0).toFixed(2));
     const outstandingRent = invoiceOutstanding[0]?.total || 0;
     const outstandingInvoiceCount = invoiceOutstanding[0]?.count || 0;
 
@@ -230,8 +263,8 @@ router.get("/dashboard", async (req, res) => {
       monthlyPaymentCount: rentRevenueResult[0]?.count || 0,
       monthlyRentCollected: totalRevenue,
       monthlyRentPaymentCount: rentRevenueResult[0]?.count || 0,
-      monthlyUtilityCollected: utilityRevenue,
-      monthlyUtilityPaymentCount: utilityRevenueResult[0]?.count || 0,
+      monthlyUtilityCollected,
+      monthlyUtilityPaymentCount: monthlyUtilityCollectedResult[0]?.count || 0,
       recentActivity
     });
   } catch (error) {

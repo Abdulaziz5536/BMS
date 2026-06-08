@@ -1,5 +1,6 @@
 import { getApiErrorMessage, formatErrorMessage } from "./utils/errorUtils";
 import { getAuthToken, isReadOnlyUser } from "./authSession";
+import { confirmAction } from "./components/confirmAction";
 
 const defaultApiBase = import.meta.env.PROD
   ? (typeof window === "undefined" ? "" : window.location.origin)
@@ -53,13 +54,35 @@ export const withBuilding = (path, buildingId = getSelectedBuildingId()) => {
   return url.toString();
 };
 
-export const apiFetch = (url, options = {}) => {
+export const apiFetch = async (url, options = {}) => {
   // Add the login token to private API calls. Login/signup still work because no token is required there.
   const token = getAuthToken();
   const headers = new Headers(options.headers || {});
+  const method = String(options.method || "GET").toUpperCase();
 
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  if (method === "DELETE" && !headers.has("X-Delete-Pin")) {
+    const pinResult = await confirmAction({
+      title: "Delete PIN required",
+      message: "Enter your 6-digit password/PIN to delete.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      requireInput: true,
+      inputLabel: "Delete PIN",
+      inputType: "password",
+      inputMode: "numeric",
+      inputPlaceholder: "6-digit PIN",
+      maxLength: 6
+    });
+
+    if (!pinResult?.confirmed) {
+      throw new Error("Delete cancelled");
+    }
+
+    headers.set("X-Delete-Pin", pinResult.value || "");
   }
 
   return fetch(url, {

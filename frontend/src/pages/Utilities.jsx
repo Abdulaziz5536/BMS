@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  CheckCircleIcon,
   PencilSquareIcon,
   TrashIcon
 } from "@heroicons/react/24/outline";
@@ -31,6 +32,12 @@ import "../style.css";
 
 // Utilities page tracks non-rent charges and can create the next utility cycle after payment.
 
+const getTodayDateInputValue = () => {
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  return today.toISOString().slice(0, 10);
+};
+
 export default function Utilities() {
   const selectedBuildingId = useSelectedBuilding();
   const [tenants, setTenants] = useState([]);
@@ -45,10 +52,18 @@ export default function Utilities() {
   const [customPaymentFrequencyMonths, setCustomPaymentFrequencyMonths] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState("pending");
+  const [statusPaymentDate, setStatusPaymentDate] = useState("");
+  const [statusPaymentMethod, setStatusPaymentMethod] = useState("cash");
   const [utilityFile, setUtilityFile] = useState(undefined);
 
   const [editingId, setEditingId] = useState(null);
   const editUtilityFormRef = useRef(null);
+  const utilityPaymentFormRef = useRef(null);
+  const [currentUtilityPaymentId, setCurrentUtilityPaymentId] = useState(null);
+  const [utilityPaymentDate, setUtilityPaymentDate] = useState("");
+  const [utilityPaymentMethod, setUtilityPaymentMethod] = useState("cash");
+  const [utilityPaymentNotes, setUtilityPaymentNotes] = useState("");
+  const [utilityPaymentFile, setUtilityPaymentFile] = useState(undefined);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useShortError();
@@ -96,6 +111,8 @@ export default function Utilities() {
     setUtilityFile(undefined);
     setNotes("");
     setStatus("pending");
+    setStatusPaymentDate("");
+    setStatusPaymentMethod("cash");
     setEditingId(null);
   };
 
@@ -147,6 +164,15 @@ export default function Utilities() {
       });
     }
   }, [editingId]);
+
+  useEffect(() => {
+    if (currentUtilityPaymentId) {
+      utilityPaymentFormRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }
+  }, [currentUtilityPaymentId]);
 
   const getUtilityTotal = (utility) => (
     (Number(utility.waterAmount) || 0) +
@@ -203,6 +229,9 @@ export default function Utilities() {
       generatorGasAmount
     });
   }, [waterAmount, lightAmount, generatorGasAmount]);
+  const editingUtility = editingId ? utilities.find((utility) => utility._id === editingId) : null;
+  const recordsStatusPayment = status === "paid" && (!editingId || editingUtility?.status !== "paid");
+  const currentUtilityPayment = utilities.find((utility) => utility._id === currentUtilityPaymentId);
 
   const saveUtility = async () => {
     // Backend validates tenant ownership and negative amount rules.
@@ -228,6 +257,11 @@ export default function Utilities() {
       return;
     }
 
+    if (recordsStatusPayment && !statusPaymentDate) {
+      setError("Enter the utility paid date");
+      return;
+    }
+
     try {
       const res = await apiFetch(
         editingId ? `${API_BASE}/utilities/${editingId}` : `${API_BASE}/utilities`,
@@ -243,6 +277,8 @@ export default function Utilities() {
             dueDate,
             paymentFrequency: savedPaymentFrequency,
             status,
+            paymentDate: recordsStatusPayment ? statusPaymentDate : undefined,
+            paymentMethod: recordsStatusPayment ? statusPaymentMethod : undefined,
             notes,
             utilityFile
           })
@@ -276,17 +312,77 @@ export default function Utilities() {
     setCustomPaymentFrequencyMonths(frequencyState.customMonths);
     setNotes(utility.notes || "");
     setStatus(utility.status || "pending");
+    setStatusPaymentDate("");
+    setStatusPaymentMethod("cash");
     setUtilityFile(utility.utilityFile || undefined);
     setEditingId(utility._id);
     setMessage("");
     setError("");
   };
 
+  const clearUtilityPaymentForm = () => {
+    setCurrentUtilityPaymentId(null);
+    setUtilityPaymentDate("");
+    setUtilityPaymentMethod("cash");
+    setUtilityPaymentNotes("");
+    setUtilityPaymentFile(undefined);
+  };
+
+  const startUtilityPayment = (utility) => {
+    setCurrentUtilityPaymentId(utility._id);
+    setUtilityPaymentDate(getTodayDateInputValue());
+    setUtilityPaymentMethod("cash");
+    setUtilityPaymentNotes("");
+    setUtilityPaymentFile(utility.utilityFile || undefined);
+    setMessage("");
+    setError("");
+  };
+
+  const recordUtilityPayment = async () => {
+    if (!currentUtilityPaymentId) {
+      setError("Select a utility payment");
+      return;
+    }
+
+    if (!utilityPaymentDate) {
+      setError("Enter the utility paid date");
+      return;
+    }
+
+    try {
+      setMessage("");
+      setError("");
+
+      const res = await apiFetch(`${API_BASE}/utilities/${currentUtilityPaymentId}/pay`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentDate: utilityPaymentDate,
+          paymentMethod: utilityPaymentMethod,
+          notes: utilityPaymentNotes,
+          utilityFile: utilityPaymentFile
+        })
+      });
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        setMessage(data.message || "Utility payment recorded");
+        clearUtilityPaymentForm();
+        invalidateCache(selectedBuildingId);
+        fetchUtilities(false);
+      } else {
+        setError(data.error || "Failed to record utility payment");
+      }
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
   const deleteUtility = async (id) => {
-    // Backend blocks deletion if a payment record already references this utility bill.
+    // Backend removes linked payment records with the utility bill.
     const shouldDelete = await confirmAction({
       title: "Delete utility payment?",
-      message: "Are you sure you want to delete this utility payment?",
+      message: "Are you sure you want to delete this utility payment? Related payment records will also be removed.",
       confirmText: "Yes",
       cancelText: "No"
     });
@@ -409,12 +505,46 @@ export default function Utilities() {
 
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              onChange={(e) => {
+                const nextStatus = e.target.value;
+                setStatus(nextStatus);
+
+                if (nextStatus === "paid" && !statusPaymentDate) {
+                  setStatusPaymentDate(getTodayDateInputValue());
+                } else if (nextStatus !== "paid") {
+                  setStatusPaymentDate("");
+                  setStatusPaymentMethod("cash");
+                }
+              }}
               disabled={!selectedBuildingId}
             >
               <option value="pending">Pending</option>
               <option value="paid">Paid</option>
             </select>
+
+            {recordsStatusPayment && (
+              <>
+                <input
+                  {...dateInputProps}
+                  value={statusPaymentDate}
+                  onChange={(e) => setStatusPaymentDate(e.target.value)}
+                  disabled={!selectedBuildingId}
+                  aria-label="Utility paid date"
+                />
+                <select
+                  value={statusPaymentMethod}
+                  onChange={(e) => setStatusPaymentMethod(e.target.value)}
+                  disabled={!selectedBuildingId}
+                  aria-label="Utility payment method"
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="check">Check</option>
+                  <option value="mobile_money">Mobile Money</option>
+                  <option value="other">Other</option>
+                </select>
+              </>
+            )}
 
             <input
               placeholder="Notes"
@@ -422,35 +552,6 @@ export default function Utilities() {
               onChange={(e) => setNotes(e.target.value)}
               disabled={!selectedBuildingId}
             />
-          </div>
-
-          <div style={{ marginTop: "1rem" }}>
-            <label className="field-label file-field">
-              Utility Photo/PDF
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={async (e) => {
-                  setError("");
-                  setMessage("");
-                  try {
-                    const file = e.target.files?.[0];
-                    const uploaded = await readUploadFile(file);
-                    setUtilityFile(uploaded);
-                  } catch (err) {
-                    setUtilityFile(undefined);
-                    setError(err.message);
-                    e.target.value = "";
-                  }
-                }}
-                disabled={!selectedBuildingId}
-              />
-              {utilityFile?.name && <span>{utilityFile.name}</span>}
-            </label>
-
-            <div style={{ marginTop: "0.5rem" }}>
-              {editingId ? renderFileLink(utilities.find((u) => u._id === editingId)?.utilityFile) : "-"}
-            </div>
           </div>
 
           <p className="form-total">Total: Br {formTotal}</p>
@@ -467,6 +568,75 @@ export default function Utilities() {
             )}
           </div>
         </section>
+
+        {currentUtilityPayment && (
+          <section className="panel payment-form" ref={utilityPaymentFormRef}>
+            <h2>Record Utility Payment</h2>
+            <p className="form-total">
+              {currentUtilityPayment.tenant?.tenantName || "Tenant"} / Br {getUtilityTotal(currentUtilityPayment)}
+            </p>
+            <div className="form-grid">
+              <input
+                {...dateInputProps}
+                value={utilityPaymentDate}
+                onChange={(e) => setUtilityPaymentDate(e.target.value)}
+                aria-label="Utility paid date"
+              />
+              <select
+                value={utilityPaymentMethod}
+                onChange={(e) => setUtilityPaymentMethod(e.target.value)}
+                aria-label="Utility payment method"
+              >
+                <option value="cash">Cash</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="check">Check</option>
+                <option value="mobile_money">Mobile Money</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <textarea
+              placeholder="Payment Notes"
+              value={utilityPaymentNotes}
+              onChange={(e) => setUtilityPaymentNotes(e.target.value)}
+              rows="3"
+            />
+            <div style={{ marginTop: "1rem" }}>
+              <label className="field-label file-field">
+                Payment Photo/PDF (optional)
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={async (e) => {
+                    setError("");
+                    setMessage("");
+                    try {
+                      const file = e.target.files?.[0];
+                      const uploaded = await readUploadFile(file);
+                      setUtilityPaymentFile(uploaded);
+                    } catch (err) {
+                      setUtilityPaymentFile(undefined);
+                      setError(err.message);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+                {utilityPaymentFile?.name && <span>{utilityPaymentFile.name}</span>}
+              </label>
+
+              <div style={{ marginTop: "0.5rem" }}>
+                {renderFileLink(utilityPaymentFile)}
+              </div>
+            </div>
+            <div className="form-actions">
+              <button onClick={recordUtilityPayment}>
+                Record Payment
+              </button>
+              <button className="secondary-btn" onClick={clearUtilityPaymentForm}>
+                Cancel
+              </button>
+            </div>
+          </section>
+        )}
 
         {message && <p className="message">{message}</p>}
         {error && <p className="error">{error}</p>}
@@ -532,6 +702,15 @@ export default function Utilities() {
                   <td>
                     <div className="table-action-stack">
                       <div className="table-action-row">
+                        {utility.status !== "paid" && (
+                          <button
+                            className="table-action-btn payment-action-btn"
+                            onClick={() => startUtilityPayment(utility)}
+                            title="Record payment"
+                          >
+                            <CheckCircleIcon />
+                          </button>
+                        )}
                         <button className="table-action-btn" onClick={() => editUtility(utility)} title="Edit">
                           <PencilSquareIcon />
                         </button>

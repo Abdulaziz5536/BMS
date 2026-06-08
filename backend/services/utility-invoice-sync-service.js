@@ -46,6 +46,8 @@ const findTenantInvoiceForUtility = async ({
     if (nextInvoice) {
       return nextInvoice;
     }
+
+    return null;
   }
 
   return Invoice.findOne(filter)
@@ -86,15 +88,27 @@ const syncPendingUtilitiesToInvoiceDueDate = async (invoice) => {
     filter.building = building;
   }
 
-  return Utility.updateMany(filter, { $set: { dueDate } });
+  return Utility.updateMany(
+    {
+      ...filter,
+      dueDate: { $ne: dueDate }
+    },
+    {
+      $set: {
+        dueDate,
+        remindersSent: []
+      }
+    }
+  );
 };
 
 const syncPendingUtilitiesToLatestTenantInvoiceDueDate = async ({
   tenant,
   building,
-  contract
+  contract,
+  clearWhenMissing = false
 }) => {
-  const filter = {
+  const invoiceFilter = {
     tenant,
     ...ACTIVE_INVOICE_FILTER
   };
@@ -104,16 +118,40 @@ const syncPendingUtilitiesToLatestTenantInvoiceDueDate = async ({
   }
 
   if (building) {
-    filter.building = building;
+    invoiceFilter.building = building;
   }
 
   if (contract) {
-    filter.contract = contract;
+    invoiceFilter.contract = contract;
   }
 
-  const invoice = await Invoice.findOne(filter).sort({ dueDate: -1, createdAt: -1 });
+  const invoice = await Invoice.findOne(invoiceFilter).sort({ dueDate: -1, createdAt: -1 });
 
   if (!invoice) {
+    if (clearWhenMissing) {
+      const utilityFilter = {
+        tenant,
+        status: "pending"
+      };
+
+      if (building) {
+        utilityFilter.building = building;
+      }
+
+      return Utility.updateMany(
+        {
+          ...utilityFilter,
+          dueDate: { $ne: "" }
+        },
+        {
+          $set: {
+            dueDate: "",
+            remindersSent: []
+          }
+        }
+      );
+    }
+
     return { matchedCount: 0, modifiedCount: 0 };
   }
 

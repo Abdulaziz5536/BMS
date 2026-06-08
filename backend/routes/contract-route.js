@@ -9,7 +9,10 @@ const {
   applyContractStatusToInvoices,
   syncContractPaymentState
 } = require('../services/payment-status-sync-service');
-const { createPaymentRecordIfMissing } = require('../services/payment-record-service');
+const {
+  createPaymentRecordIfMissing,
+  syncPaymentRecordForPaidEntity
+} = require('../services/payment-record-service');
 const { recalculateInvoicePeriodsForContract } = require('../services/invoice-period-service');
 const {
   syncPendingUtilitiesToLatestTenantInvoiceDueDate
@@ -51,6 +54,23 @@ const normalizeTenantFile = (file) => {
 
 const getContractLabel = (contract) =>
   `${contract.paymentFrequency || "Contract"} / Br ${contract.amount || 0}`;
+
+const deleteContractLinkedPaymentRecords = async (contractId) => {
+  const invoices = await Invoice.find({ contract: contractId }).select("_id").lean();
+  const invoiceIds = invoices.map((invoice) => invoice._id);
+  const [invoicePaymentDelete, contractPaymentDelete] = await Promise.all([
+    invoiceIds.length > 0
+      ? PaymentRecord.deleteMany({ invoice: { $in: invoiceIds } })
+      : Promise.resolve({ deletedCount: 0 }),
+    PaymentRecord.deleteMany({ contract: contractId })
+  ]);
+
+  return {
+    invoicePaymentRecordsDeleted: invoicePaymentDelete.deletedCount || 0,
+    contractPaymentRecordsDeleted: contractPaymentDelete.deletedCount || 0,
+    totalDeleted: (invoicePaymentDelete.deletedCount || 0) + (contractPaymentDelete.deletedCount || 0)
+  };
+};
 
 router.get('/contract', async (req, res) => {
   try {
@@ -256,15 +276,18 @@ router.put('/contract/:id', async (req, res) => {
       : { matchedCount: 0, modifiedCount: 0 };
     await applyContractStatusToInvoices(updatedContract, updatedContract.status);
 
-    if (previousContract.status !== "paid" && updatedContract.status === "paid") {
-      await createPaymentRecordIfMissing({
+    const paymentRecordCleanup = previousContract.status === "paid" && updatedContract.status !== "paid"
+      ? await deleteContractLinkedPaymentRecords(updatedContract._id)
+      : { totalDeleted: 0 };
+    const paymentRecordSync = updatedContract.status === "paid"
+      ? await syncPaymentRecordForPaidEntity({
         building: updatedContract.building,
         tenant: updatedContract.tenant,
         contract: updatedContract._id,
         amount: updatedContract.amount,
         notes: "Recorded from paid contract status"
-      });
-    }
+      })
+      : { deletedCount: 0 };
 
     const invoicePeriodsUpdated = invoicePeriodSync.updated;
     const invoicePeriodsSkipped = invoicePeriodSync.skipped;
@@ -280,7 +303,8 @@ router.put('/contract/:id', async (req, res) => {
       metadata: {
         invoicePeriodsUpdated,
         invoicePeriodsSkipped,
-        utilityDueDatesUpdated
+        utilityDueDatesUpdated,
+        paymentRecordsDeleted: paymentRecordCleanup.totalDeleted + (paymentRecordSync.deletedCount || 0)
       }
     });
 
@@ -341,22 +365,28 @@ router.patch('/contract/:id/status', async (req, res) => {
     await applyContractStatusToInvoices(contract, status);
     await syncContractPaymentState(contract);
 
-    if (previousStatus !== "paid" && status === "paid") {
-      await createPaymentRecordIfMissing({
+    const paymentRecordCleanup = previousStatus === "paid" && contract.status !== "paid"
+      ? await deleteContractLinkedPaymentRecords(contract._id)
+      : { totalDeleted: 0 };
+    const paymentRecordSync = contract.status === "paid"
+      ? await syncPaymentRecordForPaidEntity({
         building: contract.building,
         tenant: contract.tenant,
         contract: contract._id,
         amount: contract.amount,
         notes: "Recorded from paid contract status"
-      });
-    }
+      })
+      : { deletedCount: 0 };
     await recordAuditLog({
       building: contract.building,
       action: "status_changed",
       entityType: "contract",
       entityId: contract._id,
       entityLabel: getContractLabel(contract),
-      message: `Contract status changed to ${status}`
+      message: `Contract status changed to ${status}`,
+      metadata: {
+        paymentRecordsDeleted: paymentRecordCleanup.totalDeleted + (paymentRecordSync.deletedCount || 0)
+      }
     });
 
     return res.json({
@@ -439,23 +469,27 @@ router.patch('/contract/:id/pay', async (req, res) => {
 
 router.delete('/contract/:id', async (req, res) => {
   try {
-    // Do not delete a contract if invoices or payment records still point to it.
-    const [invoiceCount, paymentCount] = await Promise.all([
-      Invoice.countDocuments({ contract: req.params.id }),
-      PaymentRecord.countDocuments({ contract: req.params.id })
-    ]);
-
-    if (invoiceCount || paymentCount) {
-      return res.status(400).json({
-        error: "Cannot delete this contract because it has invoices or payment records. Delete or cancel those records first."
-      });
-    }
-
-    const contract = await Contract.findByIdAndDelete(req.params.id);
+    const contract = await Contract.findById(req.params.id);
 
     if (!contract) {
       return res.status(404).json({ error: "Contract not found" });
     }
+
+    const invoices = await Invoice.find({ contract: contract._id }).select("_id").lean();
+    const invoiceIds = invoices.map((invoice) => invoice._id);
+    const [invoicePaymentDelete, contractPaymentDelete, invoiceDelete] = await Promise.all([
+      invoiceIds.length > 0
+        ? PaymentRecord.deleteMany({ invoice: { $in: invoiceIds } })
+        : Promise.resolve({ deletedCount: 0 }),
+      PaymentRecord.deleteMany({ contract: contract._id }),
+      Invoice.deleteMany({ contract: contract._id })
+    ]);
+    await Contract.deleteOne({ _id: contract._id });
+    const utilitySync = await syncPendingUtilitiesToLatestTenantInvoiceDueDate({
+      tenant: contract.tenant,
+      building: contract.building,
+      clearWhenMissing: true
+    });
 
     await recordAuditLog({
       building: contract.building,
@@ -463,7 +497,12 @@ router.delete('/contract/:id', async (req, res) => {
       entityType: "contract",
       entityId: contract._id,
       entityLabel: getContractLabel(contract),
-      message: "Contract deleted"
+      message: "Contract deleted",
+      metadata: {
+        invoicesDeleted: invoiceDelete.deletedCount || 0,
+        paymentRecordsDeleted: (invoicePaymentDelete.deletedCount || 0) + (contractPaymentDelete.deletedCount || 0),
+        utilitiesUpdated: utilitySync.modifiedCount || 0
+      }
     });
 
     res.json({ message: "contract removed" });

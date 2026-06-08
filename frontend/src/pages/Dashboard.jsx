@@ -40,11 +40,16 @@ export default function Dashboard() {
   const [dashboard, setDashboard] = useState({});
   const [error, setError] = useShortError();
   const [paymentAlerts, setPaymentAlerts] = useState({ dueSoon: [], overdue: [] });
+  const [utilityAlerts, setUtilityAlerts] = useState({ dueSoon: [], overdue: [] });
+  const [activeDueList, setActiveDueList] = useState("rent");
   const [paymentAlertError, setPaymentAlertError] = useShortError();
   const [paymentAlertsLoading, setPaymentAlertsLoading] = useState(false);
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderResult, setReminderResult] = useState(null);
   const [forceReminderSend, setForceReminderSend] = useState(false);
+  const [utilityReminderLoading, setUtilityReminderLoading] = useState(false);
+  const [utilityReminderResult, setUtilityReminderResult] = useState(null);
+  const [forceUtilityReminderSend, setForceUtilityReminderSend] = useState(false);
 
   const fetchDashboard = useCallback(async () => {
     // Main dashboard cards come from one backend summary endpoint.
@@ -65,6 +70,7 @@ export default function Dashboard() {
     // Due-soon and overdue invoices are fetched separately so the UI can label them clearly.
     if (!selectedBuildingId) {
       setPaymentAlerts({ dueSoon: [], overdue: [] });
+      setUtilityAlerts({ dueSoon: [], overdue: [] });
       setPaymentAlertError("");
       return;
     }
@@ -73,13 +79,15 @@ export default function Dashboard() {
     setPaymentAlertError("");
 
     try {
-      const [dueRes, overdueRes] = await Promise.all([
+      const [dueRes, overdueRes, utilityRes] = await Promise.all([
         apiFetch(withBuilding("/invoices/reminders", selectedBuildingId)),
-        apiFetch(withBuilding("/invoices/overdue", selectedBuildingId))
+        apiFetch(withBuilding("/invoices/overdue", selectedBuildingId)),
+        apiFetch(withBuilding("/utilities/alerts", selectedBuildingId))
       ]);
-      const [dueData, overdueData] = await Promise.all([
+      const [dueData, overdueData, utilityData] = await Promise.all([
         readResponse(dueRes),
-        readResponse(overdueRes)
+        readResponse(overdueRes),
+        readResponse(utilityRes)
       ]);
 
       if (!dueRes.ok) {
@@ -90,9 +98,17 @@ export default function Dashboard() {
         throw new Error(overdueData.error || "Failed to load overdue payments");
       }
 
+      if (!utilityRes.ok) {
+        throw new Error(utilityData.error || "Failed to load utility payments");
+      }
+
       setPaymentAlerts({
         dueSoon: Array.isArray(dueData) ? dueData : [],
         overdue: Array.isArray(overdueData) ? overdueData : []
+      });
+      setUtilityAlerts({
+        dueSoon: Array.isArray(utilityData?.dueSoon) ? utilityData.dueSoon : [],
+        overdue: Array.isArray(utilityData?.overdue) ? utilityData.overdue : []
       });
     } catch (error) {
       setPaymentAlertError(error.message);
@@ -158,6 +174,56 @@ export default function Dashboard() {
     }
   };
 
+  const sendUtilityRemindersNow = async () => {
+    if (!selectedBuildingId) {
+      setUtilityReminderResult(null);
+      setPaymentAlertError("Select a building before sending utility reminders.");
+      return;
+    }
+
+    setUtilityReminderLoading(true);
+    setUtilityReminderResult(null);
+    setPaymentAlertError("");
+
+    try {
+      if (forceUtilityReminderSend) {
+        const shouldForceSend = await confirmAction({
+          title: "Resend utility reminders?",
+          message: "This will send utility reminders again even when the same reminder was already sent.",
+          confirmText: "Send again",
+          cancelText: "Cancel"
+        });
+
+        if (!shouldForceSend) {
+          setUtilityReminderLoading(false);
+          return;
+        }
+      }
+
+      const res = await apiFetch(`${API_BASE}/utilities/reminders/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          building: selectedBuildingId,
+          daysAhead: 7,
+          force: forceUtilityReminderSend
+        })
+      });
+      const data = await readResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data.error || data.message || "Utility reminder send failed");
+      }
+
+      setUtilityReminderResult(data);
+      fetchPaymentAlerts();
+    } catch (error) {
+      setPaymentAlertError(error.message);
+    } finally {
+      setUtilityReminderLoading(false);
+    }
+  };
+
   const logout = async () => {
     // Logout clears the browser token and asks the backend to clear the direct-URL session cookie.
     await apiFetch(`${API_BASE}/logout`, { method: "POST" }).catch(() => {});
@@ -191,15 +257,44 @@ export default function Dashboard() {
     dueSoon: paymentAlerts.dueSoon.length,
     total: duePayments.reduce((sum, item) => sum + Number(item.amountDue || 0), 0)
   };
+  const utilityDuePayments = [
+    ...utilityAlerts.overdue.map((item) => ({
+      ...item,
+      alertType: "overdue",
+      amountDue: item.amount,
+      timingLabel: `${item.daysOverdue} day${item.daysOverdue === 1 ? "" : "s"} overdue`
+    })),
+    ...utilityAlerts.dueSoon.map((item) => ({
+      ...item,
+      alertType: item.daysUntilDue === 0 ? "today" : "soon",
+      amountDue: item.amount,
+      timingLabel: item.daysUntilDue === 0
+        ? "Due today"
+        : `${item.daysUntilDue} day${item.daysUntilDue === 1 ? "" : "s"} left`
+    }))
+  ].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+  const utilityDueSummary = {
+    overdue: utilityAlerts.overdue.length,
+    dueSoon: utilityAlerts.dueSoon.length,
+    total: utilityDuePayments.reduce((sum, item) => sum + Number(item.amountDue || 0), 0)
+  };
+  const activeDuePayments = activeDueList === "utility" ? utilityDuePayments : duePayments;
+  const activeDueSummary = activeDueList === "utility" ? utilityDueSummary : dueSummary;
+  const activeDueLabel = activeDueList === "utility" ? "utility bill" : "tenant payment";
   const monthlyRevenue = firstDefined(dashboard?.monthlyRevenue, dashboard?.normalizedMonthlyRevenue);
   const monthlyRentCollected = firstDefined(
     dashboard?.monthlyRentCollected,
     dashboard?.monthlyCollected,
     dashboard?.totalRevenue
   );
+  const utilityRevenue = firstDefined(
+    dashboard?.utilityRevenue,
+    dashboard?.normalizedUtilityRevenue
+  );
   const monthlyUtilityCollected = firstDefined(
     dashboard?.monthlyUtilityCollected,
-    dashboard?.utilityRevenue
+    dashboard?.utilityCollectedThisMonth,
+    dashboard?.utilityCollected
   );
 
   const renderTenantPaymentDue = () => (
@@ -207,62 +302,110 @@ export default function Dashboard() {
       <div className="section-header">
         <div>
           <h2>Tenant Payment Due</h2>
-          <p>{duePayments.length} tenant payment{duePayments.length === 1 ? "" : "s"} need attention</p>
+          <p>{activeDuePayments.length} {activeDueLabel}{activeDuePayments.length === 1 ? "" : "s"} need attention</p>
         </div>
-        <button className="secondary-btn" onClick={() => navigate("/invoice")}>
-          Open Invoices
-        </button>
+        <div className="dashboard-due-header-actions">
+          <div className="dashboard-alert-tabs" role="tablist" aria-label="Payment due type">
+            <button
+              className={activeDueList === "rent" ? "active" : ""}
+              onClick={() => setActiveDueList("rent")}
+              type="button"
+            >
+              Rent
+            </button>
+            <button
+              className={activeDueList === "utility" ? "active" : ""}
+              onClick={() => setActiveDueList("utility")}
+              type="button"
+            >
+              Utility
+            </button>
+          </div>
+          <button
+            className="secondary-btn"
+            onClick={() => navigate(activeDueList === "utility" ? "/utilities" : "/invoice")}
+          >
+            {activeDueList === "utility" ? "Open Utilities" : "Open Invoices"}
+          </button>
+        </div>
       </div>
 
       <div className="dashboard-due-summary">
         <div className="dashboard-due-summary-item is-overdue">
           <BellAlertIcon />
           <span>Overdue</span>
-          <strong>{dueSummary.overdue}</strong>
+          <strong>{activeDueSummary.overdue}</strong>
         </div>
         <div className="dashboard-due-summary-item">
           <CalendarDaysIcon />
           <span>Due Soon</span>
-          <strong>{dueSummary.dueSoon}</strong>
+          <strong>{activeDueSummary.dueSoon}</strong>
         </div>
         <div className="dashboard-due-summary-item">
           <CurrencyDollarIcon />
           <span>Total Due</span>
-          <strong>{formatCurrency(dueSummary.total)}</strong>
+          <strong>{formatCurrency(activeDueSummary.total)}</strong>
         </div>
       </div>
 
-      <div className="dashboard-reminder-actions">
-        <button onClick={sendRemindersNow} disabled={reminderLoading || !selectedBuildingId}>
-          <PaperAirplaneIcon />
-          {reminderLoading ? "Sending..." : "Send Reminders Now"}
-        </button>
-        <label className="dashboard-force-toggle">
-          <input
-            type="checkbox"
-            checked={forceReminderSend}
-            onChange={(e) => setForceReminderSend(e.target.checked)}
-            disabled={reminderLoading || !selectedBuildingId}
-          />
-          <span>Force resend</span>
-        </label>
-      </div>
+      {activeDueList === "rent" && (
+        <div className="dashboard-reminder-actions">
+          <button onClick={sendRemindersNow} disabled={reminderLoading || !selectedBuildingId}>
+            <PaperAirplaneIcon />
+            {reminderLoading ? "Sending..." : "Send Reminders Now"}
+          </button>
+          <label className="dashboard-force-toggle">
+            <input
+              type="checkbox"
+              checked={forceReminderSend}
+              onChange={(e) => setForceReminderSend(e.target.checked)}
+              disabled={reminderLoading || !selectedBuildingId}
+            />
+            <span>Force resend</span>
+          </label>
+        </div>
+      )}
+
+      {activeDueList === "utility" && (
+        <div className="dashboard-reminder-actions">
+          <button onClick={sendUtilityRemindersNow} disabled={utilityReminderLoading || !selectedBuildingId}>
+            <PaperAirplaneIcon />
+            {utilityReminderLoading ? "Sending..." : "Send Utility Reminders Now"}
+          </button>
+          <label className="dashboard-force-toggle">
+            <input
+              type="checkbox"
+              checked={forceUtilityReminderSend}
+              onChange={(e) => setForceUtilityReminderSend(e.target.checked)}
+              disabled={utilityReminderLoading || !selectedBuildingId}
+            />
+            <span>Force resend</span>
+          </label>
+        </div>
+      )}
 
       {paymentAlertError && <p className="error">{paymentAlertError}</p>}
       {paymentAlertsLoading && <p className="message">Loading due payments...</p>}
-      {reminderResult && (
+      {activeDueList === "rent" && reminderResult && (
         <p className={reminderResult.failed > 0 ? "error" : "message"}>
           {reminderResult.force ? "Forced reminder run" : "Reminder send"} checked {reminderResult.checked || 0},
           sent {reminderResult.sent || 0}, skipped {reminderResult.skipped || 0},
           failed {reminderResult.failed || 0}.
         </p>
       )}
+      {activeDueList === "utility" && utilityReminderResult && (
+        <p className={utilityReminderResult.failed > 0 ? "error" : "message"}>
+          {utilityReminderResult.force ? "Forced utility reminder run" : "Utility reminder send"} checked {utilityReminderResult.checked || 0},
+          sent {utilityReminderResult.sent || 0}, skipped {utilityReminderResult.skipped || 0},
+          failed {utilityReminderResult.failed || 0}.
+        </p>
+      )}
 
-      {duePayments.length > 0 ? (
+      {activeDuePayments.length > 0 ? (
         <div className="dashboard-due-list">
-          {duePayments.map((item, idx) => (
+          {activeDuePayments.map((item, idx) => (
             <article
-              key={`${item.alertType}-${item.invoiceId || idx}`}
+              key={`${activeDueList}-${item.alertType}-${item.invoiceId || item.utilityId || idx}`}
               className={`dashboard-due-item ${item.alertType === "overdue" ? "is-overdue" : ""}`}
             >
               <div className="dashboard-due-main">
@@ -277,7 +420,7 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <p>
-                    Invoice {item.invoiceNumber}
+                    {activeDueList === "utility" ? "Utility bill" : `Invoice ${item.invoiceNumber}`}
                     {item.tenantUnit && ` / Unit ${item.tenantUnit}`}
                   </p>
                 </div>
@@ -288,7 +431,7 @@ export default function Dashboard() {
                   <CurrencyDollarIcon />
                   {formatCurrency(item.amountDue)}
                 </span>
-                {item.alertType === "overdue" && Number(item.latePenalty || 0) > 0 && (
+                {activeDueList === "rent" && item.alertType === "overdue" && Number(item.latePenalty || 0) > 0 && (
                   <span className="dashboard-penalty-meta">
                     <CurrencyDollarIcon />
                     + {formatCurrency(item.latePenalty)} Penalty
@@ -315,7 +458,13 @@ export default function Dashboard() {
           ))}
         </div>
       ) : (
-        !paymentAlertsLoading && <p className="empty-state">No due tenant payments for this building.</p>
+        !paymentAlertsLoading && (
+          <p className="empty-state">
+            {activeDueList === "utility"
+              ? "No due utility payments for this building."
+              : "No due tenant payments for this building."}
+          </p>
+        )
       )}
     </section>
   );
@@ -379,15 +528,7 @@ export default function Dashboard() {
         <h1 style={{ marginTop: 60 }}>Financial Summary</h1>
 
         <div className="revenue-container">
-          <div className="card">
-            <CurrencyDollarIcon className="card-icon" />
-            <div>
-              <div>Monthly Revenue</div>
-              <strong>{formatCurrency(monthlyRevenue)}</strong>
-            </div>
-          </div>
-
-          <div className="card">
+          <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
             <CurrencyDollarIcon className="card-icon" />
             <div>
               <div>Rent Collected This Month</div>
@@ -403,7 +544,31 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="card">
+          <div className="card" onClick={() => navigate("/utilities")} style={{ cursor: "pointer" }}>
+            <CurrencyDollarIcon className="card-icon" />
+            <div>
+              <div>Utility Collected This Month</div>
+              <strong>{formatCurrency(monthlyUtilityCollected)}</strong>
+            </div>
+          </div>
+
+          <div className="card" onClick={() => navigate("/utilities")} style={{ cursor: "pointer" }}>
+            <CurrencyDollarIcon className="card-icon" />
+            <div>
+              <div>Utility Revenue</div>
+              <strong>{formatCurrency(utilityRevenue)}</strong>
+            </div>
+          </div>
+
+          <div className="card" onClick={() => navigate("/contracts")} style={{ cursor: "pointer" }}>
+            <CurrencyDollarIcon className="card-icon" />
+            <div>
+              <div>Monthly Revenue</div>
+              <strong>{formatCurrency(monthlyRevenue)}</strong>
+            </div>
+          </div>
+
+          <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
             <ArrowPathIcon className="card-icon" />
             <div>
               <div>Rent Due</div>
@@ -419,27 +584,11 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="card">
+          <div className="card" onClick={() => navigate("/units")} style={{ cursor: "pointer" }}>
             <ScaleIcon className="card-icon" />
             <div>
               <div>Occupancy Rate</div>
               <strong>{dashboard?.occupancyRate || 0}%</strong>
-            </div>
-          </div>
-
-          <div className="card">
-            <CurrencyDollarIcon className="card-icon" />
-            <div>
-              <div>Utility Revenue</div>
-              <strong>{formatCurrency(monthlyUtilityCollected)}</strong>
-            </div>
-          </div>
-
-          <div className="card" onClick={() => navigate("/invoice")} style={{ cursor: "pointer" }}>
-            <BellAlertIcon className="card-icon" />
-            <div>
-              <div>Overdue Invoices</div>
-              <strong>{dashboard?.overdueInvoices || 0}</strong>
             </div>
           </div>
         </div>

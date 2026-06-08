@@ -20,8 +20,27 @@ import {
 } from "../buildingSelection";
 import useSelectedBuilding from "../hooks/useSelectedBuilding";
 import useShortError from "../hooks/useShortError";
-import { formatEthiopianDate } from "../utils/dateUtils";
+import {
+  formatEthiopianDate,
+  gregorianToEthiopian
+} from "../utils/dateUtils";
 import "../style.css";
+
+const ETHIOPIAN_MONTH_NAMES = [
+  "Meskerem",
+  "Tikimt",
+  "Hidar",
+  "Tahsas",
+  "Tir",
+  "Yekatit",
+  "Megabit",
+  "Miazia",
+  "Ginbot",
+  "Sene",
+  "Hamle",
+  "Nehase",
+  "Pagume"
+];
 
 const emptyStatus = {
   summary: {
@@ -32,11 +51,42 @@ const emptyStatus = {
     totalCollected: 0,
     totalOutstanding: 0
   },
+  selectedPeriod: null,
   paid: [],
   notPaid: []
 };
 
 const formatCurrency = (amount) => `Br ${Number(amount || 0).toLocaleString()}`;
+
+const formatEthiopianMonth = ({ year, month, isCurrentMonth = false }) => {
+  const name = ETHIOPIAN_MONTH_NAMES[month - 1] || `Month ${month}`;
+  return `${name} ${year} EC${isCurrentMonth ? " / Current" : ""}`;
+};
+
+const shiftEthiopianMonth = ({ year, month }, offset) => {
+  let nextYear = year;
+  let nextMonth = month + offset;
+
+  while (nextMonth < 1) {
+    nextYear -= 1;
+    nextMonth += 13;
+  }
+
+  while (nextMonth > 13) {
+    nextYear += 1;
+    nextMonth -= 13;
+  }
+
+  return { year: nextYear, month: nextMonth };
+};
+
+const getCurrentEthiopianPeriod = () => {
+  const today = gregorianToEthiopian(new Date());
+  return {
+    year: today?.year || new Date().getFullYear(),
+    month: today?.month || 1
+  };
+};
 
 const matchesSearch = (item, searchTerm) => {
   const query = searchTerm.trim().toLowerCase();
@@ -59,6 +109,7 @@ export default function PaymentStatus() {
   const [buildings, setBuildings] = useState([]);
   const [statusData, setStatusData] = useState(emptyStatus);
   const [activeList, setActiveList] = useState("notPaid");
+  const [selectedPeriod, setSelectedPeriod] = useState(getCurrentEthiopianPeriod);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useShortError();
 
@@ -85,10 +136,15 @@ export default function PaymentStatus() {
       return;
     }
 
+    const url = new URL(withBuilding("/payment-status", selectedBuildingId));
+    url.searchParams.set("ethiopianYear", selectedPeriod.year);
+    url.searchParams.set("ethiopianMonth", selectedPeriod.month);
+
     await loadCachedJson(
-      withBuilding("/payment-status", selectedBuildingId),
+      url.toString(),
       (data) => setStatusData({
         summary: data?.summary || emptyStatus.summary,
+        selectedPeriod: data?.selectedPeriod || null,
         paid: Array.isArray(data?.paid) ? data.paid : [],
         notPaid: Array.isArray(data?.notPaid) ? data.notPaid : []
       }),
@@ -96,7 +152,7 @@ export default function PaymentStatus() {
       "Failed to load payment status",
       { useCache: false }
     );
-  }, [selectedBuildingId, setError]);
+  }, [selectedBuildingId, selectedPeriod, setError]);
 
   useEffect(() => {
     fetchBuildings();
@@ -130,12 +186,30 @@ export default function PaymentStatus() {
   };
 
   const activeItems = activeList === "paid" ? statusData.paid : statusData.notPaid;
+  const periodOptions = useMemo(() => {
+    const currentPeriod = getCurrentEthiopianPeriod();
+    return Array.from({ length: 24 }, (_, index) => {
+      const period = shiftEthiopianMonth(currentPeriod, -index);
+      return {
+        ...period,
+        key: `${period.year}-${period.month}`,
+        isCurrentMonth: index === 0
+      };
+    });
+  }, []);
   const filteredItems = useMemo(
     () => activeItems.filter((item) => matchesSearch(item, searchTerm)),
     [activeItems, searchTerm]
   );
 
   const summary = statusData.summary || emptyStatus.summary;
+  const selectedPeriodLabel = statusData.selectedPeriod
+    ? formatEthiopianMonth({
+      year: statusData.selectedPeriod.ethiopianYear,
+      month: statusData.selectedPeriod.ethiopianMonth,
+      isCurrentMonth: statusData.selectedPeriod.isCurrentMonth
+    })
+    : formatEthiopianMonth(selectedPeriod);
   const listTitle = activeList === "paid" ? "Paid / ተከፍሏል " : "Not Paid / አልተከፈለም ";
 
   return (
@@ -157,6 +231,23 @@ export default function PaymentStatus() {
               {buildings.map((building) => (
                 <option key={building._id} value={building._id}>
                   {building.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="payment-building-select payment-period-select">
+            Paid Month / የተከፈለበት ወር
+            <select
+              value={`${selectedPeriod.year}-${selectedPeriod.month}`}
+              onChange={(event) => {
+                const [year, month] = event.target.value.split("-").map(Number);
+                setSelectedPeriod({ year, month });
+              }}
+            >
+              {periodOptions.map((period) => (
+                <option key={period.key} value={period.key}>
+                  {formatEthiopianMonth(period)}
                 </option>
               ))}
             </select>
@@ -228,6 +319,28 @@ export default function PaymentStatus() {
           <h2>{listTitle}</h2>
           <span>{filteredItems.length} ተከራይ{filteredItems.length === 1 ? "" : "/ዎች"}</span>
         </div>
+
+        {activeList === "paid" && (
+          <div className="payment-period-row">
+            <span>{selectedPeriodLabel}</span>
+            <label className="payment-period-compact">
+              <span>Month</span>
+              <select
+                value={`${selectedPeriod.year}-${selectedPeriod.month}`}
+                onChange={(event) => {
+                  const [year, month] = event.target.value.split("-").map(Number);
+                  setSelectedPeriod({ year, month });
+                }}
+              >
+                {periodOptions.map((period) => (
+                  <option key={period.key} value={period.key}>
+                    {formatEthiopianMonth(period)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
         <div className="payment-status-list">
           {filteredItems.length > 0 ? (

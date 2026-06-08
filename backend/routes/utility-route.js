@@ -1,15 +1,23 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
 
 const Utility = require("../models/utility-model");
 const Tenant = require("../models/tenant-model");
 const PaymentRecord = require("../models/payment-record-model");
 const { recordAuditLog } = require("../services/audit-log-service");
-const { createPaymentRecordIfMissing } = require("../services/payment-record-service");
+const {
+  createPaymentRecordIfMissing,
+  syncPaymentRecordForPaidEntity
+} = require("../services/payment-record-service");
 const {
   getSyncedUtilityDueDate
 } = require("../services/utility-invoice-sync-service");
 const {
+  runUtilityDueDateReminders
+} = require("../services/due-reminder-service");
+const {
+  parsePaymentDateInput,
   parseFlexibleDateInput,
   toIsoDate
 } = require("../utils/date-utils");
@@ -20,6 +28,8 @@ const {
 } = require("../utils/payment-frequency-utils");
 
 const getBuildingFilter = (building) => (building ? { building } : {});
+const PAYMENT_METHODS = new Set(["cash", "bank_transfer", "check", "mobile_money", "other"]);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Utility payments are separate from rent invoices but follow the same pattern:
 // validate tenant/building ownership, track paid/pending state, and record payments.
@@ -37,6 +47,23 @@ const populateUtilityTenant = {
 const parseDueDate = (dueDate) => {
   if (!dueDate) return null;
   return parseFlexibleDateInput(dueDate);
+};
+
+const getStartOfDay = (value = new Date()) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const getDaysUntilDue = (dueDate, referenceDate = new Date()) => {
+  const dueDay = getStartOfDay(dueDate);
+  const referenceDay = getStartOfDay(referenceDate);
+
+  if (Number.isNaN(dueDay.getTime()) || Number.isNaN(referenceDay.getTime())) {
+    return 0;
+  }
+
+  return Math.round((dueDay.getTime() - referenceDay.getTime()) / DAY_MS);
 };
 
 const calculateNextDueDate = (dueDate, paymentFrequency) => {
@@ -83,6 +110,37 @@ const validateUtilityAmounts = (waterAmount, lightAmount, generatorGasAmount) =>
   return amounts.every((amount) => amount >= 0);
 };
 
+const getPaymentDateFromRequest = (paymentDate) => {
+  if (!paymentDate) return new Date();
+  return parsePaymentDateInput(paymentDate);
+};
+
+const getPaymentMethodFromRequest = (paymentMethod) => {
+  const method = paymentMethod || "cash";
+  return PAYMENT_METHODS.has(method) ? method : null;
+};
+
+const getUtilityAlertItem = (utility, referenceDate) => {
+  const dueDate = parseDueDate(utility.dueDate);
+  const daysUntilDue = getDaysUntilDue(dueDate, referenceDate);
+
+  return {
+    utilityId: utility._id,
+    tenantId: utility.tenant?._id || null,
+    tenantName: utility.tenant?.tenantName || "Tenant",
+    tenantPhone: utility.tenant?.phone || "",
+    tenantEmail: utility.tenant?.email || "",
+    tenantUnit: utility.tenant?.unit?.unitId || "",
+    waterAmount: Number(utility.waterAmount) || 0,
+    lightAmount: Number(utility.lightAmount) || 0,
+    generatorGasAmount: Number(utility.generatorGasAmount) || 0,
+    amount: getUtilityTotal(utility),
+    dueDate,
+    daysUntilDue,
+    daysOverdue: Math.abs(daysUntilDue)
+  };
+};
+
 router.get("/utilities", async (req, res) => {
   try {
     const utilities = await Utility.find(getBuildingFilter(req.query.building))
@@ -90,6 +148,82 @@ router.get("/utilities", async (req, res) => {
       .sort({ createdAt: -1 });
 
     res.json(utilities);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/utilities/alerts", async (req, res) => {
+  try {
+    const today = getStartOfDay();
+    const dueSoonEnd = new Date(today);
+    dueSoonEnd.setDate(dueSoonEnd.getDate() + 7);
+    dueSoonEnd.setHours(23, 59, 59, 999);
+
+    const utilities = await Utility.find({
+      ...getBuildingFilter(req.query.building),
+      status: "pending"
+    })
+      .populate(populateUtilityTenant)
+      .sort({ dueDate: 1, createdAt: 1 });
+
+    const dueSoon = [];
+    const overdue = [];
+
+    utilities.forEach((utility) => {
+      const dueDate = parseDueDate(utility.dueDate);
+      if (!dueDate) {
+        return;
+      }
+
+      const alertItem = getUtilityAlertItem(utility, today);
+
+      if (dueDate < today) {
+        overdue.push(alertItem);
+        return;
+      }
+
+      if (dueDate <= dueSoonEnd) {
+        dueSoon.push(alertItem);
+      }
+    });
+
+    res.json({ dueSoon, overdue });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/utilities/reminders/send", async (req, res) => {
+  try {
+    const buildingId = req.body.building || req.query.building || "";
+
+    if (buildingId && !mongoose.Types.ObjectId.isValid(buildingId)) {
+      return res.status(400).json({ error: "Invalid building id" });
+    }
+
+    const result = await runUtilityDueDateReminders({
+      daysAhead: req.body.daysAhead ?? req.query.daysAhead,
+      sendSms: req.body.sendSms,
+      sendEmail: req.body.sendEmail,
+      force: req.body.force === true || req.body.force === "true" || req.query.force === "true",
+      buildingId
+    });
+
+    await recordAuditLog({
+      building: buildingId || undefined,
+      action: "sent",
+      entityType: "reminder",
+      message: `${result.force ? "Manual force utility reminder run" : "Manual utility reminder run"} checked ${result.checked || 0}, sent ${result.sent || 0}, failed ${result.failed || 0}`,
+      metadata: result
+    });
+
+    const statusCode = result.failed > 0 && result.sent === 0 ? 400 : 200;
+
+    res.status(statusCode).json({
+      message: `Sent ${result.sent} utility reminder${result.sent === 1 ? "" : "s"}`,
+      ...result
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -106,6 +240,8 @@ router.post("/utilities", async (req, res) => {
       dueDate,
       paymentFrequency,
       status,
+      paymentDate,
+      paymentMethod,
       notes,
       utilityFile
     } = req.body;
@@ -137,6 +273,16 @@ router.post("/utilities", async (req, res) => {
 
     if (dueDate && !parseFlexibleDateInput(dueDate)) {
       return res.status(400).json({ error: "Invalid due date" });
+    }
+
+    const paymentDateObj = status === "paid" ? getPaymentDateFromRequest(paymentDate) : null;
+    if (status === "paid" && !paymentDateObj) {
+      return res.status(400).json({ error: "Invalid payment date" });
+    }
+
+    const normalizedPaymentMethod = status === "paid" ? getPaymentMethodFromRequest(paymentMethod) : null;
+    if (status === "paid" && !normalizedPaymentMethod) {
+      return res.status(400).json({ error: "Invalid payment method" });
     }
 
     const normalizedDueDate = await getSyncedUtilityDueDate({
@@ -173,6 +319,8 @@ router.post("/utilities", async (req, res) => {
         tenant: utility.tenant,
         utility: utility._id,
         amount: getUtilityTotal(utility),
+        paymentDate: paymentDateObj,
+        paymentMethod: normalizedPaymentMethod,
         notes: "Recorded from paid utility status"
       });
     }
@@ -194,6 +342,8 @@ router.put("/utilities/:id", async (req, res) => {
       dueDate,
       paymentFrequency,
       status,
+      paymentDate,
+      paymentMethod,
       notes,
       utilityFile
     } = req.body;
@@ -222,15 +372,10 @@ router.put("/utilities/:id", async (req, res) => {
       return res.status(400).json({ error: "Uploaded file is invalid or too large" });
     }
 
-    if (dueDate && !parseFlexibleDateInput(dueDate)) {
+    const parsedDueDate = dueDate ? parseFlexibleDateInput(dueDate) : null;
+    if (dueDate && !parsedDueDate) {
       return res.status(400).json({ error: "Invalid due date" });
     }
-
-    const normalizedDueDate = await getSyncedUtilityDueDate({
-      tenant,
-      building,
-      fallbackDueDate: dueDate
-    });
 
     const previousUtility = await Utility.findById(req.params.id);
 
@@ -238,22 +383,64 @@ router.put("/utilities/:id", async (req, res) => {
       return res.status(404).json({ error: "Utility payment not found" });
     }
 
+    const normalizedDueDate = dueDate !== undefined
+      ? (parsedDueDate ? toIsoDate(parsedDueDate) : "")
+      : await getSyncedUtilityDueDate({
+        tenant,
+        building,
+        fallbackDueDate: dueDate
+      });
+
+    const recordsNewPayment = previousUtility.status !== "paid" && status === "paid";
+    const paymentDateObj = recordsNewPayment ? getPaymentDateFromRequest(paymentDate) : null;
+    if (recordsNewPayment && !paymentDateObj) {
+      return res.status(400).json({ error: "Invalid payment date" });
+    }
+
+    const normalizedPaymentMethod = recordsNewPayment ? getPaymentMethodFromRequest(paymentMethod) : null;
+    if (recordsNewPayment && !normalizedPaymentMethod) {
+      return res.status(400).json({ error: "Invalid payment method" });
+    }
+
+    const updatePayload = {
+      building,
+      tenant,
+      waterAmount: Number(waterAmount) || 0,
+      lightAmount: Number(lightAmount) || 0,
+      generatorGasAmount: Number(generatorGasAmount) || 0,
+      dueDate: normalizedDueDate,
+      paymentFrequency: normalizedPaymentFrequency,
+      status: status || "pending",
+      notes,
+      utilityFile: normalizedUtilityFile
+    };
+
+    if (String(previousUtility.dueDate || "") !== String(normalizedDueDate || "")) {
+      updatePayload.remindersSent = [];
+    }
+
+    const clearsRecordedPayment = previousUtility.status === "paid" && updatePayload.status !== "paid";
+
     const utility = await Utility.findByIdAndUpdate(
       req.params.id,
-      {
-        building,
-        tenant,
-        waterAmount: Number(waterAmount) || 0,
-        lightAmount: Number(lightAmount) || 0,
-        generatorGasAmount: Number(generatorGasAmount) || 0,
-        dueDate: normalizedDueDate,
-        paymentFrequency: normalizedPaymentFrequency,
-        status: status || "pending",
-        notes,
-        utilityFile: normalizedUtilityFile
-      },
+      updatePayload,
       { returnDocument: "after" }
     );
+
+    const removedPaymentRecords = clearsRecordedPayment
+      ? (await PaymentRecord.deleteMany({ utility: previousUtility._id })).deletedCount || 0
+      : 0;
+    const paymentRecordSync = utility.status === "paid"
+      ? await syncPaymentRecordForPaidEntity({
+        building: utility.building,
+        tenant: utility.tenant,
+        utility: utility._id,
+        amount: getUtilityTotal(utility),
+        paymentDate: recordsNewPayment ? paymentDateObj : undefined,
+        paymentMethod: recordsNewPayment ? normalizedPaymentMethod : undefined,
+        notes: "Recorded from paid utility status"
+      })
+      : { deletedCount: 0 };
 
     await recordAuditLog({
       building: utility.building,
@@ -261,18 +448,11 @@ router.put("/utilities/:id", async (req, res) => {
       entityType: "utility",
       entityId: utility._id,
       entityLabel: String(getUtilityTotal(utility)),
-      message: "Utility payment updated"
+      message: "Utility payment updated",
+      metadata: {
+        paymentRecordsDeleted: removedPaymentRecords + (paymentRecordSync.deletedCount || 0)
+      }
     });
-
-    if (previousUtility.status !== "paid" && utility.status === "paid") {
-      await createPaymentRecordIfMissing({
-        building: utility.building,
-        tenant: utility.tenant,
-        utility: utility._id,
-        amount: getUtilityTotal(utility),
-        notes: "Recorded from paid utility status"
-      });
-    }
 
     res.json({ message: "Utility payment updated", utility });
   } catch (error) {
@@ -282,7 +462,7 @@ router.put("/utilities/:id", async (req, res) => {
 
 router.patch("/utilities/:id/status", async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, paymentDate, paymentMethod } = req.body;
 
     if (!status || !["pending", "paid"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
@@ -295,18 +475,36 @@ router.patch("/utilities/:id/status", async (req, res) => {
     }
 
     const previousStatus = utility.status;
+    const recordsNewPayment = previousStatus !== "paid" && status === "paid";
+    const clearsRecordedPayment = previousStatus === "paid" && status !== "paid";
+
+    const paymentDateObj = recordsNewPayment ? getPaymentDateFromRequest(paymentDate) : null;
+    if (recordsNewPayment && !paymentDateObj) {
+      return res.status(400).json({ error: "Invalid payment date" });
+    }
+
+    const normalizedPaymentMethod = recordsNewPayment ? getPaymentMethodFromRequest(paymentMethod) : null;
+    if (recordsNewPayment && !normalizedPaymentMethod) {
+      return res.status(400).json({ error: "Invalid payment method" });
+    }
+
     utility.status = status;
     await utility.save();
 
-    if (previousStatus !== "paid" && status === "paid") {
-      await createPaymentRecordIfMissing({
+    const removedPaymentRecords = clearsRecordedPayment
+      ? (await PaymentRecord.deleteMany({ utility: utility._id })).deletedCount || 0
+      : 0;
+    const paymentRecordSync = utility.status === "paid"
+      ? await syncPaymentRecordForPaidEntity({
         building: utility.building,
         tenant: utility.tenant,
         utility: utility._id,
         amount: getUtilityTotal(utility),
+        paymentDate: recordsNewPayment ? paymentDateObj : undefined,
+        paymentMethod: recordsNewPayment ? normalizedPaymentMethod : undefined,
         notes: "Recorded from paid utility status"
-      });
-    }
+      })
+      : { deletedCount: 0 };
 
     await recordAuditLog({
       building: utility.building,
@@ -314,7 +512,10 @@ router.patch("/utilities/:id/status", async (req, res) => {
       entityType: "utility",
       entityId: utility._id,
       entityLabel: String(getUtilityTotal(utility)),
-      message: `Utility status changed to ${status}`
+      message: `Utility status changed to ${status}`,
+      metadata: {
+        paymentRecordsDeleted: removedPaymentRecords + (paymentRecordSync.deletedCount || 0)
+      }
     });
 
     return res.json({
@@ -328,6 +529,7 @@ router.patch("/utilities/:id/status", async (req, res) => {
 
 router.patch("/utilities/:id/pay", async (req, res) => {
   try {
+    const { paymentDate, paymentMethod, notes, utilityFile } = req.body;
     const utility = await Utility.findById(req.params.id);
     if (!utility) {
       return res.status(404).json({ error: "Utility payment not found" });
@@ -337,18 +539,36 @@ router.patch("/utilities/:id/pay", async (req, res) => {
       return res.status(400).json({ error: "Utility payment is already paid" });
     }
 
+    const paymentDateObj = getPaymentDateFromRequest(paymentDate);
+    if (!paymentDateObj) {
+      return res.status(400).json({ error: "Invalid payment date" });
+    }
+
+    const normalizedPaymentMethod = getPaymentMethodFromRequest(paymentMethod);
+    if (!normalizedPaymentMethod) {
+      return res.status(400).json({ error: "Invalid payment method" });
+    }
+
+    const normalizedUtilityFile = normalizeUtilityFile(utilityFile);
+    if (normalizedUtilityFile === null) {
+      return res.status(400).json({ error: "Uploaded file is invalid or too large" });
+    }
+
     // Mark the current bill paid, create a payment record, then open the next pending cycle.
     utility.status = "paid";
+    if (normalizedUtilityFile !== undefined) {
+      utility.utilityFile = normalizedUtilityFile;
+    }
     await utility.save();
 
     const paymentRecord = await PaymentRecord.create({
       building: utility.building,
       tenant: utility.tenant,
       utility: utility._id,
-      paymentDate: new Date(),
+      paymentDate: paymentDateObj,
       amount: getUtilityTotal(utility),
-      paymentMethod: "cash",
-      notes: "Recorded from utility payment action"
+      paymentMethod: normalizedPaymentMethod,
+      notes: notes || "Recorded from utility payment action"
     });
 
     // Create the next pending utility using the same amounts and frequency.
@@ -368,9 +588,7 @@ router.patch("/utilities/:id/pay", async (req, res) => {
       dueDate: nextDueDate || "",
       paymentFrequency: normalizePaymentFrequency(utility.paymentFrequency || "Monthly"),
       status: "pending",
-      notes: utility.notes,
-      // copy attachment into next record
-      utilityFile: utility.utilityFile
+      notes: utility.notes
     });
 
     await recordAuditLog({
@@ -398,18 +616,13 @@ router.patch("/utilities/:id/pay", async (req, res) => {
 
 router.delete("/utilities/:id", async (req, res) => {
   try {
-    const paymentCount = await PaymentRecord.countDocuments({ utility: req.params.id });
-
-    if (paymentCount > 0) {
-      return res.status(400).json({
-        error: "Cannot delete this utility payment because payment records use it."
-      });
-    }
-
-    const utility = await Utility.findByIdAndDelete(req.params.id);
+    const utility = await Utility.findById(req.params.id);
     if (!utility) {
       return res.status(404).json({ error: "Utility payment not found" });
     }
+
+    const paymentDelete = await PaymentRecord.deleteMany({ utility: utility._id });
+    await Utility.deleteOne({ _id: utility._id });
 
     await recordAuditLog({
       building: utility.building,
@@ -417,7 +630,10 @@ router.delete("/utilities/:id", async (req, res) => {
       entityType: "utility",
       entityId: utility._id,
       entityLabel: String(getUtilityTotal(utility)),
-      message: "Utility payment deleted"
+      message: "Utility payment deleted",
+      metadata: {
+        paymentRecordsDeleted: paymentDelete.deletedCount || 0
+      }
     });
 
     res.json({ message: "Utility payment deleted" });

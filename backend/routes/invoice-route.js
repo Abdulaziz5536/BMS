@@ -16,12 +16,14 @@ const {
   setInvoiceStatusFields,
   syncContractStatusFromInvoices
 } = require('../services/payment-status-sync-service');
-const { createPaymentRecordIfMissing } = require('../services/payment-record-service');
+const { syncPaymentRecordForPaidEntity } = require('../services/payment-record-service');
 const { getNextInvoicePeriod } = require('../services/invoice-period-service');
 const {
-  syncPendingUtilitiesToInvoiceDueDate
+  syncPendingUtilitiesToInvoiceDueDate,
+  syncPendingUtilitiesToLatestTenantInvoiceDueDate
 } = require('../services/utility-invoice-sync-service');
 const {
+  ethiopianToGregorian,
   getEthiopianMonthRange,
   parseFlexibleDateInput,
   parsePaymentDateInput
@@ -96,6 +98,34 @@ const isDateInRange = (value, startDate, endDate) => {
   return dateTime !== null && startTime !== null && endTime !== null && dateTime >= startTime && dateTime < endTime;
 };
 
+const getRequestedEthiopianMonthRange = (query, referenceDate = new Date()) => {
+  const currentRange = getEthiopianMonthRange(referenceDate);
+  const year = Number.parseInt(query.ethiopianYear || currentRange.ethiopianYear, 10);
+  const month = Number.parseInt(query.ethiopianMonth || currentRange.ethiopianMonth, 10);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 13) {
+    return null;
+  }
+
+  const start = ethiopianToGregorian(year, month, 1);
+  const nextMonth = month === 13
+    ? { year: year + 1, month: 1 }
+    : { year, month: month + 1 };
+  const end = ethiopianToGregorian(nextMonth.year, nextMonth.month, 1);
+
+  if (!start || !end) {
+    return null;
+  }
+
+  return {
+    start,
+    end,
+    ethiopianYear: year,
+    ethiopianMonth: month,
+    isCurrentMonth: year === currentRange.ethiopianYear && month === currentRange.ethiopianMonth
+  };
+};
+
 const getInvoiceOutstandingBalance = (invoice) =>
   Number(invoice?.outstandingBalance ?? Math.max(0, Number(invoice?.totalAmount || 0) - Number(invoice?.amountPaid || 0)));
 
@@ -145,7 +175,11 @@ router.get('/payment-status', async (req, res) => {
   try {
     const filter = {};
     const today = startOfDay();
-    const ethiopianMonthRange = getEthiopianMonthRange(today);
+    const ethiopianMonthRange = getRequestedEthiopianMonthRange(req.query, today);
+
+    if (!ethiopianMonthRange) {
+      return res.status(400).json({ error: "Invalid Ethiopian month" });
+    }
 
     if (req.query.building) {
       if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
@@ -171,6 +205,8 @@ router.get('/payment-status', async (req, res) => {
     let totalOutstanding = 0;
     const currentMonthStart = ethiopianMonthRange.start;
     const nextMonthStart = ethiopianMonthRange.end;
+    const notPaidDueCutoffDate = new Date(today);
+    notPaidDueCutoffDate.setDate(notPaidDueCutoffDate.getDate() + 8);
 
     const shouldReplacePaidInvoice = (currentInvoice, nextInvoice) => {
       if (!currentInvoice) {
@@ -203,7 +239,7 @@ router.get('/payment-status', async (req, res) => {
         return isDateInRange(invoice.paymentDate, currentMonthStart, nextMonthStart) ? "paid" : false;
       }
 
-      return isInvoiceDueBefore(invoice, nextMonthStart) && getInvoiceOutstandingBalance(invoice) > 0
+      return isInvoiceDueBefore(invoice, notPaidDueCutoffDate) && getInvoiceOutstandingBalance(invoice) > 0
         ? "not_paid"
         : false;
     };
@@ -247,7 +283,7 @@ router.get('/payment-status', async (req, res) => {
       if (notPaidInvoice) {
         tenantItems.push(getPaymentStatusItem(tenant, notPaidInvoice, {
           referenceDate: today,
-          dueCutoffDate: nextMonthStart
+          dueCutoffDate: notPaidDueCutoffDate
         }));
       }
 
@@ -264,7 +300,7 @@ router.get('/payment-status', async (req, res) => {
     invoicesWithoutTenant.forEach((invoice) => {
       items.push(getPaymentStatusItem(invoice.tenant, invoice, {
         referenceDate: today,
-        dueCutoffDate: nextMonthStart
+        dueCutoffDate: notPaidDueCutoffDate
       }));
     });
 
@@ -330,14 +366,23 @@ router.get('/payment-status', async (req, res) => {
     res.json({
       buildingId: req.query.building || null,
       generatedAt: new Date(),
+      selectedPeriod: {
+        ethiopianYear: ethiopianMonthRange.ethiopianYear,
+        ethiopianMonth: ethiopianMonthRange.ethiopianMonth,
+        start: ethiopianMonthRange.start,
+        end: ethiopianMonthRange.end,
+        isCurrentMonth: ethiopianMonthRange.isCurrentMonth
+      },
       summary: {
         totalTenants: items.length,
         paid: paid.length,
         notPaid: notPaid.length,
         totalPaidAmount,
+        totalPaidForSelectedMonth: totalPaidAmount,
         totalCollected: totalPaidAmount,
         totalPaidThisMonth: totalPaidAmount,
         paidThisMonthCount: monthlyPaidResult[0]?.count || 0,
+        paidForSelectedMonthCount: monthlyPaidResult[0]?.count || 0,
         totalOutstanding
       },
       paid,
@@ -704,7 +749,10 @@ router.get('/invoices/reminders/history', async (req, res) => {
 
     // Reminder history is stored on invoices, then flattened for the frontend table.
     const history = invoices.flatMap((invoice) =>
-      (invoice.remindersSent || []).map((reminder) => ({
+      (invoice.remindersSent || [])
+        .filter((reminder) => !reminder.hiddenFromInvoiceManagement)
+        .map((reminder) => ({
+        reminderId: reminder._id,
         invoiceId: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
         tenantName: invoice.tenant?.tenantName || "",
@@ -716,6 +764,50 @@ router.get('/invoices/reminders/history', async (req, res) => {
     ).sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
 
     res.json(history);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/invoices/:invoiceId/reminders/:reminderId', async (req, res) => {
+  try {
+    const { invoiceId, reminderId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(invoiceId) || !mongoose.Types.ObjectId.isValid(reminderId)) {
+      return res.status(400).json({ error: "Invalid reminder id" });
+    }
+
+    const invoice = await Invoice.findById(invoiceId);
+    if (!invoice) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    if (req.query.building && String(invoice.building || "") !== String(req.query.building)) {
+      return res.status(404).json({ error: "Reminder history not found" });
+    }
+
+    const reminder = invoice.remindersSent?.id(reminderId);
+    if (!reminder || reminder.hiddenFromInvoiceManagement) {
+      return res.status(404).json({ error: "Reminder history not found" });
+    }
+
+    reminder.hiddenFromInvoiceManagement = true;
+    await invoice.save();
+
+    await recordAuditLog({
+      building: invoice.building,
+      action: "hidden",
+      entityType: "reminder_history",
+      entityId: reminderId,
+      entityLabel: invoice.invoiceNumber,
+      message: `Reminder history row hidden for invoice ${getInvoiceLabel(invoice)}`,
+      metadata: {
+        invoice: invoice._id,
+        type: reminder.type
+      }
+    });
+
+    res.json({ message: "Reminder history row removed" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1041,7 +1133,7 @@ router.patch('/invoices/:id', async (req, res) => {
     }
 
     const previousStatus = invoice.status;
-    const previousAmountPaid = Number(invoice.amountPaid || 0);
+    let totalAmountChanged = false;
 
     if (totalAmount !== undefined) {
       const normalizedTotal = Number(totalAmount);
@@ -1053,12 +1145,16 @@ router.patch('/invoices/:id', async (req, res) => {
       invoice.rentAmount = normalizedTotal;
       invoice.totalAmount = normalizedTotal + (invoice.latePenalty || 0);
       invoice.outstandingBalance = Math.max(0, invoice.totalAmount - (invoice.amountPaid || 0));
+      totalAmountChanged = true;
+
+      if (invoice.status === "paid") {
+        invoice.amountPaid = invoice.totalAmount;
+        invoice.outstandingBalance = 0;
+        invoice.paymentDate = invoice.paymentDate || new Date();
+      }
     }
 
     const manualPaymentDate = status === "paid" && previousStatus !== "paid" ? new Date() : null;
-    const manualPaymentAmount = manualPaymentDate
-      ? Math.max(0, Number(invoice.outstandingBalance || 0))
-      : 0;
 
     // Status changes use the shared helper so amountPaid/outstandingBalance stay consistent.
     if (status) {
@@ -1084,21 +1180,16 @@ router.patch('/invoices/:id', async (req, res) => {
     await invoice.populate('tenant');
     await invoice.populate('contract');
 
-    if (manualPaymentAmount > 0) {
-      if (previousAmountPaid <= 0) {
-        await PaymentRecord.deleteMany({ invoice: invoice._id });
-      }
-
-      await createPaymentRecordIfMissing({
+    const paymentRecordSync = invoice.status === "paid" && (status === "paid" || totalAmountChanged)
+      ? await syncPaymentRecordForPaidEntity({
         building: invoice.building,
         tenant: invoice.tenant?._id || invoice.tenant,
         invoice: invoice._id,
-        amount: manualPaymentAmount,
+        amount: invoice.amountPaid || invoice.totalAmount,
         paymentDate: manualPaymentDate || invoice.paymentDate || new Date(),
-        notes: "Recorded from paid invoice status",
-        skipExisting: false
-      });
-    }
+        notes: "Recorded from paid invoice status"
+      })
+      : { deletedCount: 0 };
 
     await recordAuditLog({
       building: invoice.building,
@@ -1110,7 +1201,7 @@ router.patch('/invoices/:id', async (req, res) => {
       metadata: {
         dueDateChanged,
         remindersCleared,
-        removedPaymentRecords,
+        removedPaymentRecords: removedPaymentRecords + (paymentRecordSync.deletedCount || 0),
         previousStatus,
         status: invoice.status
       }
@@ -1125,15 +1216,20 @@ router.patch('/invoices/:id', async (req, res) => {
 // Delete invoice
 router.delete('/invoices/:id', async (req, res) => {
   try {
-    const invoice = await Invoice.findByIdAndDelete(req.params.id);
+    const invoice = await Invoice.findById(req.params.id);
 
     if (!invoice) {
       return res.status(404).json({ error: "Invoice not found" });
     }
 
-    // Delete associated payment records
-    await PaymentRecord.deleteMany({ invoice: req.params.id });
+    const paymentDelete = await PaymentRecord.deleteMany({ invoice: invoice._id });
+    await Invoice.deleteOne({ _id: invoice._id });
     await syncContractStatusFromInvoices(invoice.contract);
+    const utilitySync = await syncPendingUtilitiesToLatestTenantInvoiceDueDate({
+      tenant: invoice.tenant,
+      building: invoice.building,
+      clearWhenMissing: true
+    });
 
     await recordAuditLog({
       building: invoice.building,
@@ -1141,7 +1237,11 @@ router.delete('/invoices/:id', async (req, res) => {
       entityType: "invoice",
       entityId: invoice._id,
       entityLabel: getInvoiceLabel(invoice),
-      message: `Invoice ${getInvoiceLabel(invoice)} deleted`
+      message: `Invoice ${getInvoiceLabel(invoice)} deleted`,
+      metadata: {
+        paymentRecordsDeleted: paymentDelete.deletedCount || 0,
+        utilitiesUpdated: utilitySync.modifiedCount || 0
+      }
     });
 
     res.json({ message: "Invoice deleted successfully" });
@@ -1153,7 +1253,7 @@ router.delete('/invoices/:id', async (req, res) => {
 // Get payment records
 router.get('/payment-records', async (req, res) => {
   try {
-    const filter = {};
+    const filter = { hiddenFromInvoiceManagement: { $ne: true } };
     if (req.query.building) {
       if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
         return res.status(400).json({ error: 'Invalid building id' });
@@ -1197,6 +1297,47 @@ router.get('/payment-records', async (req, res) => {
       .sort({ paymentDate: -1 });
 
     res.json(payments);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/payment-records/:id', async (req, res) => {
+  try {
+    const paymentId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(paymentId)) {
+      return res.status(400).json({ error: "Invalid payment record id" });
+    }
+
+    const payment = await PaymentRecord.findById(paymentId);
+    if (!payment || payment.hiddenFromInvoiceManagement) {
+      return res.status(404).json({ error: "Payment row not found" });
+    }
+
+    if (req.query.building && String(payment.building || "") !== String(req.query.building)) {
+      return res.status(404).json({ error: "Payment row not found" });
+    }
+
+    payment.hiddenFromInvoiceManagement = true;
+    await payment.save();
+
+    await recordAuditLog({
+      building: payment.building,
+      action: "hidden",
+      entityType: "payment_history",
+      entityId: payment._id,
+      entityLabel: payment.reference || String(payment._id),
+      message: "Payment ledger row hidden from invoice management",
+      metadata: {
+        invoice: payment.invoice,
+        contract: payment.contract,
+        utility: payment.utility,
+        amount: payment.amount
+      }
+    });
+
+    res.json({ message: "Payment row removed from invoice management" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -23,8 +23,11 @@ const announcementRouter = require("./routes/announcement-route");
 const maintenanceRouter = require("./routes/maintenance-route");
 const systemRouter = require("./routes/system-route");
 const userRouter = require("./routes/user-route");
-const { requireAuth, isRequestAuthenticated } = require("./middleware/auth-middleware");
-const { startDueDateReminderJob } = require("./services/due-reminder-service");
+const { requireAuth, requireDeletePin, isRequestAuthenticated } = require("./middleware/auth-middleware");
+const {
+  startDueDateReminderJob,
+  startUtilityDueDateReminderJob
+} = require("./services/due-reminder-service");
 const { getSystemChecks } = require("./services/system-check-service");
 const {
   getAllowedCorsOrigins,
@@ -105,6 +108,7 @@ if (shouldServeBundledFrontend) {
 // Route order matters: each router owns a focused part of the BMS API.
 app.use(authRouter);
 app.use(requireAuth);
+app.use(requireDeletePin);
 app.use(buildingRouter);
 app.use(floorRouter);
 app.use(unitRouter);
@@ -151,6 +155,7 @@ mongoose
         console.warn(`System check warning: ${check.name} - ${check.message}`);
       });
     startDueDateReminderJob();
+    startUtilityDueDateReminderJob();
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });

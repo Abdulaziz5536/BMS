@@ -52,6 +52,18 @@ const utilitySchema = new mongoose.Schema(
       default: ""
     },
 
+    remindersSent: [{
+      type: {
+        type: String,
+        enum: ["due_date", "late_payment"]
+      },
+      sentAt: {
+        type: Date,
+        default: Date.now
+      },
+      message: String
+    }],
+
     // attachment (photo or pdf)
     utilityFile: utilityFileSchema
   },
@@ -59,5 +71,6 @@ const utilitySchema = new mongoose.Schema(
 );
 
 utilitySchema.index({ building: 1, status: 1 });
+utilitySchema.index({ building: 1, dueDate: 1, status: 1 });
 
 module.exports = mongoose.model("Utility", utilitySchema);

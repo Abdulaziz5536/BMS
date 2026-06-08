@@ -1220,6 +1220,41 @@ button:disabled {
   color: #b91c1c;
 }
 
+.dashboard-due-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.dashboard-alert-tabs {
+  display: inline-flex;
+  padding: 0.2rem;
+  background: #edf2f7;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  gap: 0.2rem;
+}
+
+.dashboard-alert-tabs button {
+  min-height: 34px;
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  border-radius: 6px;
+  color: #334155;
+  background: transparent;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dashboard-alert-tabs button.active,
+.dashboard-alert-tabs button:hover {
+  color: #0f4c81;
+  background: #ffffff;
+}
+
 .dashboard-reminder-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2390,6 +2425,48 @@ button:disabled {
   color: #7f1d1d;
 }
 
+.inline-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
+  width: max-content;
+}
+
+.floors-table .inline-table-actions .table-action-btn {
+  width: auto;
+}
+
+.floors-table .table-action-btn.small-icon-action {
+  width: 34px;
+  min-width: 34px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  gap: 0;
+}
+
+.floors-table .table-action-btn.small-icon-action svg {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  margin-right: 0;
+}
+
+.floors-table .table-action-btn.ghost-delete-action {
+  border-color: transparent;
+  background: transparent;
+  color: #cbd5e1;
+  opacity: 0.45;
+}
+
+.floors-table .table-action-btn.ghost-delete-action:hover {
+  border-color: #fee2e2;
+  background: #fff7f7;
+  color: #991b1b;
+  opacity: 1;
+}
+
 .confirm-overlay {
   position: fixed;
   inset: 0;
@@ -2420,6 +2497,23 @@ button:disabled {
   margin: 0;
   color: #4b5563;
   font-size: 0.95rem;
+}
+
+.confirm-input-label {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 1rem;
+  color: #334155;
+  font-weight: 800;
+}
+
+.confirm-input-label input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font: inherit;
 }
 
 .confirm-actions {
@@ -3257,6 +3351,10 @@ span.secondary-btn {
   margin: 0;
 }
 
+.payment-period-select {
+  display: none;
+}
+
 .payment-logout-btn svg {
   width: 18px;
   height: 18px;
@@ -3392,6 +3490,36 @@ span.secondary-btn {
   color: #64748b;
   font-size: 0.88rem;
   font-weight: 700;
+}
+
+.payment-period-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin: -0.25rem 0 0.75rem;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.payment-period-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.payment-period-compact select {
+  width: 150px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0.25rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  box-shadow: none;
 }
 
 .payment-status-list {
@@ -3813,10 +3941,16 @@ span.secondary-btn {
 
   .dashboard-reminder-actions,
   .dashboard-reminder-actions button,
+  .dashboard-due-header-actions,
+  .dashboard-alert-tabs,
   .payroll-selection-actions,
   .payroll-selection-actions button,
   .dashboard-due-panel .secondary-btn {
     width: 100%;
+  }
+
+  .dashboard-alert-tabs button {
+    flex: 1;
   }
 
   .payment-status-tools,
@@ -3825,6 +3959,16 @@ span.secondary-btn {
   .payment-search,
   .payment-status-tabs,
   .payment-status-tabs button {
+    width: 100%;
+  }
+
+  .payment-period-row {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+
+  .payment-period-compact,
+  .payment-period-compact select {
     width: 100%;
   }
 

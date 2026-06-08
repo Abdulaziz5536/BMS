@@ -61,6 +61,12 @@ const paymentRecordSchema = new mongoose.Schema({
   recordedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User"
+  },
+
+  hiddenFromInvoiceManagement: {
+    type: Boolean,
+    default: false,
+    index: true
   }
 
 }, { timestamps: true });

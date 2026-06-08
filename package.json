@@ -9,6 +9,8 @@
     "start": "node backend/index.js",
     "build": "npm --prefix frontend run build",
     "test": "node --test backend/tests/*.test.js && npm --prefix frontend run test && node verify_backend_routes.js",
+    "audit:payments": "node scripts/audit-payment-records.js",
+    "cleanup:payments": "node scripts/audit-payment-records.js --apply",
     "install:frontend": "npm --prefix frontend install"
   },
   "engines": {

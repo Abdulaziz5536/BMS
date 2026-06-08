@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 const User = require("../models/auth-model");
 const { getAuthTokenFromRequest } = require("../utils/session-cookie-utils");
 
@@ -55,6 +56,15 @@ const verifyRequestToken = (req) => {
 
 const isRequestAuthenticated = (req) => Boolean(verifyRequestToken(req));
 
+const isStoredPasswordMatch = async (storedPassword, password) => {
+  const stored = String(storedPassword || "");
+  const passwordIsHashed = /^\$2[aby]\$\d{2}\$/.test(stored);
+
+  return passwordIsHashed
+    ? bcrypt.compare(password, stored)
+    : stored === password;
+};
+
 const requireAuth = async (req, res, next) => {
   // Every private API call must include the JWT created by /login.
   // This protects the backend even if someone bypasses the React screens.
@@ -97,6 +107,37 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
+const requireDeletePin = async (req, res, next) => {
+  if (req.method !== "DELETE") {
+    return next();
+  }
+
+  const deletePin = String(req.get("X-Delete-Pin") || req.body?.deletePin || "").trim();
+
+  if (!deletePin) {
+    return res.status(403).json({ error: "Enter your delete PIN to continue." });
+  }
+
+  try {
+    const user = req.user?.id ? await User.findById(req.user.id) : null;
+
+    if (!user) {
+      return res.status(401).json({ error: "Login expired" });
+    }
+
+    const matches = await isStoredPasswordMatch(user.password, deletePin);
+
+    if (!matches) {
+      return res.status(403).json({ error: "Delete PIN is incorrect." });
+    }
+
+    return next();
+  } catch (error) {
+    console.error("Delete PIN check failed:", error.message);
+    return res.status(500).json({ error: "Could not verify delete PIN." });
+  }
+};
+
 module.exports = {
   PUBLIC_PATHS,
   READ_ONLY_ROLE,
@@ -106,6 +147,7 @@ module.exports = {
   isReadOnlyAllowedPath,
   isReadOnlyRole,
   normalizeRole,
+  requireDeletePin,
   verifyRequestToken,
   isRequestAuthenticated,
   requireAuth

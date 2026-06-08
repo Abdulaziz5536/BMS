@@ -579,6 +579,76 @@ export default function Invoice() {
     }
   };
 
+  const removePaymentLedgerRow = async (payment) => {
+    const shouldRemove = await confirmAction({
+      title: "Remove payment row?",
+      message: "This only removes the row from Invoice Management. It does not change invoice balances, paid status, or collected totals.",
+      confirmText: "Remove",
+      cancelText: "Cancel"
+    });
+
+    if (!shouldRemove) {
+      return;
+    }
+
+    setMessage("");
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await apiFetch(withBuilding(`/payment-records/${payment._id}`, selectedBuildingId), {
+        method: "DELETE"
+      });
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        setMessage(data.message || "Payment row removed");
+        fetchPaymentRecords();
+      } else {
+        setError(data.error || "Failed to remove payment row");
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeReminderHistoryRow = async (item) => {
+    const shouldRemove = await confirmAction({
+      title: "Remove reminder row?",
+      message: "This only removes the row from Reminder History. It does not change invoice status or reminder sending rules.",
+      confirmText: "Remove",
+      cancelText: "Cancel"
+    });
+
+    if (!shouldRemove) {
+      return;
+    }
+
+    setMessage("");
+    setError("");
+    setLoading(true);
+
+    try {
+      const res = await apiFetch(withBuilding(`/invoices/${item.invoiceId}/reminders/${item.reminderId}`, selectedBuildingId), {
+        method: "DELETE"
+      });
+      const data = await readResponse(res);
+
+      if (res.ok) {
+        setMessage(data.message || "Reminder row removed");
+        fetchReminderHistory();
+      } else {
+        setError(data.error || "Failed to remove reminder row");
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const classes = {
       pending: "pending-status",
@@ -1169,10 +1239,21 @@ export default function Invoice() {
                           <FilePreviewLink file={normalizeStoredFile(payment.receipt)} label="Receipt file" />
                         </td>
                         <td>
-                          <button className="table-action-btn" onClick={() => printReceipt(payment)} title="Print receipt">
-                            <DocumentTextIcon />
-                            <span>Receipt</span>
-                          </button>
+                          <div className="inline-table-actions">
+                            <button className="table-action-btn" onClick={() => printReceipt(payment)} title="Print receipt">
+                              <DocumentTextIcon />
+                              <span>Receipt</span>
+                            </button>
+                            <button
+                              className="table-action-btn small-icon-action ghost-delete-action"
+                              onClick={() => removePaymentLedgerRow(payment)}
+                              title="Remove payment row"
+                              aria-label="Remove payment row"
+                              disabled={loading}
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1206,23 +1287,35 @@ export default function Invoice() {
                     <th>Unit</th>
                     <th>Type</th>
                     <th>Message</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {reminderHistory.length > 0 ? (
                     reminderHistory.map((item, index) => (
-                      <tr key={`${item.invoiceId}-${item.sentAt}-${index}`}>
+                      <tr key={`${item.invoiceId}-${item.reminderId || item.sentAt}-${index}`}>
                         <td>{formatEthiopianDate(item.sentAt)}</td>
                         <td>{item.invoiceNumber}</td>
                         <td>{item.tenantName || "-"}</td>
                         <td>{item.tenantUnit || "-"}</td>
                         <td>{item.type === "late_payment" ? "Overdue" : "Due date"}</td>
                         <td>{item.message || "-"}</td>
+                        <td>
+                          <button
+                            className="table-action-btn small-icon-action ghost-delete-action"
+                            onClick={() => removeReminderHistoryRow(item)}
+                            title="Remove reminder row"
+                            aria-label="Remove reminder row"
+                            disabled={loading}
+                          >
+                            <TrashIcon />
+                          </button>
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="6">No reminder history found</td>
+                      <td colSpan="7">No reminder history found</td>
                     </tr>
                   )}
                 </tbody>

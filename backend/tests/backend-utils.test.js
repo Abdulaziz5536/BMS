@@ -33,8 +33,13 @@ const {
   getMonthlyRevenueValue,
   normalizePaymentFrequency
 } = require("../utils/payment-frequency-utils");
+const Invoice = require("../models/invoice-model");
+const PaymentRecord = require("../models/payment-record-model");
 const { getSystemChecks } = require("../services/system-check-service");
-const { normalizeDueDateValue } = require("../services/utility-invoice-sync-service");
+const {
+  getSyncedUtilityDueDate,
+  normalizeDueDateValue
+} = require("../services/utility-invoice-sync-service");
 const {
   isPublicPath,
   isReadOnlyAllowedPath
@@ -45,6 +50,7 @@ const {
   reminderAlreadySent,
   shouldSkipReminder
 } = require("../services/due-reminder-service");
+const { syncPaymentRecordForPaidEntity } = require("../services/payment-record-service");
 
 test("buildCsv escapes commas, quotes, and new lines", () => {
   const csv = buildCsv(
@@ -87,6 +93,39 @@ test("getEthiopianMonthRange returns Ethiopian month boundaries", () => {
 
 test("utility invoice sync stores due dates as date-only values", () => {
   assert.equal(normalizeDueDateValue("2026-05-31T12:00:00.000Z"), "2026-05-31");
+});
+
+test("utility invoice sync uses fallback after the paid utility date when no future invoice exists", async () => {
+  const originalFindOne = Invoice.findOne;
+  const calls = [];
+
+  Invoice.findOne = (filter) => {
+    calls.push(filter);
+    return {
+      sort() {
+        return {
+          lean() {
+            return Promise.resolve(null);
+          }
+        };
+      }
+    };
+  };
+
+  try {
+    const dueDate = await getSyncedUtilityDueDate({
+      tenant: "tenant-1",
+      building: "building-1",
+      afterDate: "2026-05-31",
+      fallbackDueDate: "2026-06-30"
+    });
+
+    assert.equal(dueDate, "2026-06-30");
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].dueDate, { $gt: parseFlexibleDateInput("2026-05-31") });
+  } finally {
+    Invoice.findOne = originalFindOne;
+  }
 });
 
 test("payment frequency labels and monthly values normalize old and custom values", () => {
@@ -298,4 +337,96 @@ test("reminder due-day calculation uses calendar days", () => {
   assert.equal(getDaysUntilDue(new Date(2026, 4, 26, 0), referenceDate), 0);
   assert.equal(getDaysUntilDue(new Date(2026, 4, 25, 0), referenceDate), -1);
   assert.equal(getDaysUntilDue(new Date(2026, 4, 27, 23), referenceDate), 1);
+});
+
+test("paid entity payment sync updates one existing record and removes duplicates", async () => {
+  const originalFindOne = PaymentRecord.findOne;
+  const originalDeleteMany = PaymentRecord.deleteMany;
+  const existingPayment = {
+    _id: "payment-keep",
+    amount: 1000,
+    paymentDate: new Date("2026-06-01"),
+    paymentMethod: "cash",
+    notes: "",
+    saveCalled: false,
+    async save() {
+      this.saveCalled = true;
+      return this;
+    }
+  };
+  let lookupSeen = null;
+  let deleteFilterSeen = null;
+
+  PaymentRecord.findOne = (lookup) => {
+    lookupSeen = lookup;
+    return {
+      sort() {
+        return Promise.resolve(existingPayment);
+      }
+    };
+  };
+  PaymentRecord.deleteMany = (filter) => {
+    deleteFilterSeen = filter;
+    return Promise.resolve({ deletedCount: 2 });
+  };
+
+  try {
+    const result = await syncPaymentRecordForPaidEntity({
+      building: "building-1",
+      tenant: "tenant-1",
+      utility: "utility-1",
+      amount: 1750,
+      notes: "Synced from edit"
+    });
+
+    assert.deepEqual(lookupSeen, { utility: "utility-1" });
+    assert.equal(existingPayment.amount, 1750);
+    assert.equal(existingPayment.notes, "Synced from edit");
+    assert.equal(existingPayment.saveCalled, true);
+    assert.deepEqual(deleteFilterSeen, {
+      utility: "utility-1",
+      _id: { $ne: "payment-keep" }
+    });
+    assert.equal(result.deletedCount, 2);
+  } finally {
+    PaymentRecord.findOne = originalFindOne;
+    PaymentRecord.deleteMany = originalDeleteMany;
+  }
+});
+
+test("paid entity payment sync creates a record when missing", async () => {
+  const originalFindOne = PaymentRecord.findOne;
+  const originalCreate = PaymentRecord.create;
+  let createdPayload = null;
+
+  PaymentRecord.findOne = () => ({
+    sort() {
+      return Promise.resolve(null);
+    }
+  });
+  PaymentRecord.create = (payload) => {
+    createdPayload = payload;
+    return Promise.resolve({ _id: "payment-new", ...payload });
+  };
+
+  try {
+    const result = await syncPaymentRecordForPaidEntity({
+      building: "building-1",
+      tenant: "tenant-1",
+      invoice: "invoice-1",
+      amount: 2200,
+      paymentDate: new Date("2026-06-08"),
+      paymentMethod: "bank_transfer",
+      notes: "Created from paid invoice edit"
+    });
+
+    assert.equal(createdPayload.invoice, "invoice-1");
+    assert.equal(createdPayload.amount, 2200);
+    assert.equal(createdPayload.paymentMethod, "bank_transfer");
+    assert.equal(result.paymentRecord._id, "payment-new");
+    assert.equal(result.deletedCount, 0);
+  } finally {
+    PaymentRecord.findOne = originalFindOne;
+    PaymentRecord.create = originalCreate;
+  }
 });

@@ -89,7 +89,11 @@ const invoiceSchema = new mongoose.Schema({
       type: Date,
       default: Date.now
     },
-    message: String
+    message: String,
+    hiddenFromInvoiceManagement: {
+      type: Boolean,
+      default: false
+    }
   }]
 
 }, { timestamps: true });

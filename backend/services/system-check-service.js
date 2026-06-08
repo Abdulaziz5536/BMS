@@ -25,6 +25,15 @@ const getSystemChecks = () => {
   const frontendBundleExists = fs.existsSync(frontendIndexPath);
   const corsOrigins = getAllowedCorsOrigins();
   const productionMode = process.env.NODE_ENV === "production";
+  const utilityReminderEnabled = process.env.UTILITY_REMINDER_ENABLED !== undefined
+    ? process.env.UTILITY_REMINDER_ENABLED === "true"
+    : process.env.DUE_REMINDER_ENABLED === "true";
+  const utilityEmailEnabled = process.env.UTILITY_REMINDER_SEND_EMAIL !== undefined
+    ? process.env.UTILITY_REMINDER_SEND_EMAIL === "true"
+    : process.env.DUE_REMINDER_SEND_EMAIL === "true";
+  const utilitySmsEnabled = process.env.UTILITY_REMINDER_SEND_SMS !== undefined
+    ? process.env.UTILITY_REMINDER_SEND_SMS === "true"
+    : process.env.DUE_REMINDER_SEND_SMS === "true";
 
   const checks = [
     {
@@ -72,6 +81,12 @@ const getSystemChecks = () => {
         : "Disabled"
     },
     {
+      name: "Utility reminder job",
+      ok: utilityReminderEnabled,
+      required: false,
+      message: utilityReminderEnabled ? "Enabled" : "Disabled"
+    },
+    {
       name: "Email reminders",
       ok: !process.env.DUE_REMINDER_SEND_EMAIL || process.env.DUE_REMINDER_SEND_EMAIL !== "true" || isEmailConfigured(),
       required: process.env.DUE_REMINDER_SEND_EMAIL === "true",
@@ -81,6 +96,18 @@ const getSystemChecks = () => {
       name: "SMS reminders",
       ok: !process.env.DUE_REMINDER_SEND_SMS || process.env.DUE_REMINDER_SEND_SMS !== "true" || isSmsConfigured(),
       required: process.env.DUE_REMINDER_SEND_SMS === "true",
+      message: isSmsConfigured() ? "SMS configured" : "SMS credentials missing"
+    },
+    {
+      name: "Utility email reminders",
+      ok: !utilityEmailEnabled || isEmailConfigured(),
+      required: utilityEmailEnabled,
+      message: isEmailConfigured() ? "SMTP configured" : "SMTP credentials missing"
+    },
+    {
+      name: "Utility SMS reminders",
+      ok: !utilitySmsEnabled || isSmsConfigured(),
+      required: utilitySmsEnabled,
       message: isSmsConfigured() ? "SMS configured" : "SMS credentials missing"
     }
   ];

@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Invoice = require("../models/invoice-model");
+const Utility = require("../models/utility-model");
 const {
   isEmailConfigured,
   isSmsConfigured,
@@ -8,10 +9,11 @@ const {
 } = require("./messaging-service");
 const { recordAuditLog } = require("./audit-log-service");
 const { getBuildingBrandName } = require("../utils/branding-utils");
-const { formatEthiopianDate } = require("../utils/date-utils");
+const { formatEthiopianDate, parseFlexibleDateInput } = require("../utils/date-utils");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 let reminderTimer;
+let utilityReminderTimer;
 
 // Reminder service is used by both the automatic background job and the manual dashboard button.
 // It decides which invoices are due/overdue, builds tenant messages, and records reminder history.
@@ -19,6 +21,18 @@ let reminderTimer;
 const parseNumber = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const parseBooleanOption = (value, fallback) => {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return String(value).trim().toLowerCase() === "true";
 };
 
 const getStartOfDay = (value = new Date()) => {
@@ -58,6 +72,11 @@ const escapeHtml = (value = "") =>
 
 const getInvoiceAmount = (invoice) =>
   invoice.outstandingBalance || invoice.totalAmount || invoice.rentAmount || 0;
+
+const getUtilityAmount = (utility) =>
+  (Number(utility?.waterAmount) || 0) +
+  (Number(utility?.lightAmount) || 0) +
+  (Number(utility?.generatorGasAmount) || 0);
 
 const reminderAlreadySent = (invoice, type) =>
   (invoice.remindersSent || []).some((reminder) => reminder.type === type);
@@ -270,6 +289,112 @@ ${brandName}`;
   return { text, html, sms };
 };
 
+const buildUtilityDueDateMessage = (utility, daysUntilDue) => {
+  const tenantName = utility.tenant?.tenantName || "Tenant";
+  const brandName = getBuildingBrandName(utility.building);
+  const dueDate = formatEthiopianDate(utility.dueDate);
+  const amount = getUtilityAmount(utility);
+  const timing = daysUntilDue === 0
+    ? "today"
+    : `in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}`;
+  const timingAmharic = daysUntilDue === 0
+    ? "ዛሬ"
+    : `${daysUntilDue} ቀን ውስጥ`;
+  const dueNote = "Please complete your utility payment by the due date.";
+  const dueNoteAmharic = "እባክዎ የዩቲሊቲ ክፍያዎን እስከ መክፈያ ቀኑ ያጠናቁ።";
+  const paidNote = "If you have already paid, please ignore this message.";
+  const paidNoteAmharic = "ክፍያዎን አስቀድመው ከፈጸሙ እባክዎ ይህን መልዕክት ችላ ይበሉ።";
+
+  const en = `Hi ${tenantName}, your utility payment of Br ${amount} is due ${timing} (${dueDate}). Please complete payment by the due date.`;
+  const am = `ሰላም ${tenantName}፣ የዩቲሊቲ ክፍያዎ ${amount} ብር ነው። ክፍያው ${timingAmharic} (${dueDate}) ነው። እባክዎ ክፍያዎን በጊዜ ውስጥ ያከናውኑ።`;
+
+  const text = `${en}
+${am}
+
+${dueNote}
+${dueNoteAmharic}
+
+${paidNote}
+${paidNoteAmharic}
+
+${brandName}`;
+  const sms = text;
+  const html = buildEmailHtml({
+    brandName,
+    title: "Utility Payment Reminder",
+    greeting: `Hello ${tenantName},`,
+    summary: `Your utility payment of Br ${amount} is due ${timing} on ${dueDate}.`,
+    preheader: `${dueNote} ${paidNote}`,
+    amharic: `የዩቲሊቲ ክፍያዎ ${amount} ብር ነው። ክፍያው በ ${timingAmharic} (${dueDate}) ነው።`,
+    details: [
+      { label: "Amount", value: `Br ${amount}` },
+      { label: "Due date", value: dueDate },
+      { label: "Reminder", value: daysUntilDue === 0 ? "Due today" : `Due ${timing}` }
+    ],
+    extraTitle: "Utility payment notice",
+    extraLines: [
+      dueNote,
+      dueNoteAmharic,
+      paidNote,
+      paidNoteAmharic
+    ]
+  });
+
+  return { text, html, sms };
+};
+
+const buildUtilityLatePaymentMessage = (utility, daysOverdue) => {
+  const tenantName = utility.tenant?.tenantName || "Tenant";
+  const brandName = getBuildingBrandName(utility.building);
+  const dueDate = formatEthiopianDate(utility.dueDate);
+  const amount = getUtilityAmount(utility);
+  const overdueTiming = `${daysOverdue} day${daysOverdue === 1 ? "" : "s"}`;
+  const overdueTimingAmharic = `${daysOverdue} ቀን`;
+  const overdueNote = "Please settle your overdue utility balance as soon as possible.";
+  const overdueNoteAmharic = "እባክዎ የተዘገየውን የዩቲሊቲ ቀሪ ክፍያ በተቻለ ፍጥነት ይፈጽሙ።";
+  const helpNote = "If you have already paid or need help with your payment, please contact the office.";
+  const helpNoteAmharic = "ክፍያዎን አስቀድመው ከፈጸሙ ወይም በክፍያዎ ላይ እርዳታ ካስፈለገዎት እባክዎ ቢሮውን ያነጋግሩ።";
+
+  const en = `Hi ${tenantName}, your utility payment of Br ${amount} was due on ${dueDate} and is now ${overdueTiming} overdue. Please complete payment as soon as possible.`;
+  const am = `ሰላም ${tenantName}፣ የዩቲሊቲ ክፍያዎ Br ${amount} ነው። ክፍያው ${dueDate} የዘገየ ሲሆን አሁን ${overdueTimingAmharic} በላይ አልፏል። እባክዎ በፍጥነት ክፍያዎን ያከናውኑ።`;
+
+  const text = `${en}
+${am}
+
+${overdueNote}
+${overdueNoteAmharic}
+
+${helpNote}
+${helpNoteAmharic}
+
+${brandName}`;
+  const sms = text;
+  const html = buildEmailHtml({
+    brandName,
+    title: "Overdue Utility Notice",
+    greeting: `Hello ${tenantName},`,
+    summary: `Your utility payment of Br ${amount} was due on ${dueDate} and is now ${overdueTiming} overdue.`,
+    preheader: `${overdueNote} ${helpNote}`,
+    amharic: `የዩቲሊቲ ክፍያዎ ${amount} ብር ነው። ክፍያው በ ${dueDate} የዘገየ ሲሆን አሁን ከ ${overdueTimingAmharic} በላይ ነው።`,
+    details: [
+      { label: "Amount", value: `Br ${amount}` },
+      { label: "Due date", value: dueDate },
+      { label: "Days overdue", value: overdueTiming }
+    ],
+    extraTitle: "Overdue utility notice",
+    extraLines: [
+      overdueNote,
+      overdueNoteAmharic,
+      helpNote,
+      helpNoteAmharic
+    ],
+    accentColor: "#dc2626",
+    headerColor: "#7f1d1d"
+  });
+
+  return { text, html, sms };
+};
+
 const getPendingInvoices = async (Model, daysAhead, buildingId) => {
   // Pull unpaid invoices up to the due-soon window; overdue invoices also match this query.
   const today = getStartOfToday();
@@ -291,11 +416,34 @@ const getPendingInvoices = async (Model, daysAhead, buildingId) => {
     .sort({ dueDate: 1 });
 };
 
-const sendTenantReminder = async (invoice, type, message, options) => {
+const getPendingUtilities = async (daysAhead, buildingId) => {
+  const today = getStartOfToday();
+  const reminderEnd = getEndOfDay(new Date(today.getTime() + daysAhead * DAY_MS));
+  const filter = {
+    status: "pending"
+  };
+
+  if (buildingId && mongoose.Types.ObjectId.isValid(buildingId)) {
+    filter.building = new mongoose.Types.ObjectId(buildingId);
+  }
+
+  const utilities = await Utility.find(filter)
+    .populate("tenant")
+    .populate("building")
+    .sort({ dueDate: 1, createdAt: 1 });
+
+  return utilities.filter((utility) => {
+    const dueDate = parseFlexibleDateInput(utility.dueDate);
+    return dueDate && dueDate <= reminderEnd;
+  });
+};
+
+const sendTenantReminder = async (record, type, message, options, paymentKind = "rent") => {
   // Send each selected channel independently so email can succeed even if SMS fails.
-  const tenant = invoice.tenant;
+  const tenant = record.tenant;
   const errors = [];
   let sent = 0;
+  const paymentLabel = paymentKind === "utility" ? "Utility" : "Rent";
 
   if (!tenant) {
     return { sent, errors: ["Tenant record not found"] };
@@ -304,7 +452,7 @@ const sendTenantReminder = async (invoice, type, message, options) => {
   if (options.sendSms) {
     if (tenant.phone) {
       const smsResult = await sendSMS(tenant.phone, getSmsText(message), {
-        building: invoice.building
+        building: record.building
       });
 
       if (smsResult.success) {
@@ -320,14 +468,14 @@ const sendTenantReminder = async (invoice, type, message, options) => {
   if (options.sendEmail) {
     if (tenant.email) {
       const subject = type === "late_payment"
-        ? `${getBuildingBrandName(invoice.building)} - Rent payment overdue`
-        : `${getBuildingBrandName(invoice.building)} - Rent payment due reminder`;
+        ? `${getBuildingBrandName(record.building)} - ${paymentLabel} payment overdue`
+        : `${getBuildingBrandName(record.building)} - ${paymentLabel} payment due reminder`;
       const emailResult = await sendEmail(
         tenant.email,
         subject,
         getReminderText(message),
         message.html,
-        { building: invoice.building }
+        { building: record.building }
       );
 
       if (emailResult.success) {
@@ -418,6 +566,86 @@ const processInvoices = async (Model, label, options) => {
   return results;
 };
 
+const processUtilities = async (options) => {
+  const utilities = await getPendingUtilities(options.daysAhead, options.buildingId);
+  const today = getStartOfToday();
+  const results = {
+    checked: utilities.length,
+    sent: 0,
+    skipped: 0,
+    failed: 0,
+    force: Boolean(options.force),
+    errors: []
+  };
+
+  for (const utility of utilities) {
+    const dueDate = parseFlexibleDateInput(utility.dueDate);
+
+    if (!dueDate) {
+      continue;
+    }
+
+    const daysUntilDue = getDaysUntilDue(dueDate, today);
+    const isOverdue = daysUntilDue < 0;
+    const reminderType = isOverdue ? "late_payment" : "due_date";
+
+    if (shouldSkipReminder(utility, reminderType, options)) {
+      results.skipped += 1;
+      continue;
+    }
+
+    const message = isOverdue
+      ? buildUtilityLatePaymentMessage(utility, Math.abs(daysUntilDue))
+      : buildUtilityDueDateMessage(utility, daysUntilDue);
+
+    const reminderResult = await sendTenantReminder(
+      utility,
+      reminderType,
+      message,
+      options,
+      "utility"
+    );
+
+    if (reminderResult.sent > 0) {
+      utility.remindersSent = utility.remindersSent || [];
+      utility.remindersSent.push({
+        type: reminderType,
+        sentAt: new Date(),
+        message: getReminderText(message)
+      });
+      await utility.save();
+      await recordAuditLog({
+        building: utility.building?._id || utility.building,
+        action: "sent",
+        entityType: "reminder",
+        entityId: utility._id,
+        entityLabel: `Utility ${formatEthiopianDate(utility.dueDate)}`,
+        message: `${reminderType === "late_payment" ? "Overdue" : "Due-date"} reminder sent for utility payment`,
+        metadata: {
+          utilityModel: "Utility",
+          type: reminderType,
+          channels: {
+            email: options.sendEmail,
+            sms: options.sendSms
+          },
+          force: Boolean(options.force)
+        }
+      });
+      results.sent += 1;
+    } else {
+      results.failed += 1;
+      results.errors.push({
+        utilityModel: "Utility",
+        utilityId: utility._id,
+        tenant: utility.tenant?._id,
+        errors: reminderResult.errors
+      });
+    }
+  }
+
+  return results;
+};
+
 const runDueDateReminders = async (overrideOptions = {}) => {
   // Options come from env by default, but manual API calls can override them.
   const options = {
@@ -425,16 +653,14 @@ const runDueDateReminders = async (overrideOptions = {}) => {
       overrideOptions.daysAhead ?? process.env.DUE_REMINDER_DAYS_AHEAD,
       3
     ),
-    sendSms: overrideOptions.sendSms !== undefined
-      ? overrideOptions.sendSms
-      : process.env.DUE_REMINDER_SEND_SMS !== undefined
-        ? process.env.DUE_REMINDER_SEND_SMS === "true"
-        : false,
-    sendEmail: overrideOptions.sendEmail !== undefined
-      ? overrideOptions.sendEmail
-      : process.env.DUE_REMINDER_SEND_EMAIL !== undefined
-        ? process.env.DUE_REMINDER_SEND_EMAIL === "true"
-        : isEmailConfigured(),
+    sendSms: parseBooleanOption(
+      overrideOptions.sendSms,
+      parseBooleanOption(process.env.DUE_REMINDER_SEND_SMS, false)
+    ),
+    sendEmail: parseBooleanOption(
+      overrideOptions.sendEmail,
+      parseBooleanOption(process.env.DUE_REMINDER_SEND_EMAIL, isEmailConfigured())
+    ),
     buildingId: overrideOptions.buildingId || "",
     force: overrideOptions.force === true || overrideOptions.force === "true"
   };
@@ -466,15 +692,66 @@ const runDueDateReminders = async (overrideOptions = {}) => {
   return processInvoices(Invoice, "Invoice", options);
 };
 
+const runUtilityDueDateReminders = async (overrideOptions = {}) => {
+  const options = {
+    daysAhead: parseNumber(
+      overrideOptions.daysAhead ??
+        process.env.UTILITY_REMINDER_DAYS_AHEAD ??
+        process.env.DUE_REMINDER_DAYS_AHEAD,
+      3
+    ),
+    sendSms: parseBooleanOption(
+      overrideOptions.sendSms,
+      process.env.UTILITY_REMINDER_SEND_SMS !== undefined
+        ? parseBooleanOption(process.env.UTILITY_REMINDER_SEND_SMS, false)
+        : parseBooleanOption(process.env.DUE_REMINDER_SEND_SMS, false)
+    ),
+    sendEmail: parseBooleanOption(
+      overrideOptions.sendEmail,
+      process.env.UTILITY_REMINDER_SEND_EMAIL !== undefined
+        ? parseBooleanOption(process.env.UTILITY_REMINDER_SEND_EMAIL, isEmailConfigured())
+        : parseBooleanOption(process.env.DUE_REMINDER_SEND_EMAIL, isEmailConfigured())
+    ),
+    buildingId: overrideOptions.buildingId || "",
+    force: overrideOptions.force === true || overrideOptions.force === "true"
+  };
+
+  if (options.sendSms && !isSmsConfigured()) {
+    return {
+      checked: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 1,
+      force: Boolean(options.force),
+      errors: [{
+        error: "SMS reminders are enabled, but SMS_API_URL, SMS_API_KEY, or an SMS sender ID is missing."
+      }]
+    };
+  }
+
+  if (!options.sendSms && !options.sendEmail) {
+    return {
+      checked: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      force: Boolean(options.force),
+      errors: []
+    };
+  }
+
+  return processUtilities(options);
+};
+
 const summarizeReminderError = (entry) => {
   if (typeof entry === "string") {
     return entry;
   }
 
-  const invoice = entry.invoiceNumber || entry.invoiceId;
+  const record = entry.invoiceNumber || entry.invoiceId || entry.utilityId;
   const errors = Array.isArray(entry.errors) ? entry.errors.join("; ") : entry.error;
 
-  return [entry.invoiceModel, invoice, errors].filter(Boolean).join(": ");
+  return [entry.invoiceModel || entry.utilityModel, record, errors].filter(Boolean).join(": ");
 };
 
 const summarizeReminderResult = (result) => ({
@@ -518,11 +795,51 @@ const startDueDateReminderJob = () => {
   return reminderTimer;
 };
 
+const startUtilityDueDateReminderJob = () => {
+  const enabled = process.env.UTILITY_REMINDER_ENABLED !== undefined
+    ? process.env.UTILITY_REMINDER_ENABLED === "true"
+    : process.env.DUE_REMINDER_ENABLED === "true";
+
+  if (!enabled) {
+    console.log("Utility due date reminder job is disabled. Set UTILITY_REMINDER_ENABLED=true to enable it.");
+    return null;
+  }
+
+  if (utilityReminderTimer) {
+    return utilityReminderTimer;
+  }
+
+  const intervalMinutes = parseNumber(
+    process.env.UTILITY_REMINDER_INTERVAL_MINUTES ?? process.env.DUE_REMINDER_INTERVAL_MINUTES,
+    1440
+  );
+  const intervalMs = Math.max(1, intervalMinutes) * 60 * 1000;
+  const runJob = async () => {
+    try {
+      const result = await runUtilityDueDateReminders();
+
+      if (result.sent > 0 || result.failed > 0) {
+        console.log("Utility due date reminder job result:", summarizeReminderResult(result));
+      }
+    } catch (error) {
+      console.error("Utility due date reminder job failed:", error);
+    }
+  };
+
+  setTimeout(runJob, 20000);
+  utilityReminderTimer = setInterval(runJob, intervalMs);
+  console.log(`Utility due date reminder job started. Interval: ${intervalMinutes} minute(s).`);
+
+  return utilityReminderTimer;
+};
+
 module.exports = {
   clearReminderHistoryForScheduleChange,
   getDaysUntilDue,
   reminderAlreadySent,
   runDueDateReminders,
+  runUtilityDueDateReminders,
   shouldSkipReminder,
-  startDueDateReminderJob
+  startDueDateReminderJob,
+  startUtilityDueDateReminderJob
 };
