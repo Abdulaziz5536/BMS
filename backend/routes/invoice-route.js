@@ -188,25 +188,49 @@ router.get('/payment-status', async (req, res) => {
       filter.building = new mongoose.Types.ObjectId(req.query.building);
     }
 
-    const tenants = await Tenant.find(filter)
-      .populate({ path: 'unit', select: 'unitId' })
-      .sort({ tenantName: 1 });
+    const currentMonthStart = ethiopianMonthRange.start;
+    const nextMonthStart = ethiopianMonthRange.end;
+    const notPaidDueCutoffDate = new Date(today);
+    notPaidDueCutoffDate.setDate(notPaidDueCutoffDate.getDate() + 8);
 
-    const invoices = await Invoice.find(filter)
+    const invoiceFilter = {
+      ...filter,
+      $or: [
+        {
+          status: "paid",
+          paymentDate: { $gte: currentMonthStart, $lt: nextMonthStart }
+        },
+        {
+          status: { $in: ["pending", "overdue"] },
+          dueDate: { $lt: notPaidDueCutoffDate },
+          outstandingBalance: { $gt: 0 }
+        }
+      ]
+    };
+
+    const tenantListFields = "tenantName phone email unit building";
+    const invoiceListFields = "building tenant invoiceNumber periodStart periodEnd dueDate paymentDate totalAmount amountPaid outstandingBalance status createdAt";
+
+    const tenants = await Tenant.find(filter)
+      .select(tenantListFields)
+      .populate({ path: 'unit', select: 'unitId' })
+      .sort({ tenantName: 1 })
+      .lean();
+
+    const invoices = await Invoice.find(invoiceFilter)
+      .select(invoiceListFields)
       .populate({
         path: 'tenant',
+        select: tenantListFields,
         populate: { path: 'unit', select: 'unitId' }
       })
-      .sort({ dueDate: -1, createdAt: -1 });
+      .sort({ dueDate: -1, createdAt: -1 })
+      .lean();
 
     const paidInvoiceByTenant = new Map();
     const notPaidInvoiceByTenant = new Map();
     const invoicesWithoutTenant = [];
     let totalOutstanding = 0;
-    const currentMonthStart = ethiopianMonthRange.start;
-    const nextMonthStart = ethiopianMonthRange.end;
-    const notPaidDueCutoffDate = new Date(today);
-    notPaidDueCutoffDate.setDate(notPaidDueCutoffDate.getDate() + 8);
 
     const shouldReplacePaidInvoice = (currentInvoice, nextInvoice) => {
       if (!currentInvoice) {

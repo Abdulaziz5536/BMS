@@ -104,5 +104,7 @@ invoiceSchema.index({ contract: 1, periodStart: 1, periodEnd: 1 }, { unique: tru
 invoiceSchema.index({ dueDate: 1, status: 1 });
 invoiceSchema.index({ building: 1, dueDate: 1, status: 1 });
 invoiceSchema.index({ building: 1, dueDate: 1, outstandingBalance: 1 });
+invoiceSchema.index({ building: 1, status: 1, paymentDate: -1 });
+invoiceSchema.index({ building: 1, status: 1, dueDate: 1, outstandingBalance: 1 });
 
 module.exports = mongoose.model("Invoice", invoiceSchema);
