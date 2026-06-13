@@ -294,7 +294,18 @@ export default function Maintenance() {
     setError("");
     setTenants([]);
     setFloors([]);
-    fetchRequests();
+
+    if (!selectedBuildingId) {
+      setRequests([]);
+      return;
+    }
+
+    loadCachedJson(
+      withBuilding("/maintenance", selectedBuildingId),
+      setRequests,
+      setError,
+      "Failed to load maintenance requests"
+    );
   }, [selectedBuildingId]);
 
   const filteredRequests = requests

@@ -79,6 +79,15 @@ npm start
 
 ## This PC Boot-Level Auto-Start Setup
 
+Bookmark the MagicDNS link instead of the raw `100.x.x.x` address:
+
+```text
+http://desktop-n8vqhgp.tail50fa36.ts.net:3000/
+```
+
+MagicDNS follows this PC's current Tailscale IP, so the link survives if Tailscale
+renumbers the machine.
+
 This PC has an Administrator-level scheduled task:
 
 ```text
@@ -91,9 +100,25 @@ It starts when Windows boots, before user login, and runs:
 scripts/start-bms-backend-watchdog.ps1
 ```
 
-The watchdog checks `http://127.0.0.1:3000/system/health`. If the backend is down,
-it starts `backend/index.js` again. While the watchdog is running, it also prevents
-Windows idle sleep so the PC can keep acting as the BMS server.
+The watchdog checks both:
+
+```text
+http://127.0.0.1:3000/system/health
+http://<current-tailscale-ip>:3000/system/health
+```
+
+If Tailscale loses its `100.x.x.x` IP or the backend stops responding through
+Tailscale, the watchdog runs `tailscale up` and restarts the Tailscale service
+before checking again. If the backend is down locally, it starts `backend/index.js`
+again. While the watchdog is running, it also prevents Windows idle sleep so the
+PC can keep acting as the BMS server.
+
+After changing the watchdog script, reinstall or refresh the boot task from an
+Administrator PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\install-bms-boot-task.ps1 -NoPause
+```
 
 Installer/uninstaller scripts:
 

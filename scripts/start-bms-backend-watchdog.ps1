@@ -12,9 +12,16 @@ $BackendOut = Join-Path $LogDir "backend.log"
 $BackendErr = Join-Path $LogDir "backend.err"
 $BackendEnv = Join-Path $ProjectRoot "backend\.env"
 $NodeExe = "C:\Program Files\nodejs\node.exe"
+$TailscaleExe = "C:\Program Files\Tailscale\tailscale.exe"
+$TailscaleRecoveryCooldownSeconds = 300
+$lastTailscaleRecoveryAt = [datetime]::MinValue
 
 if (-not (Test-Path $NodeExe)) {
   $NodeExe = "node.exe"
+}
+
+if (-not (Test-Path $TailscaleExe)) {
+  $TailscaleExe = "tailscale.exe"
 }
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -76,6 +83,100 @@ function Test-BackendHealth {
   }
 }
 
+function Get-TailscaleIp {
+  try {
+    $tailscaleOutput = & $TailscaleExe ip -4 2>$null
+
+    if ($LASTEXITCODE -ne 0) {
+      return ""
+    }
+
+    $tailscaleIp = $tailscaleOutput |
+      Where-Object { $_ -match "^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$" } |
+      Select-Object -First 1
+
+    return [string] $tailscaleIp
+  } catch {
+    return ""
+  }
+}
+
+function Test-TailscaleBackendHealth {
+  param([string] $Port)
+
+  $tailscaleIp = Get-TailscaleIp
+
+  if (-not $tailscaleIp) {
+    return @{
+      Ok = $false
+      Ip = ""
+      Message = "Tailscale has no 100.x.x.x IP"
+    }
+  }
+
+  try {
+    $response = Invoke-WebRequest `
+      -Uri "http://${tailscaleIp}:${Port}/system/health" `
+      -UseBasicParsing `
+      -TimeoutSec 5
+
+    return @{
+      Ok = $response.StatusCode -ge 200 -and $response.StatusCode -lt 600
+      Ip = $tailscaleIp
+      Message = "Tailscale backend health responded with $($response.StatusCode)"
+    }
+  } catch {
+    if ($_.Exception.Response) {
+      return @{
+        Ok = $true
+        Ip = $tailscaleIp
+        Message = "Tailscale backend returned an HTTP response"
+      }
+    }
+
+    return @{
+      Ok = $false
+      Ip = $tailscaleIp
+      Message = "Tailscale backend did not respond"
+    }
+  }
+}
+
+function Repair-Tailscale {
+  Write-ManagerLog "Attempting Tailscale recovery."
+
+  try {
+    & $TailscaleExe up 2>&1 | ForEach-Object {
+      if ($_ -and $_.ToString().Trim()) {
+        Write-ManagerLog "tailscale up: $($_.ToString().Trim())"
+      }
+    }
+  } catch {
+    Write-ManagerLog "tailscale up failed: $($_.Exception.Message)"
+  }
+
+  Start-Sleep -Seconds 5
+
+  if (Get-TailscaleIp) {
+    Write-ManagerLog "Tailscale recovered after tailscale up."
+    return
+  }
+
+  try {
+    Write-ManagerLog "Restarting Tailscale service."
+    Restart-Service -Name Tailscale -Force -ErrorAction Stop
+    Start-Sleep -Seconds 8
+
+    & $TailscaleExe up 2>&1 | ForEach-Object {
+      if ($_ -and $_.ToString().Trim()) {
+        Write-ManagerLog "tailscale up after service restart: $($_.ToString().Trim())"
+      }
+    }
+  } catch {
+    Write-ManagerLog "Tailscale service restart failed: $($_.Exception.Message)"
+  }
+}
+
 $createdMutex = $false
 $watchdogMutex = New-Object System.Threading.Mutex($true, "Global\BMSBackendWatchdog", [ref] $createdMutex)
 
@@ -86,31 +187,62 @@ if (-not $createdMutex) {
 
 Write-ManagerLog "BMS backend watchdog started."
 
+$backendProcess = $null
+
 try {
   while ($true) {
-    $backendPort = Get-BackendPort
+    if ($backendProcess -and $backendProcess.HasExited) {
+      Write-ManagerLog "Backend process exited with code $($backendProcess.ExitCode)."
+      $backendProcess = $null
+    }
 
-    if (Test-BackendHealth -Port $backendPort) {
-      Write-ManagerLog "Backend is responding on port $backendPort. Checking again in 60 seconds."
-      Start-Sleep -Seconds 60
+    $backendPort = Get-BackendPort
+    $backendHealthy = Test-BackendHealth -Port $backendPort
+
+    if (-not $backendHealthy) {
+      if ($backendProcess -and -not $backendProcess.HasExited) {
+        Write-ManagerLog "Backend process $($backendProcess.Id) is running, but localhost port $backendPort is not responding. Checking again in 10 seconds."
+        Start-Sleep -Seconds 10
+        continue
+      }
+
+      Write-ManagerLog "Starting backend from $BackendScript."
+
+      $backendProcess = Start-Process `
+        -FilePath $NodeExe `
+        -ArgumentList "`"$BackendScript`"" `
+        -WorkingDirectory $ProjectRoot `
+        -RedirectStandardOutput $BackendOut `
+        -RedirectStandardError $BackendErr `
+        -WindowStyle Hidden `
+        -PassThru
+
+      Write-ManagerLog "Backend started as process $($backendProcess.Id)."
+      Start-Sleep -Seconds 10
       continue
     }
 
-    Write-ManagerLog "Starting backend from $BackendScript."
+    $tailscaleHealth = Test-TailscaleBackendHealth -Port $backendPort
 
-    $backendProcess = Start-Process `
-      -FilePath $NodeExe `
-      -ArgumentList "`"$BackendScript`"" `
-      -WorkingDirectory $ProjectRoot `
-      -RedirectStandardOutput $BackendOut `
-      -RedirectStandardError $BackendErr `
-      -WindowStyle Hidden `
-      -PassThru
+    if (-not $tailscaleHealth["Ok"]) {
+      $secondsSinceRecovery = (New-TimeSpan -Start $lastTailscaleRecoveryAt -End (Get-Date)).TotalSeconds
 
-    Write-ManagerLog "Backend started as process $($backendProcess.Id)."
-    $backendProcess.WaitForExit()
-    Write-ManagerLog "Backend process exited with code $($backendProcess.ExitCode). Restarting in 10 seconds."
-    Start-Sleep -Seconds 10
+      if ($secondsSinceRecovery -ge $TailscaleRecoveryCooldownSeconds) {
+        Write-ManagerLog "Tailscale health check failed: $($tailscaleHealth["Message"])."
+        Repair-Tailscale
+        $lastTailscaleRecoveryAt = Get-Date
+      } else {
+        Write-ManagerLog "Tailscale health check failed: $($tailscaleHealth["Message"]). Recovery is cooling down."
+      }
+    }
+
+    if ($tailscaleHealth["Ok"]) {
+      Write-ManagerLog "Backend is responding on localhost and Tailscale $($tailscaleHealth["Ip"]):$backendPort. Checking again in 60 seconds."
+    } else {
+      Write-ManagerLog "Backend is responding on localhost port $backendPort. Checking again in 60 seconds."
+    }
+
+    Start-Sleep -Seconds 60
   }
 } finally {
   $watchdogMutex.ReleaseMutex()
