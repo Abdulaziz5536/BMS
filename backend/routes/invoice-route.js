@@ -29,6 +29,7 @@ const {
   parsePaymentDateInput
 } = require('../utils/date-utils');
 const { calculateLatePenalty } = require('../utils/late-penalty-utils');
+const { getInvoicePaymentAmount } = require('../utils/payment-amount-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -699,10 +700,10 @@ router.post('/invoices/:id/pay', async (req, res) => {
     const latePenalty = calculateLatePenalty(invoice.dueDate, paymentDateObj, invoice.rentAmount);
     const totalDue = invoice.rentAmount + latePenalty;
     const previousPaid = invoice.amountPaid || 0;
-    const paymentValue = amount != null ? Number(amount) : Math.max(0, totalDue - previousPaid);
+    const paymentValue = getInvoicePaymentAmount({ amount, totalDue, previousPaid });
 
-    if (paymentValue <= 0) {
-      return res.status(400).json({ error: "Payment amount must be greater than zero" });
+    if (paymentValue === null) {
+      return res.status(400).json({ error: "Payment amount must be a valid number greater than zero" });
     }
 
     // Create payment record

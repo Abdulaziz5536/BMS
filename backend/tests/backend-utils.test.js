@@ -27,6 +27,10 @@ const {
 } = require("../utils/session-cookie-utils");
 const { formatFloorLabel } = require("../utils/floor-label-utils");
 const { calculateLatePenalty } = require("../utils/late-penalty-utils");
+const {
+  getInvoicePaymentAmount,
+  parsePositiveAmount
+} = require("../utils/payment-amount-utils");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
 const {
   getFrequencyMonths,
@@ -188,6 +192,28 @@ test("late penalty is fixed at ten percent after due date", () => {
   assert.equal(calculateLatePenalty("2026-05-10", "2026-05-11", 20000), 2000);
   assert.equal(calculateLatePenalty("2026-05-10", "2026-06-10", 20000), 2000);
   assert.equal(calculateLatePenalty("bad-date", "2026-06-10", 20000), 0);
+});
+
+test("invoice payment amounts reject invalid numeric input", () => {
+  assert.equal(parsePositiveAmount("1250.50"), 1250.50);
+  assert.equal(parsePositiveAmount("not-a-number"), null);
+  assert.equal(parsePositiveAmount("Infinity"), null);
+  assert.equal(parsePositiveAmount("0"), null);
+  assert.equal(parsePositiveAmount("-10"), null);
+});
+
+test("invoice payment amount defaults to the outstanding balance", () => {
+  assert.equal(getInvoicePaymentAmount({
+    amount: undefined,
+    totalDue: 5000,
+    previousPaid: 1250
+  }), 3750);
+
+  assert.equal(getInvoicePaymentAmount({
+    amount: "750",
+    totalDue: 5000,
+    previousPaid: 1250
+  }), 750);
 });
 
 test("floor labels show basement floors as B levels", () => {
