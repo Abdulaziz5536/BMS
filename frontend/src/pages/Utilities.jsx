@@ -67,6 +67,7 @@ export default function Utilities() {
 
   const [message, setMessage] = useState("");
   const [error, setError] = useShortError();
+  const [loadingAction, setLoadingAction] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState("tenant");
@@ -150,6 +151,12 @@ export default function Utilities() {
   useEffect(() => {
     setMessage("");
     setError("");
+    setLoadingAction("");
+    setCurrentUtilityPaymentId(null);
+    setUtilityPaymentDate("");
+    setUtilityPaymentMethod("cash");
+    setUtilityPaymentNotes("");
+    setUtilityPaymentFile(undefined);
     clearForm();
     fetchTenants();
     fetchUtilities();
@@ -235,6 +242,10 @@ export default function Utilities() {
 
   const saveUtility = async () => {
     // Backend validates tenant ownership and negative amount rules.
+    if (loadingAction) {
+      return;
+    }
+
     setMessage("");
     setError("");
 
@@ -262,9 +273,11 @@ export default function Utilities() {
       return;
     }
 
+    setLoadingAction(editingId ? `save:${editingId}` : "save");
+
     try {
       const res = await apiFetch(
-        editingId ? `${API_BASE}/utilities/${editingId}` : `${API_BASE}/utilities`,
+        editingId ? withBuilding(`/utilities/${editingId}`, selectedBuildingId) : `${API_BASE}/utilities`,
         {
           method: editingId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -339,6 +352,10 @@ export default function Utilities() {
   };
 
   const recordUtilityPayment = async () => {
+    if (loadingAction) {
+      return;
+    }
+
     if (!currentUtilityPaymentId) {
       setError("Select a utility payment");
       return;
@@ -352,8 +369,9 @@ export default function Utilities() {
     try {
       setMessage("");
       setError("");
+      setLoadingAction(`pay:${currentUtilityPaymentId}`);
 
-      const res = await apiFetch(`${API_BASE}/utilities/${currentUtilityPaymentId}/pay`, {
+      const res = await apiFetch(withBuilding(`/utilities/${currentUtilityPaymentId}/pay`, selectedBuildingId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -375,11 +393,17 @@ export default function Utilities() {
       }
     } catch (error) {
       setError(error.message);
+    } finally {
+      setLoadingAction("");
     }
   };
 
   const deleteUtility = async (id) => {
     // Backend removes linked payment records with the utility bill.
+    if (loadingAction) {
+      return;
+    }
+
     const shouldDelete = await confirmAction({
       title: "Delete utility payment?",
       message: "Are you sure you want to delete this utility payment? Related payment records will also be removed.",
@@ -391,11 +415,13 @@ export default function Utilities() {
       return;
     }
 
+    setLoadingAction(`delete:${id}`);
+
     try {
       setMessage("");
       setError("");
 
-      const res = await apiFetch(`${API_BASE}/utilities/${id}`, {
+      const res = await apiFetch(withBuilding(`/utilities/${id}`, selectedBuildingId), {
         method: "DELETE"
       });
       const data = await readResponse(res);
@@ -409,6 +435,8 @@ export default function Utilities() {
       }
     } catch (error) {
       setError(error.message);
+    } finally {
+      setLoadingAction("");
     }
   };
 
@@ -416,6 +444,11 @@ export default function Utilities() {
     if (!file?.data) return "-";
     return <FilePreviewLink file={file} />;
   };
+
+  const actionInProgress = Boolean(loadingAction);
+  const saveButtonLabel = loadingAction.startsWith("save")
+    ? "Saving..."
+    : `${editingId ? "Update" : "Add"} Utility`;
 
   return (
     <div className="app-layout">
@@ -557,12 +590,12 @@ export default function Utilities() {
           <p className="form-total">Total: Br {formTotal}</p>
 
           <div className="form-actions">
-            <button onClick={saveUtility} disabled={!selectedBuildingId}>
-              {editingId ? "Update Utility" : "Add Utility"}
+            <button onClick={saveUtility} disabled={!selectedBuildingId || actionInProgress}>
+              {saveButtonLabel}
             </button>
 
             {editingId && (
-              <button className="secondary-btn" onClick={clearForm}>
+              <button className="secondary-btn" onClick={clearForm} disabled={actionInProgress}>
                 Cancel
               </button>
             )}
@@ -628,10 +661,10 @@ export default function Utilities() {
               </div>
             </div>
             <div className="form-actions">
-              <button onClick={recordUtilityPayment}>
-                Record Payment
+              <button onClick={recordUtilityPayment} disabled={actionInProgress}>
+                {loadingAction.startsWith("pay") ? "Recording..." : "Record Payment"}
               </button>
-              <button className="secondary-btn" onClick={clearUtilityPaymentForm}>
+              <button className="secondary-btn" onClick={clearUtilityPaymentForm} disabled={actionInProgress}>
                 Cancel
               </button>
             </div>
@@ -706,15 +739,16 @@ export default function Utilities() {
                           <button
                             className="table-action-btn payment-action-btn"
                             onClick={() => startUtilityPayment(utility)}
+                            disabled={actionInProgress}
                             title="Record payment"
                           >
                             <CheckCircleIcon />
                           </button>
                         )}
-                        <button className="table-action-btn" onClick={() => editUtility(utility)} title="Edit">
+                        <button className="table-action-btn" onClick={() => editUtility(utility)} disabled={actionInProgress} title="Edit">
                           <PencilSquareIcon />
                         </button>
-                        <button className="table-action-btn danger-btn" onClick={() => deleteUtility(utility._id)} title="Delete">
+                        <button className="table-action-btn danger-btn" onClick={() => deleteUtility(utility._id)} disabled={actionInProgress} title="Delete">
                           <TrashIcon />
                         </button>
                       </div>

@@ -10,6 +10,7 @@ const {
   createPaymentRecordIfMissing,
   syncPaymentRecordForPaidEntity
 } = require("../services/payment-record-service");
+const { ensureRecordMatchesRequestedBuilding } = require("../utils/building-scope-utils");
 const {
   getSyncedUtilityDueDate
 } = require("../services/utility-invoice-sync-service");
@@ -383,6 +384,10 @@ router.put("/utilities/:id", async (req, res) => {
       return res.status(404).json({ error: "Utility payment not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, previousUtility, "Utility payment")) {
+      return;
+    }
+
     const normalizedDueDate = dueDate !== undefined
       ? (parsedDueDate ? toIsoDate(parsedDueDate) : "")
       : await getSyncedUtilityDueDate({
@@ -474,6 +479,10 @@ router.patch("/utilities/:id/status", async (req, res) => {
       return res.status(404).json({ error: "Utility payment not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, utility, "Utility payment")) {
+      return;
+    }
+
     const previousStatus = utility.status;
     const recordsNewPayment = previousStatus !== "paid" && status === "paid";
     const clearsRecordedPayment = previousStatus === "paid" && status !== "paid";
@@ -533,6 +542,10 @@ router.patch("/utilities/:id/pay", async (req, res) => {
     const utility = await Utility.findById(req.params.id);
     if (!utility) {
       return res.status(404).json({ error: "Utility payment not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, utility, "Utility payment")) {
+      return;
     }
 
     if (utility.status === "paid") {
@@ -619,6 +632,10 @@ router.delete("/utilities/:id", async (req, res) => {
     const utility = await Utility.findById(req.params.id);
     if (!utility) {
       return res.status(404).json({ error: "Utility payment not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, utility, "Utility payment")) {
+      return;
     }
 
     const paymentDelete = await PaymentRecord.deleteMany({ utility: utility._id });

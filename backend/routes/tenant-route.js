@@ -7,6 +7,7 @@ const Invoice = require('../models/invoice-model');
 const PaymentRecord = require('../models/payment-record-model');
 const Utility = require('../models/utility-model');
 const { recordAuditLog } = require('../services/audit-log-service');
+const { ensureRecordMatchesRequestedBuilding } = require('../utils/building-scope-utils');
 const {
   normalizeDateOnlyString,
   parseFlexibleDateInput
@@ -223,6 +224,16 @@ router.put('/tenants/:id', async (req,res) => {
       return res.status(400).json({error:"Move-out date cannot be before move-in date"});
     }
 
+    const currentTenant = await Tenant.findById(req.params.id);
+
+    if(!currentTenant){
+      return res.status(404).json({error:"tenant not found"});
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, currentTenant, "Tenant")) {
+      return;
+    }
+
     const unitRecord = await Unit.findOne({ _id: unit, building });
 
     if(!unitRecord){
@@ -289,6 +300,10 @@ router.get('/tenants/:id/payment-history', async (req,res) => {
       return res.status(404).json({error:"tenant not found"});
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, tenant, "Tenant")) {
+      return;
+    }
+
     // History merges contracts, utilities, and actual payment records into one timeline for the UI.
     const contracts = await Contract.find({ tenant: req.params.id }).sort({ createdAt: -1 });
     const utilities = await Utility.find({ tenant: req.params.id }).sort({ createdAt: -1 });
@@ -339,6 +354,16 @@ router.get('/tenants/:id/payment-history', async (req,res) => {
 
 router.delete('/tenants/:id', async (req,res) => {
   try {
+    const tenant = await Tenant.findById(req.params.id);
+
+    if(!tenant){
+      return res.status(404).json({error:"tenant not found"});
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, tenant, "Tenant")) {
+      return;
+    }
+
     // Deletion is blocked while financial records still reference the tenant.
     const [contractCount, utilityCount, invoiceCount, paymentCount] = await Promise.all([
       Contract.countDocuments({ tenant: req.params.id }),
@@ -353,11 +378,7 @@ router.delete('/tenants/:id', async (req,res) => {
       });
     }
 
-    const tenant = await Tenant.findByIdAndDelete(req.params.id);
-
-    if(!tenant){
-      return res.status(404).json({error:"tenant not found"});
-    }
+    await Tenant.deleteOne({ _id: tenant._id });
 
     await recordAuditLog({
       building: tenant.building,

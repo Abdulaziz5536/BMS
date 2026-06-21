@@ -55,6 +55,38 @@ test("setInvoiceStatusFields keeps partial payment balance when pending is not r
   assert.equal(invoice.outstandingBalance, 50000);
 });
 
+test("setInvoiceStatusFields applies overdue with the current unpaid balance", () => {
+  const invoice = {
+    totalAmount: 80000,
+    amountPaid: 30000,
+    outstandingBalance: 50000,
+    status: "pending"
+  };
+
+  setInvoiceStatusFields(invoice, "overdue");
+
+  assert.equal(invoice.status, "overdue");
+  assert.equal(invoice.amountPaid, 30000);
+  assert.equal(invoice.outstandingBalance, 50000);
+});
+
+test("setInvoiceStatusFields cancels invoices without leaving outstanding balance", () => {
+  const invoice = {
+    totalAmount: 80000,
+    amountPaid: 30000,
+    outstandingBalance: 50000,
+    status: "pending",
+    paymentDate: new Date("2026-06-01")
+  };
+
+  setInvoiceStatusFields(invoice, "cancelled");
+
+  assert.equal(invoice.status, "cancelled");
+  assert.equal(invoice.amountPaid, 0);
+  assert.equal(invoice.outstandingBalance, 0);
+  assert.equal(invoice.paymentDate, undefined);
+});
+
 test("getNewInvoicePaymentFields starts fresh invoices pending", () => {
   assert.deepEqual(
     getNewInvoicePaymentFields(80000),

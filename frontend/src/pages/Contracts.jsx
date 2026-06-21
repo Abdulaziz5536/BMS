@@ -206,7 +206,7 @@ export default function Contracts() {
 
     try {
       const res = await apiFetch(
-        editingId ? `${API_BASE}/contract/${editingId}` : `${API_BASE}/contract`,
+        editingId ? withBuilding(`/contract/${editingId}`, selectedBuildingId) : `${API_BASE}/contract`,
         {
           method: editingId ? "PUT" : "POST",
           headers: { "Content-Type": "application/json" },
@@ -272,7 +272,7 @@ export default function Contracts() {
       setMessage("");
       setError("");
 
-      const res = await apiFetch(`${API_BASE}/contract/${id}`, {
+      const res = await apiFetch(withBuilding(`/contract/${id}`, selectedBuildingId), {
         method: "DELETE"
       });
 

@@ -287,7 +287,7 @@ export default function Employees() {
       const normalizedPhone = normalizeEthiopianPhone(phoneNumber, { required: false });
       const normalizedEmergencyPhone = normalizeEthiopianPhone(emergencyContactPhone, { required: false });
       const res = await apiFetch(
-        editingId ? `${API_BASE}/employees/${editingId}` : `${API_BASE}/employees`,
+        editingId ? withBuilding(`/employees/${editingId}`, selectedBuildingId) : `${API_BASE}/employees`,
         {
           method: editingId ? "PUT" : "POST",
           headers: {
@@ -361,7 +361,7 @@ export default function Employees() {
       setMessage("");
       setError("");
 
-      const res = await apiFetch(`${API_BASE}/employees/${id}`, {
+      const res = await apiFetch(withBuilding(`/employees/${id}`, selectedBuildingId), {
         method: "DELETE"
       });
 

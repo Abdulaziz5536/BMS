@@ -112,7 +112,7 @@ function Unit() {
 
     try {
       const res = await apiFetch(
-        editingId ? `${API_BASE}/units/${editingId}` : `${API_BASE}/units`,
+        editingId ? withBuilding(`/units/${editingId}`, selectedBuildingId) : `${API_BASE}/units`,
         {
           method: editingId ? "PUT" : "POST",
           headers: {
@@ -170,7 +170,7 @@ function Unit() {
       setMessage("");
       setError("");
 
-      const res = await apiFetch(`${API_BASE}/units/${id}`, {
+      const res = await apiFetch(withBuilding(`/units/${id}`, selectedBuildingId), {
         method: "DELETE"
       });
 

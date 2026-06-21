@@ -317,7 +317,7 @@ export default function Announcements() {
     try {
       setLoadingAction(`send-${id}`);
 
-      const response = await apiFetch(`${API_BASE}/announcements/${id}/send`, {
+      const response = await apiFetch(withBuilding(`/announcements/${id}/send`, selectedBuildingId), {
         method: "POST"
       });
       const result = await readResponse(response);
@@ -361,7 +361,7 @@ export default function Announcements() {
     try {
       setLoadingAction(`delete-${id}`);
 
-      const response = await apiFetch(`${API_BASE}/announcements/${id}`, {
+      const response = await apiFetch(withBuilding(`/announcements/${id}`, selectedBuildingId), {
         method: "DELETE"
       });
       const result = await readResponse(response);

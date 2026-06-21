@@ -11,6 +11,7 @@ const {
   runDueDateReminders
 } = require('../services/due-reminder-service');
 const { recordAuditLog } = require('../services/audit-log-service');
+const { ensureRecordMatchesRequestedBuilding } = require('../utils/building-scope-utils');
 const {
   getNewInvoicePaymentFields,
   setInvoiceStatusFields,
@@ -30,6 +31,7 @@ const {
 } = require('../utils/date-utils');
 const { calculateLatePenalty } = require('../utils/late-penalty-utils');
 const { getInvoicePaymentAmount } = require('../utils/payment-amount-utils');
+const { buildOutstandingRentFilter } = require('../utils/invoice-report-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -462,6 +464,10 @@ router.post('/invoices/generate', async (req, res) => {
       return res.status(404).json({ error: "Contract not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, contract, "Contract")) {
+      return;
+    }
+
     if (String(contract.tenant) !== String(tenantId)) {
       return res.status(400).json({ error: "Selected contract does not belong to the chosen tenant" });
     }
@@ -469,6 +475,10 @@ router.post('/invoices/generate', async (req, res) => {
     const tenant = await Tenant.findById(tenantId);
     if (!tenant) {
       return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, tenant, "Tenant")) {
+      return;
     }
 
     // invoiceDate chooses which billing period to generate; default is the current period.
@@ -681,6 +691,10 @@ router.post('/invoices/:id/pay', async (req, res) => {
     const invoice = await Invoice.findById(req.params.id);
     if (!invoice) {
       return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, invoice, "Invoice")) {
+      return;
     }
 
     if (invoice.status === 'paid') {
@@ -1034,7 +1048,7 @@ router.get('/reports/building-income', async (req, res) => {
 // Outstanding rent report
 router.get('/reports/outstanding-rent', async (req, res) => {
   try {
-    const filter = { outstandingBalance: { $gt: 0 } };
+    const filter = buildOutstandingRentFilter();
     if (req.query.building) {
       if (!mongoose.Types.ObjectId.isValid(req.query.building)) {
         return res.status(400).json({ error: 'Invalid building id' });
@@ -1073,6 +1087,10 @@ router.get('/invoices/:id/receipt', async (req, res) => {
       return res.status(404).json({ error: "Invoice not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, invoice, "Invoice")) {
+      return;
+    }
+
     const payments = await PaymentRecord.find({ invoice: invoice._id }).sort({ paymentDate: -1 });
 
     res.json({
@@ -1105,6 +1123,10 @@ router.patch('/invoices/:id', async (req, res) => {
 
     if (!invoice) {
       return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, invoice, "Invoice")) {
+      return;
     }
 
     // Editing dates changes the invoice only. It does not send reminders by itself.
@@ -1176,6 +1198,10 @@ router.patch('/invoices/:id', async (req, res) => {
         invoice.amountPaid = invoice.totalAmount;
         invoice.outstandingBalance = 0;
         invoice.paymentDate = invoice.paymentDate || new Date();
+      } else if (invoice.status === "cancelled") {
+        invoice.amountPaid = 0;
+        invoice.outstandingBalance = 0;
+        invoice.paymentDate = undefined;
       }
     }
 
@@ -1197,7 +1223,9 @@ router.patch('/invoices/:id', async (req, res) => {
     if (dueDateChanged) {
       await syncPendingUtilitiesToInvoiceDueDate(invoice);
     }
-    const shouldClearPaymentRecords = status === "pending" && Number(invoice.amountPaid || 0) <= 0;
+    const shouldClearPaymentRecords =
+      status === "cancelled" ||
+      (status === "pending" && Number(invoice.amountPaid || 0) <= 0);
     const removedPaymentRecords = shouldClearPaymentRecords
       ? (await PaymentRecord.deleteMany({ invoice: invoice._id })).deletedCount || 0
       : 0;
@@ -1245,6 +1273,10 @@ router.delete('/invoices/:id', async (req, res) => {
 
     if (!invoice) {
       return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, invoice, "Invoice")) {
+      return;
     }
 
     const paymentDelete = await PaymentRecord.deleteMany({ invoice: invoice._id });

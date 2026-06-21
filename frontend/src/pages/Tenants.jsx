@@ -288,7 +288,7 @@ export default function Tenant() {
       const normalizedPhone = normalizeEthiopianPhone(phone, { required: false });
       const normalizedEmergencyPhone = normalizeEthiopianPhone(emergencyContactPhone, { required: false });
       const res = await apiFetch(
-        editingId ? `${API_BASE}/tenants/${editingId}` : `${API_BASE}/tenants`,
+        editingId ? withBuilding(`/tenants/${editingId}`, selectedBuildingId) : `${API_BASE}/tenants`,
         {
           method: editingId ? "PUT" : "POST",
           headers: {
@@ -370,7 +370,7 @@ export default function Tenant() {
       setMessage("");
       setError("");
 
-      const res = await apiFetch(`${API_BASE}/tenants/${id}`, {
+      const res = await apiFetch(withBuilding(`/tenants/${id}`, selectedBuildingId), {
         method: "DELETE"
       });
 
@@ -403,7 +403,7 @@ export default function Tenant() {
       setPaymentHistory([]);
       setHistoryScrollTrigger((current) => current + 1);
 
-      const res = await apiFetch(`${API_BASE}/tenants/${tenant._id}/payment-history`);
+      const res = await apiFetch(withBuilding(`/tenants/${tenant._id}/payment-history`, selectedBuildingId));
       const data = await readResponse(res);
 
       if (res.ok) {

@@ -36,8 +36,8 @@ const setInvoiceStatusFields = (invoice, status, options = {}) => {
     return invoice;
   }
 
-  if (status === "pending") {
-    invoice.status = "pending";
+  if (status === "pending" || status === "overdue") {
+    invoice.status = status;
 
     if (options.resetPaidAmount || Number(invoice.amountPaid || 0) >= total) {
       invoice.amountPaid = 0;
@@ -46,6 +46,15 @@ const setInvoiceStatusFields = (invoice, status, options = {}) => {
     } else {
       invoice.outstandingBalance = Math.max(0, total - Number(invoice.amountPaid || 0));
     }
+
+    return invoice;
+  }
+
+  if (status === "cancelled") {
+    invoice.status = "cancelled";
+    invoice.amountPaid = 0;
+    invoice.outstandingBalance = 0;
+    invoice.paymentDate = undefined;
   }
 
   return invoice;

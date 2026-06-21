@@ -2,6 +2,11 @@ const mongoose = require('mongoose');
 
 // PaymentRecord is the immutable history of money received.
 // It can point to a rent invoice, a contract payment action, or a utility bill.
+const PAYMENT_SOURCE_FIELDS = ["invoice", "contract", "utility"];
+
+const getPaymentSourceCount = (payment) =>
+  PAYMENT_SOURCE_FIELDS.filter((field) => Boolean(payment?.[field])).length;
+
 const paymentRecordSchema = new mongoose.Schema({
   building: {
     type: mongoose.Schema.Types.ObjectId,
@@ -70,6 +75,17 @@ const paymentRecordSchema = new mongoose.Schema({
   }
 
 }, { timestamps: true });
+
+paymentRecordSchema.pre("validate", function validateSinglePaymentSource() {
+  if (getPaymentSourceCount(this) !== 1) {
+    this.invalidate(
+      "source",
+      "Payment record must reference exactly one invoice, contract, or utility."
+    );
+  }
+});
+
+paymentRecordSchema.statics.getPaymentSourceCount = getPaymentSourceCount;
 
 // Indexes support tenant payment history and deleting checks for linked records.
 paymentRecordSchema.index({ building: 1, paymentDate: -1 });

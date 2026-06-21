@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Employee = require('../models/employees-model');
 const { recordAuditLog } = require('../services/audit-log-service');
+const { ensureRecordMatchesRequestedBuilding } = require('../utils/building-scope-utils');
 const {
   ETHIOPIAN_PHONE_ERROR,
   normalizeEthiopianPhone
@@ -135,6 +136,16 @@ router.put('/employees/:id', async (req,res) => {
       return res.status(400).json({error:"Loan must be a valid number"});
     }
 
+    const currentEmployee = await Employee.findById(req.params.id);
+
+    if(!currentEmployee){
+      return res.status(404).json({err:"employee not found"});
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, currentEmployee, "Employee")) {
+      return;
+    }
+
     // Same duplicate check as create, excluding the employee being edited.
     const existingEmployee = await Employee.findOne({
       building: employeeData.building,
@@ -175,11 +186,17 @@ router.put('/employees/:id', async (req,res) => {
 
 router.delete('/employees/:id', async (req,res) => {
   try {
-    const employee = await Employee.findByIdAndDelete(req.params.id);
+    const employee = await Employee.findById(req.params.id);
 
     if(!employee){
       return res.status(404).json({err:"employee not found"});
     }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, employee, "Employee")) {
+      return;
+    }
+
+    await Employee.deleteOne({ _id: employee._id });
 
     await recordAuditLog({
       building: employee.building,

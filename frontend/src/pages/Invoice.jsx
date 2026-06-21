@@ -223,9 +223,27 @@ export default function Invoice() {
   }, [selectedBuildingId]);
 
   useEffect(() => {
-    // Changing buildings resets messages and reloads every building-scoped list.
+    // Changing buildings resets open invoice/payment panels before reloading scoped lists.
     setMessage("");
     setError("");
+    setSelectedTenant("");
+    setSelectedContract("");
+    setCurrentInvoiceId(null);
+    setEditingInvoiceId(null);
+    setPaymentAmount("");
+    setPaymentMethod("cash");
+    setPaymentDate("");
+    setReference("");
+    setNotes("");
+    setReceiptFile(null);
+    setEditInvoiceForm({
+      dueDate: "",
+      periodStart: "",
+      periodEnd: "",
+      totalAmount: "",
+      status: "pending",
+      notes: ""
+    });
     fetchInvoices();
     fetchContracts();
     fetchTenants();
@@ -315,10 +333,11 @@ export default function Invoice() {
 
     setLoading(true);
     try {
-      const res = await apiFetch(`${API_BASE}/invoices/generate`, {
+      const res = await apiFetch(withBuilding("/invoices/generate", selectedBuildingId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          building: selectedBuildingId,
           tenantId: selectedTenant,
           contractId: selectedContract
         })
@@ -413,7 +432,7 @@ export default function Invoice() {
         };
       }
 
-      const res = await apiFetch(`${API_BASE}/invoices/${invoiceId}/pay`, {
+      const res = await apiFetch(withBuilding(`/invoices/${invoiceId}/pay`, selectedBuildingId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -496,7 +515,7 @@ export default function Invoice() {
 
     setLoading(true);
     try {
-      const res = await apiFetch(`${API_BASE}/invoices/${editingInvoiceId}`, {
+      const res = await apiFetch(withBuilding(`/invoices/${editingInvoiceId}`, selectedBuildingId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -547,7 +566,7 @@ export default function Invoice() {
     setLoading(true);
 
     try {
-      const res = await apiFetch(`${API_BASE}/invoices/${invoice._id}`, {
+      const res = await apiFetch(withBuilding(`/invoices/${invoice._id}`, selectedBuildingId), {
         method: "DELETE"
       });
       const data = await readResponse(res);

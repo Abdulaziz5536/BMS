@@ -125,7 +125,7 @@ export default function Floors() {
       };
 
       const res = await apiFetch(
-        editingId ? `${API_BASE}/floors/${editingId}` : `${API_BASE}/floors`,
+        editingId ? withBuilding(`/floors/${editingId}`, selectedBuildingId) : `${API_BASE}/floors`,
         {
           method: editingId ? "PUT" : "POST",
           headers: {
@@ -178,7 +178,7 @@ export default function Floors() {
       setMessage("");
       setError("");
 
-      const res = await apiFetch(`${API_BASE}/floors/${id}`, {
+      const res = await apiFetch(withBuilding(`/floors/${id}`, selectedBuildingId), {
         method: "DELETE"
       });
 

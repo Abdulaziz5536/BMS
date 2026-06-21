@@ -8,6 +8,7 @@ const Unit = require("../models/unit-model");
 const Floor = require("../models/floor-model");
 const Employee = require("../models/employees-model");
 const { recordAuditLog } = require("../services/audit-log-service");
+const { ensureRecordMatchesRequestedBuilding } = require("../utils/building-scope-utils");
 
 const VALID_CATEGORIES = new Set([
   "plumbing",
@@ -286,6 +287,10 @@ router.get("/maintenance/:id", async (req, res) => {
       return res.status(404).json({ error: "Maintenance request not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, maintenance, "Maintenance request")) {
+      return;
+    }
+
     res.json({ maintenance: serializeMaintenance(maintenance) });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -329,6 +334,10 @@ router.put("/maintenance/:id", async (req, res) => {
 
     if (!existingMaintenance) {
       return res.status(404).json({ error: "Maintenance request not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, existingMaintenance, "Maintenance request")) {
+      return;
     }
 
     const { error, payload } = await buildMaintenancePayload(req.body, existingMaintenance);
@@ -382,6 +391,10 @@ router.patch("/maintenance/:id/status", async (req, res) => {
       return res.status(404).json({ error: "Maintenance request not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, maintenance, "Maintenance request")) {
+      return;
+    }
+
     maintenance.status = status;
     maintenance.completedDate = status === "completed" ? new Date() : null;
     if (hasActualCost) {
@@ -425,6 +438,10 @@ router.patch("/maintenance/:id/cost", async (req, res) => {
       return res.status(404).json({ error: "Maintenance request not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, maintenance, "Maintenance request")) {
+      return;
+    }
+
     maintenance.actualCost = actualCost;
     await maintenance.save();
 
@@ -452,11 +469,17 @@ router.patch("/maintenance/:id/cost", async (req, res) => {
 
 router.delete("/maintenance/:id", async (req, res) => {
   try {
-    const maintenance = await Maintenance.findByIdAndDelete(req.params.id);
+    const maintenance = await Maintenance.findById(req.params.id);
 
     if (!maintenance) {
       return res.status(404).json({ error: "Maintenance request not found" });
     }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, maintenance, "Maintenance request")) {
+      return;
+    }
+
+    await Maintenance.deleteOne({ _id: maintenance._id });
 
     await recordAuditLog({
       building: maintenance.building,

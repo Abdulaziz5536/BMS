@@ -278,7 +278,7 @@ export default function Maintenance() {
   };
 
   const fetchRequestDetails = async (id) => {
-    const res = await apiFetch(`${API_BASE}/maintenance/${id}`);
+    const res = await apiFetch(withBuilding(`/maintenance/${id}`, selectedBuildingId));
     const data = await readResponse(res);
 
     if (!res.ok) {
@@ -294,6 +294,14 @@ export default function Maintenance() {
     setError("");
     setTenants([]);
     setFloors([]);
+    setSelectedRequest(null);
+    setShowDetailsModal(false);
+    setPreviewImage(null);
+    setCostDialogRequest(null);
+    setCostDialogMode("complete");
+    setCostDialogValue("");
+    setCostDialogError("");
+    setActiveRequestId("");
 
     if (!selectedBuildingId) {
       setRequests([]);
@@ -381,7 +389,7 @@ export default function Maintenance() {
 
     try {
       const res = await apiFetch(
-        editingId ? `${API_BASE}/maintenance/${editingId}` : `${API_BASE}/maintenance`,
+        editingId ? withBuilding(`/maintenance/${editingId}`, selectedBuildingId) : `${API_BASE}/maintenance`,
         {
           method: editingId ? "PUT" : "POST",
           headers: {
@@ -430,7 +438,7 @@ export default function Maintenance() {
     setLoading(true);
     setActiveRequestId(id);
     try {
-      const res = await apiFetch(`${API_BASE}/maintenance/${id}/status`, {
+      const res = await apiFetch(withBuilding(`/maintenance/${id}/status`, selectedBuildingId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus, ...extraPayload })
@@ -461,7 +469,7 @@ export default function Maintenance() {
     setActiveRequestId(id);
 
     try {
-      const res = await apiFetch(`${API_BASE}/maintenance/${id}/cost`, {
+      const res = await apiFetch(withBuilding(`/maintenance/${id}/cost`, selectedBuildingId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actualCost: nextActualCost })
@@ -542,7 +550,7 @@ export default function Maintenance() {
     setActiveRequestId(id);
 
     try {
-      const res = await apiFetch(`${API_BASE}/maintenance/${id}`, {
+      const res = await apiFetch(withBuilding(`/maintenance/${id}`, selectedBuildingId), {
         method: "DELETE"
       });
 

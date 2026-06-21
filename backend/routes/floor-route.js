@@ -3,6 +3,7 @@ const router = express.Router();
 const Floor = require('../models/floor-model');
 const Unit = require('../models/unit-model');
 const { recordAuditLog } = require('../services/audit-log-service');
+const { ensureRecordMatchesRequestedBuilding } = require('../utils/building-scope-utils');
 const { formatFloorLabel, MIN_BASEMENT_FLOOR } = require('../utils/floor-label-utils');
 
 const isMissing = (value) => value === undefined || value === null || value === "";
@@ -115,6 +116,15 @@ router.put('/floors/:id', async (req, res) => {
     }
 
     const { building, floorNumber, unitCount, totalArea } = validation.values;
+    const currentFloor = await Floor.findById(id);
+
+    if (!currentFloor) {
+      return res.status(404).json({ error: "Floor not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, currentFloor, "Floor")) {
+      return;
+    }
 
     const existingFloor = await Floor.findOne({
       building,
@@ -164,6 +174,16 @@ router.put('/floors/:id', async (req, res) => {
 router.delete('/floors/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const floor = await Floor.findById(id);
+
+    if (!floor) {
+      return res.status(404).json({ error: "Floor not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, floor, "Floor")) {
+      return;
+    }
+
     // Floors with units cannot be deleted because tenants and invoices depend on those units.
     const unitCount = await Unit.countDocuments({ floor: id });
 
@@ -174,10 +194,6 @@ router.delete('/floors/:id', async (req, res) => {
     }
 
     const deletedFloor = await Floor.findByIdAndDelete(id);
-
-    if (!deletedFloor) {
-      return res.status(404).json({ error: "Floor not found" });
-    }
 
     const floorLabel = formatFloorLabel(deletedFloor.floor);
 

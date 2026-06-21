@@ -13,6 +13,7 @@ const {
   createPaymentRecordIfMissing,
   syncPaymentRecordForPaidEntity
 } = require('../services/payment-record-service');
+const { ensureRecordMatchesRequestedBuilding } = require('../utils/building-scope-utils');
 const { recalculateInvoicePeriodsForContract } = require('../services/invoice-period-service');
 const {
   syncPendingUtilitiesToLatestTenantInvoiceDueDate
@@ -248,6 +249,10 @@ router.put('/contract/:id', async (req, res) => {
       return res.status(404).json({ error: "Contract not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, previousContract, "Contract")) {
+      return;
+    }
+
     const updatedContract = await Contract.findByIdAndUpdate(
       req.params.id,
       {
@@ -357,6 +362,10 @@ router.patch('/contract/:id/status', async (req, res) => {
       return res.status(404).json({ error: "Contract not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, contract, "Contract")) {
+      return;
+    }
+
     const previousStatus = contract.status;
     contract.status = status;
     await contract.save();
@@ -404,6 +413,10 @@ router.patch('/contract/:id/pay', async (req, res) => {
 
     if (!contract) {
       return res.status(404).json({ error: "Contract not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, contract, "Contract")) {
+      return;
     }
 
     if (contract.status === "paid") {
@@ -473,6 +486,10 @@ router.delete('/contract/:id', async (req, res) => {
 
     if (!contract) {
       return res.status(404).json({ error: "Contract not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, contract, "Contract")) {
+      return;
     }
 
     const invoices = await Invoice.find({ contract: contract._id }).select("_id").lean();

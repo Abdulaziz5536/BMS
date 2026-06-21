@@ -11,6 +11,7 @@ const {
   sendEmail,
   sendSMS
 } = require("../services/messaging-service");
+const { ensureRecordMatchesRequestedBuilding } = require("../utils/building-scope-utils");
 const { getBuildingBrandName } = require("../utils/branding-utils");
 const { parseFlexibleDateInput } = require("../utils/date-utils");
 
@@ -418,6 +419,10 @@ router.post("/:id/send", async (req, res) => {
       return res.status(404).json({ error: "Announcement not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, announcement, "Announcement")) {
+      return;
+    }
+
     if (announcement.status === "sent") {
       return res.status(400).json({ error: "Announcement already sent" });
     }
@@ -559,6 +564,10 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Announcement not found" });
     }
 
+    if (!ensureRecordMatchesRequestedBuilding(req, res, announcement, "Announcement")) {
+      return;
+    }
+
     res.json(announcement);
   } catch (error) {
     res.status(error.statusCode || 500).json({ error: error.message });
@@ -570,6 +579,15 @@ const updateAnnouncement = async (req, res) => {
     validateObjectId(req.params.id, "announcement ID");
 
     const update = { ...req.body };
+    const existingAnnouncement = await Announcement.findById(req.params.id);
+
+    if (!existingAnnouncement) {
+      return res.status(404).json({ error: "Announcement not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, existingAnnouncement, "Announcement")) {
+      return;
+    }
 
     if (update.scheduledDate && !update.scheduledFor) {
       update.scheduledFor = update.scheduledDate;
@@ -607,11 +625,17 @@ router.delete("/:id", async (req, res) => {
   try {
     validateObjectId(req.params.id, "announcement ID");
 
-    const announcement = await Announcement.findByIdAndDelete(req.params.id);
+    const announcement = await Announcement.findById(req.params.id);
 
     if (!announcement) {
       return res.status(404).json({ error: "Announcement not found" });
     }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, announcement, "Announcement")) {
+      return;
+    }
+
+    await Announcement.deleteOne({ _id: announcement._id });
 
     res.json({ message: "Announcement deleted successfully" });
   } catch (error) {

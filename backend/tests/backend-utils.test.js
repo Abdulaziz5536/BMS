@@ -3,6 +3,11 @@ const assert = require("node:assert/strict");
 
 const { buildCsv } = require("../utils/csv-utils");
 const {
+  ensureRecordMatchesRequestedBuilding,
+  getRecordBuildingId,
+  getRequestedBuildingId
+} = require("../utils/building-scope-utils");
+const {
   getEthiopianMonthRange,
   normalizeDateOnlyString,
   parseFlexibleDateInput,
@@ -31,6 +36,7 @@ const {
   getInvoicePaymentAmount,
   parsePositiveAmount
 } = require("../utils/payment-amount-utils");
+const { buildOutstandingRentFilter } = require("../utils/invoice-report-utils");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
 const {
   getFrequencyMonths,
@@ -216,6 +222,54 @@ test("invoice payment amount defaults to the outstanding balance", () => {
   }), 750);
 });
 
+test("payment records require exactly one source entity", async () => {
+  const basePayment = {
+    paymentDate: new Date("2026-06-01"),
+    amount: 1000
+  };
+
+  const validPayment = new PaymentRecord({
+    ...basePayment,
+    invoice: "6655aabbccddeeff00112233"
+  });
+  await assert.doesNotReject(() => validPayment.validate());
+  assert.equal(PaymentRecord.getPaymentSourceCount(validPayment), 1);
+
+  const missingSource = new PaymentRecord(basePayment);
+  await assert.rejects(
+    () => missingSource.validate(),
+    (error) => {
+      assert.match(error.errors.source.message, /exactly one invoice, contract, or utility/);
+      return true;
+    }
+  );
+
+  const multipleSources = new PaymentRecord({
+    ...basePayment,
+    invoice: "6655aabbccddeeff00112233",
+    contract: "6655aabbccddeeff00112244"
+  });
+  await assert.rejects(
+    () => multipleSources.validate(),
+    (error) => {
+      assert.match(error.errors.source.message, /exactly one invoice, contract, or utility/);
+      return true;
+    }
+  );
+});
+
+test("outstanding rent reports exclude cancelled invoices", () => {
+  assert.deepEqual(buildOutstandingRentFilter(), {
+    outstandingBalance: { $gt: 0 },
+    status: { $ne: "cancelled" }
+  });
+  assert.deepEqual(buildOutstandingRentFilter("6655aabbccddeeff00112233"), {
+    outstandingBalance: { $gt: 0 },
+    status: { $ne: "cancelled" },
+    building: "6655aabbccddeeff00112233"
+  });
+});
+
 test("floor labels show basement floors as B levels", () => {
   assert.equal(formatFloorLabel(-1), "B1");
   assert.equal(formatFloorLabel("-4"), "B4");
@@ -227,6 +281,46 @@ test("building brand names come from the selected building", () => {
   assert.equal(getBuildingBrandName({ name: "Aymen Building" }), "Aymen Building");
   assert.equal(getBuildingBrandName({ name: "  Aymen\nBuilding  " }), "Aymen Building");
   assert.equal(getBuildingBrandName(null), "Building Management System");
+});
+
+test("building scope helper rejects records from another selected building", () => {
+  const selectedBuilding = "6655aabbccddeeff00112233";
+  const otherBuilding = "6655aabbccddeeff00112244";
+  let responseStatus = null;
+  let responsePayload = null;
+  const res = {
+    status(status) {
+      responseStatus = status;
+      return this;
+    },
+    json(payload) {
+      responsePayload = payload;
+      return this;
+    }
+  };
+
+  assert.equal(getRequestedBuildingId({ query: { building: selectedBuilding } }), selectedBuilding);
+  assert.equal(getRecordBuildingId({ building: { _id: selectedBuilding } }), selectedBuilding);
+  assert.equal(
+    ensureRecordMatchesRequestedBuilding(
+      { query: { building: selectedBuilding }, body: {} },
+      res,
+      { building: selectedBuilding },
+      "Tenant"
+    ),
+    true
+  );
+  assert.equal(
+    ensureRecordMatchesRequestedBuilding(
+      { query: { building: selectedBuilding }, body: {} },
+      res,
+      { building: otherBuilding },
+      "Tenant"
+    ),
+    false
+  );
+  assert.equal(responseStatus, 404);
+  assert.deepEqual(responsePayload, { error: "Tenant not found" });
 });
 
 test("deployment CORS allows only configured production origins", () => {

@@ -4,6 +4,7 @@ const Unit = require("../models/unit-model");
 const Floor = require("../models/floor-model");
 const Tenant = require("../models/tenant-model");
 const { recordAuditLog } = require("../services/audit-log-service");
+const { ensureRecordMatchesRequestedBuilding } = require("../utils/building-scope-utils");
 
 // Unit routes manage rentable spaces. A unit is linked to one building and one floor.
 // The GET route also calculates whether each unit is occupied by looking at tenants.
@@ -89,6 +90,16 @@ router.put('/units/:id', async (req,res) => {
     return res.status(400).json({ error: "Please fill all fields" });
   }
 
+  const currentUnit = await Unit.findById(req.params.id);
+
+  if (!currentUnit) {
+    return res.status(404).json({ error: "unit not found" });
+  }
+
+  if (!ensureRecordMatchesRequestedBuilding(req, res, currentUnit, "Unit")) {
+    return;
+  }
+
   const floorRecord = await Floor.findOne({ _id: floor, building });
 
   if (!floorRecord) {
@@ -138,6 +149,16 @@ router.put('/units/:id', async (req,res) => {
 
 router.delete('/units/:id', async (req,res) => {
   try {
+    const unit = await Unit.findById(req.params.id);
+
+    if(!unit){
+      return res.status(404).json({ error: "unit not found" });
+    }
+
+    if (!ensureRecordMatchesRequestedBuilding(req, res, unit, "Unit")) {
+      return;
+    }
+
     // A unit with a tenant cannot be deleted until the tenant is moved or removed.
     const tenantCount = await Tenant.countDocuments({ unit: req.params.id });
 
@@ -147,11 +168,7 @@ router.delete('/units/:id', async (req,res) => {
       });
     }
 
-    const unit = await Unit.findByIdAndDelete(req.params.id);
-
-    if(!unit){
-      return res.status(404).json({ error: "unit not found" });
-    }
+    await Unit.deleteOne({ _id: unit._id });
 
     await recordAuditLog({
       building: unit.building,
