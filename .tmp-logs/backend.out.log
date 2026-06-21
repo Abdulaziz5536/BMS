@@ -1,0 +1,17 @@
+
+> bms@1.0.0 dev:backend
+> node backend/index.js
+
+mongoDB is connected
+Frontend bundle is served from frontend/dist
+Due date reminder job started. Interval: 1440 minute(s).
+Utility due date reminder job started. Interval: 1440 minute(s).
+Server is running on port 3000
+Utility due date reminder job result: {
+  checked: 1,
+  sent: 0,
+  skipped: 0,
+  failed: 1,
+  errors: [ 'Utility: 69fe07eafde8195b935741ec: Tenant record not found' ],
+  moreErrors: 0
+}
