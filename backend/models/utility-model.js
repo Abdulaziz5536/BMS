@@ -61,7 +61,22 @@ const utilitySchema = new mongoose.Schema(
         type: Date,
         default: Date.now
       },
-      message: String
+      message: String,
+      status: {
+        type: String,
+        enum: ["pending", "sent", "failed"],
+        default: "sent"
+      },
+      runKey: {
+        type: String,
+        default: ""
+      },
+      channels: [String],
+      recipients: {
+        sms: String,
+        email: String
+      },
+      deliveryErrors: [String]
     }],
 
     // attachment (photo or pdf)
@@ -72,5 +87,7 @@ const utilitySchema = new mongoose.Schema(
 
 utilitySchema.index({ building: 1, status: 1 });
 utilitySchema.index({ building: 1, dueDate: 1, status: 1 });
+utilitySchema.index({ tenant: 1, status: 1 });
+utilitySchema.index({ building: 1, tenant: 1, status: 1 });
 
 module.exports = mongoose.model("Utility", utilitySchema);

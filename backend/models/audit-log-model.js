@@ -26,6 +26,22 @@ const auditLogSchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    actorId: {
+      type: String,
+      default: ""
+    },
+    actorName: {
+      type: String,
+      default: ""
+    },
+    actorEmail: {
+      type: String,
+      default: ""
+    },
+    actorRole: {
+      type: String,
+      default: ""
+    },
     message: {
       type: String,
       default: ""
@@ -40,5 +56,6 @@ const auditLogSchema = new mongoose.Schema(
 
 auditLogSchema.index({ createdAt: -1 });
 auditLogSchema.index({ building: 1, createdAt: -1 });
+auditLogSchema.index({ actorId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("AuditLog", auditLogSchema);

@@ -79,7 +79,9 @@ const getUtilityAmount = (utility) =>
   (Number(utility?.generatorGasAmount) || 0);
 
 const reminderAlreadySent = (invoice, type) =>
-  (invoice.remindersSent || []).some((reminder) => reminder.type === type);
+  (invoice.remindersSent || []).some((reminder) =>
+    reminder.type === type && reminder.status !== "failed"
+  );
 
 // Force resend is the only way to send the same reminder type more than once.
 const shouldSkipReminder = (invoice, type, options = {}) =>
@@ -95,6 +97,64 @@ const clearReminderHistoryForScheduleChange = (invoice) => {
   }
 
   return previousCount;
+};
+
+const getReminderClaimFilter = (recordId, type, options = {}) => {
+  const filter = { _id: recordId };
+
+  if (!options.force) {
+    filter.remindersSent = {
+      $not: {
+        $elemMatch: {
+          type,
+          status: { $ne: "failed" }
+        }
+      }
+    };
+  }
+
+  return filter;
+};
+
+const claimReminderSend = async (Model, record, type, options = {}) => {
+  const runKey = new mongoose.Types.ObjectId().toString();
+  const result = await Model.updateOne(
+    getReminderClaimFilter(record._id, type, options),
+    {
+      $push: {
+        remindersSent: {
+          type,
+          runKey,
+          status: "pending",
+          sentAt: new Date(),
+          message: "",
+          channels: [],
+          recipients: {},
+          deliveryErrors: []
+        }
+      }
+    }
+  );
+
+  return result.modifiedCount > 0 ? runKey : "";
+};
+
+const finishReminderSend = async (Model, record, runKey, message, reminderResult) => {
+  const sent = reminderResult.sent > 0;
+
+  await Model.updateOne(
+    { _id: record._id, "remindersSent.runKey": runKey },
+    {
+      $set: {
+        "remindersSent.$.status": sent ? "sent" : "failed",
+        "remindersSent.$.sentAt": new Date(),
+        "remindersSent.$.message": getReminderText(message),
+        "remindersSent.$.channels": reminderResult.deliveredChannels || [],
+        "remindersSent.$.recipients": reminderResult.recipients || {},
+        "remindersSent.$.deliveryErrors": reminderResult.errors || []
+      }
+    }
+  );
 };
 
 const getReminderText = (message) => {
@@ -442,14 +502,20 @@ const sendTenantReminder = async (record, type, message, options, paymentKind = 
   // Send each selected channel independently so email can succeed even if SMS fails.
   const tenant = record.tenant;
   const errors = [];
+  const deliveredChannels = [];
+  const attemptedChannels = [];
+  const recipients = {};
   let sent = 0;
   const paymentLabel = paymentKind === "utility" ? "Utility" : "Rent";
 
   if (!tenant) {
-    return { sent, errors: ["Tenant record not found"] };
+    return { sent, errors: ["Tenant record not found"], attemptedChannels, deliveredChannels, recipients };
   }
 
   if (options.sendSms) {
+    attemptedChannels.push("sms");
+    recipients.sms = tenant.phone || "";
+
     if (tenant.phone) {
       const smsResult = await sendSMS(tenant.phone, getSmsText(message), {
         building: record.building
@@ -457,6 +523,8 @@ const sendTenantReminder = async (record, type, message, options, paymentKind = 
 
       if (smsResult.success) {
         sent += 1;
+        deliveredChannels.push("sms");
+        recipients.sms = smsResult.to || tenant.phone;
       } else {
         errors.push(`SMS: ${smsResult.error}`);
       }
@@ -466,6 +534,9 @@ const sendTenantReminder = async (record, type, message, options, paymentKind = 
   }
 
   if (options.sendEmail) {
+    attemptedChannels.push("email");
+    recipients.email = tenant.email || "";
+
     if (tenant.email) {
       const subject = type === "late_payment"
         ? `${getBuildingBrandName(record.building)} - ${paymentLabel} payment overdue`
@@ -480,6 +551,7 @@ const sendTenantReminder = async (record, type, message, options, paymentKind = 
 
       if (emailResult.success) {
         sent += 1;
+        deliveredChannels.push("email");
       } else {
         errors.push(`Email: ${emailResult.error}`);
       }
@@ -488,7 +560,7 @@ const sendTenantReminder = async (record, type, message, options, paymentKind = 
     }
   }
 
-  return { sent, errors };
+  return { sent, errors, attemptedChannels, deliveredChannels, recipients };
 };
 
 const processInvoices = async (Model, label, options) => {
@@ -518,6 +590,12 @@ const processInvoices = async (Model, label, options) => {
       ? buildLatePaymentMessage(invoice, Math.abs(daysUntilDue))
       : buildDueDateMessage(invoice, daysUntilDue);
 
+    const runKey = await claimReminderSend(Model, invoice, reminderType, options);
+    if (!runKey) {
+      results.skipped += 1;
+      continue;
+    }
+
     const reminderResult = await sendTenantReminder(
       invoice,
       reminderType,
@@ -525,14 +603,9 @@ const processInvoices = async (Model, label, options) => {
       options
     );
 
+    await finishReminderSend(Model, invoice, runKey, message, reminderResult);
+
     if (reminderResult.sent > 0) {
-      invoice.remindersSent = invoice.remindersSent || [];
-      invoice.remindersSent.push({
-        type: reminderType,
-        sentAt: new Date(),
-        message: getReminderText(message)
-      });
-      await invoice.save();
       await recordAuditLog({
         building: invoice.building?._id || invoice.building,
         action: "sent",
@@ -547,6 +620,8 @@ const processInvoices = async (Model, label, options) => {
             email: options.sendEmail,
             sms: options.sendSms
           },
+          deliveredChannels: reminderResult.deliveredChannels,
+          errors: reminderResult.errors,
           force: Boolean(options.force)
         }
       });
@@ -559,6 +634,25 @@ const processInvoices = async (Model, label, options) => {
         invoiceNumber: invoice.invoiceNumber,
         tenant: invoice.tenant?._id,
         errors: reminderResult.errors
+      });
+      console.warn("Skipping failed invoice reminder:", {
+        invoiceModel: label,
+        invoiceId: String(invoice._id),
+        errors: reminderResult.errors
+      });
+      await recordAuditLog({
+        building: invoice.building?._id || invoice.building,
+        action: "failed",
+        entityType: "reminder",
+        entityId: invoice._id,
+        entityLabel: invoice.invoiceNumber,
+        message: `${reminderType === "late_payment" ? "Overdue" : "Due-date"} reminder failed for invoice ${invoice.invoiceNumber}`,
+        metadata: {
+          invoiceModel: label,
+          type: reminderType,
+          errors: reminderResult.errors,
+          force: Boolean(options.force)
+        }
       });
     }
   }
@@ -582,6 +676,16 @@ const processUtilities = async (options) => {
     const dueDate = parseFlexibleDateInput(utility.dueDate);
 
     if (!dueDate) {
+      results.skipped += 1;
+      results.errors.push({
+        utilityModel: "Utility",
+        utilityId: utility._id,
+        error: "Invalid due date"
+      });
+      console.warn("Skipping utility reminder with invalid due date:", {
+        utilityId: String(utility._id),
+        dueDate: utility.dueDate
+      });
       continue;
     }
 
@@ -598,6 +702,12 @@ const processUtilities = async (options) => {
       ? buildUtilityLatePaymentMessage(utility, Math.abs(daysUntilDue))
       : buildUtilityDueDateMessage(utility, daysUntilDue);
 
+    const runKey = await claimReminderSend(Utility, utility, reminderType, options);
+    if (!runKey) {
+      results.skipped += 1;
+      continue;
+    }
+
     const reminderResult = await sendTenantReminder(
       utility,
       reminderType,
@@ -606,14 +716,9 @@ const processUtilities = async (options) => {
       "utility"
     );
 
+    await finishReminderSend(Utility, utility, runKey, message, reminderResult);
+
     if (reminderResult.sent > 0) {
-      utility.remindersSent = utility.remindersSent || [];
-      utility.remindersSent.push({
-        type: reminderType,
-        sentAt: new Date(),
-        message: getReminderText(message)
-      });
-      await utility.save();
       await recordAuditLog({
         building: utility.building?._id || utility.building,
         action: "sent",
@@ -628,6 +733,8 @@ const processUtilities = async (options) => {
             email: options.sendEmail,
             sms: options.sendSms
           },
+          deliveredChannels: reminderResult.deliveredChannels,
+          errors: reminderResult.errors,
           force: Boolean(options.force)
         }
       });
@@ -639,6 +746,24 @@ const processUtilities = async (options) => {
         utilityId: utility._id,
         tenant: utility.tenant?._id,
         errors: reminderResult.errors
+      });
+      console.warn("Skipping failed utility reminder:", {
+        utilityId: String(utility._id),
+        errors: reminderResult.errors
+      });
+      await recordAuditLog({
+        building: utility.building?._id || utility.building,
+        action: "failed",
+        entityType: "reminder",
+        entityId: utility._id,
+        entityLabel: `Utility ${formatEthiopianDate(utility.dueDate)}`,
+        message: `${reminderType === "late_payment" ? "Overdue" : "Due-date"} reminder failed for utility payment`,
+        metadata: {
+          utilityModel: "Utility",
+          type: reminderType,
+          errors: reminderResult.errors,
+          force: Boolean(options.force)
+        }
       });
     }
   }

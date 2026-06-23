@@ -17,6 +17,10 @@ const {
   normalizeEthiopianPhone
 } = require('../utils/phone-utils');
 const { normalizePaymentFrequency } = require('../utils/payment-frequency-utils');
+const {
+  normalizeCaseInsensitiveValue,
+  withCaseInsensitiveCollation
+} = require('../utils/case-insensitive-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -25,7 +29,7 @@ const MAX_FILE_DATA_LENGTH = 7000000;
 
 // Normalize optional contact/date/file fields before validation and saving.
 const normalizeTenantPayload = (body) => ({
-  email: String(body.email || "").trim(),
+  email: normalizeCaseInsensitiveValue(body.email),
   // Tenant TIN is optional, but when present it prints on receipts.
   tinNumber: String(body.tinNumber || "").trim(),
   emergencyContactName: String(body.emergencyContactName || "").trim(),
@@ -144,6 +148,17 @@ router.post('/tenants', async (req,res) => {
       return res.status(400).json({error:"tenant id exists"});
     }
 
+    if(extraTenantData.email){
+      const existingEmail = await withCaseInsensitiveCollation(Tenant.findOne({
+        building,
+        email: extraTenantData.email
+      }));
+
+      if(existingEmail){
+        return res.status(400).json({error:"tenant email exists"});
+      }
+    }
+
     // One active tenant per unit keeps occupancy calculations correct.
     const occupiedUnit = await Tenant.findOne({ building, unit });
 
@@ -248,6 +263,18 @@ router.put('/tenants/:id', async (req,res) => {
 
     if(existingTenant){
       return res.status(400).json({error:"tenant id exists"});
+    }
+
+    if(extraTenantData.email){
+      const existingEmail = await withCaseInsensitiveCollation(Tenant.findOne({
+        building,
+        email: extraTenantData.email,
+        _id: { $ne: req.params.id }
+      }));
+
+      if(existingEmail){
+        return res.status(400).json({error:"tenant email exists"});
+      }
     }
 
     const occupiedUnit = await Tenant.findOne({

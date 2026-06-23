@@ -118,6 +118,28 @@ const describeSendError = (error) => {
   return getShortErrorMessage(details.join(" - "), "Messaging failed");
 };
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const withRetry = async (operation, options = {}) => {
+  const attempts = Math.max(1, Number(options.attempts || process.env.MESSAGING_RETRY_ATTEMPTS || 2));
+  const delayMs = Math.max(0, Number(options.delayMs || process.env.MESSAGING_RETRY_DELAY_MS || 300));
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < attempts && delayMs > 0) {
+        await wait(delayMs);
+      }
+    }
+  }
+
+  throw lastError;
+};
+
 const emailTransporters = new Map();
 
 const getEmailTransporter = (building) => {
@@ -241,24 +263,28 @@ const sendSMS = async (phoneNumber, message, options = {}) => {
       body[apiKeyBodyField] = config.apiKey;
     }
 
-    const response = await fetch(config.apiUrl, {
-      method: config.method,
-      headers: {
-        "Content-Type": "application/json",
-        [headerName]: value
-      },
-      body: JSON.stringify(body)
+    const responseBody = await withRetry(async () => {
+      const response = await fetch(config.apiUrl, {
+        method: config.method,
+        headers: {
+          "Content-Type": "application/json",
+          [headerName]: value
+        },
+        body: JSON.stringify(body)
+      });
+
+      const responseText = await response.text();
+      const parsedBody = parseProviderResponse(responseText);
+
+      if (!response.ok || providerResponseFailed(parsedBody)) {
+        const detail = typeof parsedBody === "string"
+          ? parsedBody
+          : JSON.stringify(parsedBody);
+        throw new Error(`SMS provider returned ${response.status}: ${detail || "request failed"}`);
+      }
+
+      return parsedBody;
     });
-
-    const responseText = await response.text();
-    const responseBody = parseProviderResponse(responseText);
-
-    if (!response.ok || providerResponseFailed(responseBody)) {
-      const detail = typeof responseBody === "string"
-        ? responseBody
-        : JSON.stringify(responseBody);
-      throw new Error(`SMS provider returned ${response.status}: ${detail || "request failed"}`);
-    }
 
     return { success: true, to, providerResponse: responseBody };
   } catch (error) {
@@ -271,13 +297,13 @@ const sendSMS = async (phoneNumber, message, options = {}) => {
 const sendEmail = async (email, subject, message, html, options = {}) => {
   try {
     const { transporter, from } = getEmailTransporter(options.building);
-    const info = await transporter.sendMail({
+    const info = await withRetry(() => transporter.sendMail({
       from: options.from || from,
       to: email,
       subject,
       text: message,
       html: html || textToHtml(message)
-    });
+    }));
 
     if (!info?.messageId) {
       throw new Error("No message ID returned from SMTP server");

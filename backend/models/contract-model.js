@@ -54,5 +54,7 @@ const contractSchema = new mongoose.Schema(
 );
 
 contractSchema.index({ building: 1, status: 1 });
+contractSchema.index({ tenant: 1, status: 1 });
+contractSchema.index({ building: 1, tenant: 1, status: 1 });
 
 module.exports = mongoose.model("Contract", contractSchema);

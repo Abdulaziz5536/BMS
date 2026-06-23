@@ -13,6 +13,7 @@ const employeesSchema = new mongoose.Schema({
      email:{
           type:String,
           trim:true,
+          lowercase:true,
           default:""
      },
      // Basic monthly salary; payroll reports add allowances and calculate deductions from this.

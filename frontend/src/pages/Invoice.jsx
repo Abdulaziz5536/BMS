@@ -56,9 +56,31 @@ const formatReceiptValue = (value, fallback = "-") =>
   escapeReceiptHtml(value === null || value === undefined || value === "" ? fallback : value);
 
 const formatReceiptNumber = (payment) => {
+  if (payment?.receiptNumber) {
+    return payment.receiptNumber;
+  }
+
   const id = String(payment?._id || Date.now());
   return `RCT-${id.slice(-8).toUpperCase()}`;
 };
+
+const createPaymentRetryKey = (buildingId, invoiceId) =>
+  `invoice-pay:${buildingId}:${invoiceId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+
+const getPaymentKindLabel = (payment) => {
+  if (payment?.paymentKind === "utility" || payment?.utility) {
+    return "Utility payment";
+  }
+
+  if (payment?.paymentKind === "contract" || payment?.contract) {
+    return "Contract payment";
+  }
+
+  return "Rent invoice payment";
+};
+
+const canPrintPaymentReceipt = (payment) =>
+  !payment?.hiddenFromInvoiceManagement && Number(payment?.amount || 0) > 0;
 
 export default function Invoice() {
   const selectedBuildingId = useSelectedBuilding();
@@ -85,6 +107,7 @@ export default function Invoice() {
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   const editInvoiceRef = useRef(null);
   const paymentFormRef = useRef(null);
+  const paymentRetryKeyRef = useRef("");
   const [editInvoiceForm, setEditInvoiceForm] = useState({
     dueDate: "",
     periodStart: "",
@@ -236,6 +259,7 @@ export default function Invoice() {
     setReference("");
     setNotes("");
     setReceiptFile(null);
+    paymentRetryKeyRef.current = "";
     setEditInvoiceForm({
       dueDate: "",
       periodStart: "",
@@ -410,6 +434,10 @@ export default function Invoice() {
   // Record payment
   const recordPayment = async (invoiceId) => {
     // Payment amount/date/receipt are sent to the backend, which recalculates balances safely.
+    if (loading) {
+      return;
+    }
+
     if (!invoiceId) {
       setError("Invoice ID is missing");
       return;
@@ -422,6 +450,8 @@ export default function Invoice() {
 
     setLoading(true);
     try {
+      const retryKey = paymentRetryKeyRef.current || createPaymentRetryKey(selectedBuildingId, invoiceId);
+      paymentRetryKeyRef.current = retryKey;
       let receiptPayload;
       if (receiptFile) {
         const receiptData = await readFileAsBase64(receiptFile);
@@ -434,13 +464,16 @@ export default function Invoice() {
 
       const res = await apiFetch(withBuilding(`/invoices/${invoiceId}/pay`, selectedBuildingId), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": retryKey
+        },
         body: JSON.stringify({
-          paymentDate,
+          paymentDate: paymentDate.trim(),
           amount: Number(paymentAmount),
           paymentMethod,
-          reference,
-          notes,
+          reference: reference.trim(),
+          notes: notes.trim(),
           receipt: receiptPayload
         })
       });
@@ -460,6 +493,7 @@ export default function Invoice() {
         setReference("");
         setNotes("");
         setReceiptFile(null);
+        paymentRetryKeyRef.current = "";
       } else {
         setError(data.error);
       }
@@ -599,9 +633,10 @@ export default function Invoice() {
   };
 
   const removePaymentLedgerRow = async (payment) => {
+    const paymentLabel = payment.receiptNumber || payment.reference || formatCurrency(payment.amount);
     const shouldRemove = await confirmAction({
       title: "Remove payment row?",
-      message: "This only removes the row from Invoice Management. It does not change invoice balances, paid status, or collected totals.",
+      message: `Remove payment row ${paymentLabel}? This does not change invoice balances, paid status, or collected totals.`,
       confirmText: "Remove",
       cancelText: "Cancel"
     });
@@ -697,6 +732,11 @@ export default function Invoice() {
     payment.invoice || invoices.find((invoice) => String(invoice._id) === String(payment.invoice));
 
   const printReceipt = (payment) => {
+    if (!canPrintPaymentReceipt(payment)) {
+      setError("This payment row cannot be printed as a receipt.");
+      return;
+    }
+
     // Receipt HTML is generated in a print window so it can be saved as PDF or printed.
     const invoice = findInvoiceForPayment(payment);
     const tenant = payment.tenant || invoice?.tenant;
@@ -725,6 +765,7 @@ export default function Invoice() {
     const ownerTin = formatReceiptValue(receiptBuilding?.tinNumber);
     const tenantTin = formatReceiptValue(tenant?.tinNumber);
     const fsNumber = formatReceiptValue(formatFsNumber(payment));
+    const paymentKind = formatReceiptValue(getPaymentKindLabel(payment));
 
     receiptWindow.document.write(`
       <!doctype html>
@@ -903,6 +944,10 @@ export default function Invoice() {
                 <div class="detail-card">
                   <span class="detail-label">Payment Date</span>
                   <strong>${formatReceiptValue(formatEthiopianDate(payment.paymentDate))}</strong>
+                </div>
+                <div class="detail-card">
+                  <span class="detail-label">Payment Kind</span>
+                  <strong>${paymentKind}</strong>
                 </div>
                 <div class="detail-card">
                   <span class="detail-label">Invoice</span>
@@ -1121,11 +1166,12 @@ export default function Invoice() {
                             <span>Edit</span>
                           </button>
                           {invoice.status === "pending" && (
-                            <button className="table-action-btn payment-action-btn" onClick={() => {
+                            <button className="table-action-btn payment-action-btn" disabled={loading} onClick={() => {
                               setMessage("");
                               setError("");
                               setEditingInvoiceId(null);
                               setCurrentInvoiceId(invoice._id);
+                              paymentRetryKeyRef.current = createPaymentRetryKey(selectedBuildingId, invoice._id);
                               const outstanding = invoice.outstandingBalance ?? (invoice.totalAmount - (invoice.amountPaid || 0));
                               setPaymentAmount(outstanding.toString());
                               setPaymentDate(normalizeDateInputForApi(new Date()));
@@ -1149,7 +1195,7 @@ export default function Invoice() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="9">No invoices found</td>
+                    <td colSpan="9">No invoices found. Generate invoices for active contracts.</td>
                   </tr>
                 )}
               </tbody>
@@ -1183,7 +1229,7 @@ export default function Invoice() {
                 ))}
               </div>
             ) : (
-              <p>No upcoming due dates</p>
+              <p>No upcoming due dates. Generate invoices or adjust reminder days to see due reminders.</p>
             )}
           </section>
         )}
@@ -1212,7 +1258,7 @@ export default function Invoice() {
                 ))}
               </div>
             ) : (
-              <p>No overdue payments</p>
+              <p>No overdue payments. Overdue invoices appear here after their due date passes.</p>
             )}
           </section>
         )}
@@ -1259,7 +1305,12 @@ export default function Invoice() {
                         </td>
                         <td>
                           <div className="inline-table-actions">
-                            <button className="table-action-btn" onClick={() => printReceipt(payment)} title="Print receipt">
+                            <button
+                              className="table-action-btn"
+                              onClick={() => printReceipt(payment)}
+                              title="Print receipt"
+                              disabled={!canPrintPaymentReceipt(payment) || loading}
+                            >
                               <DocumentTextIcon />
                               <span>Receipt</span>
                             </button>
@@ -1278,7 +1329,7 @@ export default function Invoice() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="8">No payment records found</td>
+                      <td colSpan="8">No payment records found. Record an invoice, contract, or utility payment to build the ledger.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1305,6 +1356,8 @@ export default function Invoice() {
                     <th>Tenant</th>
                     <th>Unit</th>
                     <th>Type</th>
+                    <th>Status</th>
+                    <th>Channels</th>
                     <th>Message</th>
                     <th>Actions</th>
                   </tr>
@@ -1318,7 +1371,9 @@ export default function Invoice() {
                         <td>{item.tenantName || "-"}</td>
                         <td>{item.tenantUnit || "-"}</td>
                         <td>{item.type === "late_payment" ? "Overdue" : "Due date"}</td>
-                        <td>{item.message || "-"}</td>
+                        <td>{item.status || "sent"}</td>
+                        <td>{Array.isArray(item.channels) && item.channels.length > 0 ? item.channels.join(", ") : "-"}</td>
+                        <td>{item.errors?.length ? item.errors.join("; ") : item.message || "-"}</td>
                         <td>
                           <button
                             className="table-action-btn small-icon-action ghost-delete-action"
@@ -1334,7 +1389,7 @@ export default function Invoice() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="7">No reminder history found</td>
+                      <td colSpan="9">No reminder history found. Send due date reminders to build history.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1402,7 +1457,9 @@ export default function Invoice() {
                   setPaymentDate("");
                   setReference("");
                   setNotes("");
+                  paymentRetryKeyRef.current = "";
                 }}
+                disabled={loading}
               >
                 Cancel
               </button>

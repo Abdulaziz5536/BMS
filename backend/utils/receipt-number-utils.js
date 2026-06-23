@@ -14,19 +14,19 @@ const getReceiptDatePart = (value) => {
   return cleanReceiptPart(value).slice(0, 8);
 };
 
-// FS numbers must be unique per receipt, so they are derived from the stored payment record id.
-// Reprinting the same payment keeps the same FS number instead of inventing a new one.
-export const formatFsNumber = (payment) => {
-  if (payment?.fsNumber) {
-    return payment.fsNumber;
-  }
+const formatReceiptNumber = (payment) => {
+  const idPart = cleanReceiptPart(payment?._id).slice(-8);
+  return idPart ? `RCT-${idPart}` : "";
+};
 
+const formatFsNumber = (payment) => {
   const idPart = cleanReceiptPart(payment?._id).slice(-8);
   const datePart = getReceiptDatePart(payment?.paymentDate);
 
-  if (idPart) {
-    return `FS-${datePart || "PAY"}-${idPart}`;
-  }
+  return idPart ? `FS-${datePart || "PAY"}-${idPart}` : "";
+};
 
-  return `FS-TEMP-${Date.now()}`;
+module.exports = {
+  formatFsNumber,
+  formatReceiptNumber
 };

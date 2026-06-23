@@ -48,6 +48,7 @@ const createPaymentRecordIfMissing = async ({
     paymentDate,
     amount: normalizedAmount,
     paymentMethod,
+    paymentKind: invoice ? "rent" : contract ? "contract" : "utility",
     notes
   });
 };
@@ -77,6 +78,7 @@ const syncPaymentRecordForPaidEntity = async ({
     invoice,
     contract,
     utility,
+    paymentKind: invoice ? "rent" : contract ? "contract" : "utility",
     amount: normalizedAmount,
     notes
   };

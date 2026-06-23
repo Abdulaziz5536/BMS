@@ -12,13 +12,26 @@ const {
   getSafeUser,
   normalizeRole
 } = require("../middleware/auth-middleware");
+const { withCaseInsensitiveCollation } = require("../utils/case-insensitive-utils");
 
 // Authentication is intentionally small: users sign up, passwords are hashed,
 // and login returns a JWT plus a browser cookie for protected pages.
 
+const isSignupAllowed = () => {
+  if (process.env.ALLOW_SIGNUP === "true") {
+    return true;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  return process.env.ALLOW_SIGNUP !== "false";
+};
+
 router.post('/signup', async (req,res) => {
   // Set ALLOW_SIGNUP=false after creating the owner/admin account on a public deployment.
-  if (process.env.ALLOW_SIGNUP === "false") {
+  if (!isSignupAllowed()) {
     return res.status(403).json({ error: "Signup is disabled" });
   }
 
@@ -38,7 +51,7 @@ router.post('/signup', async (req,res) => {
     }
 
      // Email is the login identifier, so it must be unique.
-     const existingUser = await User.findOne({email});
+     const existingUser = await withCaseInsensitiveCollation(User.findOne({email}));
       if(existingUser){
         return res.status(400).json({error:"User already exists"});
   }
@@ -59,7 +72,7 @@ router.post('/signup', async (req,res) => {
   catch(error){
     res.status(500).json({error:error.message});
   }
- 
+
 
 })
 router.post('/login', async (req,res) => {
@@ -72,10 +85,10 @@ router.post('/login', async (req,res) => {
   }
 
     
-  const user = await User.findOne({email});
+  const user = await withCaseInsensitiveCollation(User.findOne({email}));
 
   if(!user){
-    return res.status(400).json({error:"User does not exist"});
+    return res.status(400).json({error:"Invalid credentials"});
   }
   const storedPassword = String(user.password || "");
   const passwordIsHashed = /^\$2[aby]\$\d{2}\$/.test(storedPassword);
@@ -90,6 +103,11 @@ router.post('/login', async (req,res) => {
   if (!passwordIsHashed) {
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
+    await user.save();
+  }
+
+  if (user.email !== email) {
+    user.email = email;
     await user.save();
   }
 
@@ -149,3 +167,4 @@ router.post('/logout', (req, res) => {
 });
 
 module.exports = router;
+module.exports.isSignupAllowed = isSignupAllowed;

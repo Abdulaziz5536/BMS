@@ -16,6 +16,7 @@ const { buildCsv } = require("../utils/csv-utils");
 const { formatFloorLabel } = require("../utils/floor-label-utils");
 const { normalizePaymentFrequency } = require("../utils/payment-frequency-utils");
 const { getSystemChecks } = require("../services/system-check-service");
+const { getDataIntegrityChecks } = require("../services/data-integrity-service");
 
 // System routes are operational tools: health checks, audit logs, JSON backup,
 // and CSV exports. They help an owner run and diagnose the deployed system.
@@ -48,6 +49,18 @@ router.get("/system/health", (req, res) => {
 
 router.get("/system/checks", (req, res) => {
   res.json(getSystemChecks());
+});
+
+router.get("/system/data-integrity", async (req, res) => {
+  try {
+    const buildingId = validateBuildingQuery(req, res);
+    if (buildingId === null) return;
+
+    const checks = await getDataIntegrityChecks({ buildingId });
+    res.status(checks.ok ? 200 : 409).json(checks);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.get("/audit-logs", async (req, res) => {

@@ -1,4 +1,8 @@
 const mongoose = require('mongoose');
+const {
+  formatFsNumber,
+  formatReceiptNumber
+} = require("../utils/receipt-number-utils");
 
 // PaymentRecord is the immutable history of money received.
 // It can point to a rent invoice, a contract payment action, or a utility bill.
@@ -38,13 +42,20 @@ const paymentRecordSchema = new mongoose.Schema({
 
   amount: {
     type: Number,
-    required: true
+    required: true,
+    min: [0.01, "Payment amount must be greater than zero"]
   },
 
   paymentMethod: {
     type: String,
     enum: ['cash', 'bank_transfer', 'check', 'mobile_money', 'other'],
     default: 'cash'
+  },
+
+  paymentKind: {
+    type: String,
+    enum: ['rent', 'contract', 'utility'],
+    default: 'rent'
   },
 
   reference: {
@@ -61,6 +72,26 @@ const paymentRecordSchema = new mongoose.Schema({
     name: String,
     type: String,
     data: String
+  },
+
+  receiptNumber: {
+    type: String,
+    trim: true
+  },
+
+  fsNumber: {
+    type: String,
+    trim: true
+  },
+
+  idempotencyKey: {
+    type: String,
+    trim: true
+  },
+
+  receiptSnapshot: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   },
 
   recordedBy: {
@@ -83,6 +114,35 @@ paymentRecordSchema.pre("validate", function validateSinglePaymentSource() {
       "Payment record must reference exactly one invoice, contract, or utility."
     );
   }
+
+  if (!this.receiptNumber) {
+    this.receiptNumber = formatReceiptNumber(this);
+  }
+
+  if (!this.fsNumber) {
+    this.fsNumber = formatFsNumber(this);
+  }
+
+  if (this.contract) {
+    this.paymentKind = "contract";
+  } else if (this.utility) {
+    this.paymentKind = "utility";
+  } else {
+    this.paymentKind = "rent";
+  }
+
+  const sourceType = this.invoice ? "invoice" : this.contract ? "contract" : "utility";
+  this.receiptSnapshot = {
+    receiptNumber: this.receiptNumber,
+    fsNumber: this.fsNumber,
+    paymentKind: this.paymentKind,
+    sourceType,
+    sourceId: String(this[sourceType] || ""),
+    amount: this.amount,
+    paymentDate: this.paymentDate,
+    paymentMethod: this.paymentMethod,
+    ...(this.receiptSnapshot || {})
+  };
 });
 
 paymentRecordSchema.statics.getPaymentSourceCount = getPaymentSourceCount;
@@ -93,5 +153,20 @@ paymentRecordSchema.index({ tenant: 1, paymentDate: -1 });
 paymentRecordSchema.index({ invoice: 1 });
 paymentRecordSchema.index({ contract: 1 });
 paymentRecordSchema.index({ utility: 1 });
+paymentRecordSchema.index(
+  { receiptNumber: 1 },
+  { unique: true, sparse: true }
+);
+paymentRecordSchema.index(
+  { fsNumber: 1 },
+  { unique: true, sparse: true }
+);
+paymentRecordSchema.index(
+  { building: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string", $gt: "" } }
+  }
+);
 
 module.exports = mongoose.model("PaymentRecord", paymentRecordSchema);

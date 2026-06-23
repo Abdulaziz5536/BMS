@@ -37,4 +37,9 @@ const buildingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+buildingSchema.index(
+  { name: 1 },
+  { unique: true, collation: { locale: "en", strength: 2 } }
+);
+
 module.exports = mongoose.model("Building", buildingSchema);

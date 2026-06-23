@@ -30,7 +30,11 @@ const {
   parsePaymentDateInput
 } = require('../utils/date-utils');
 const { calculateLatePenalty } = require('../utils/late-penalty-utils');
-const { getInvoicePaymentAmount } = require('../utils/payment-amount-utils');
+const {
+  getInvoicePaymentAmount,
+  isInvoicePaymentWithinRemaining
+} = require('../utils/payment-amount-utils');
+const { isPaymentDateTooFarInFuture } = require('../utils/payment-date-utils');
 const { buildOutstandingRentFilter } = require('../utils/invoice-report-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
@@ -66,6 +70,19 @@ const calculateDueDate = (periodEnd) => {
 
 const getInvoiceLabel = (invoice) => invoice.invoiceNumber || String(invoice._id);
 
+const createRouteError = (statusCode, message) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const isTruthyOption = (value) => value === true || value === "true";
+
+const getPaymentIdempotencyKey = (req) => {
+  const rawKey = req.get("Idempotency-Key") || req.body?.idempotencyKey || "";
+  return String(rawKey).trim();
+};
+
 const startOfDay = (value = new Date()) => {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
@@ -100,6 +117,35 @@ const isDateInRange = (value, startDate, endDate) => {
 
   return dateTime !== null && startTime !== null && endTime !== null && dateTime >= startTime && dateTime < endTime;
 };
+
+const getPartiallyPaidInvoiceStatus = (invoice, paymentDate) =>
+  isInvoiceDueBefore(invoice, startOfDay(paymentDate)) ? "overdue" : "pending";
+
+const getNonCancelledIncomeStages = () => [
+  {
+    $lookup: {
+      from: "invoices",
+      localField: "invoice",
+      foreignField: "_id",
+      as: "incomeInvoiceDoc"
+    }
+  },
+  {
+    $match: {
+      $or: [
+        { invoice: { $exists: false } },
+        { invoice: null },
+        {
+          $and: [
+            { invoice: { $exists: true, $ne: null } },
+            { "incomeInvoiceDoc.0": { $exists: true } },
+            { "incomeInvoiceDoc.status": { $ne: "cancelled" } }
+          ]
+        }
+      ]
+    }
+  }
+];
 
 const getRequestedEthiopianMonthRange = (query, referenceDate = new Date()) => {
   const currentRange = getEthiopianMonthRange(referenceDate);
@@ -685,6 +731,8 @@ router.post('/invoices/reminders/send', async (req, res) => {
 
 // Record payment for invoice
 router.post('/invoices/:id/pay', async (req, res) => {
+  let session;
+
   try {
     const { paymentDate, amount, paymentMethod, reference, notes, receipt } = req.body;
 
@@ -695,6 +743,29 @@ router.post('/invoices/:id/pay', async (req, res) => {
 
     if (!ensureRecordMatchesRequestedBuilding(req, res, invoice, "Invoice")) {
       return;
+    }
+
+    const idempotencyKey = getPaymentIdempotencyKey(req);
+
+    if (idempotencyKey.length > 160) {
+      return res.status(400).json({ error: "Payment retry key is too long" });
+    }
+
+    const existingPayment = idempotencyKey
+      ? await PaymentRecord.findOne({
+        building: invoice.building,
+        invoice: invoice._id,
+        idempotencyKey
+      })
+      : null;
+
+    if (existingPayment) {
+      return res.json({
+        message: "Payment already recorded",
+        invoice,
+        payment: existingPayment,
+        idempotent: true
+      });
     }
 
     if (invoice.status === 'paid') {
@@ -710,49 +781,129 @@ router.post('/invoices/:id/pay', async (req, res) => {
     if (paymentDate && !paymentDateObj) {
       return res.status(400).json({ error: "Invalid payment date" });
     }
-    // Payment can include a late penalty based on the invoice due date.
-    const latePenalty = calculateLatePenalty(invoice.dueDate, paymentDateObj, invoice.rentAmount);
-    const totalDue = invoice.rentAmount + latePenalty;
-    const previousPaid = invoice.amountPaid || 0;
-    const paymentValue = getInvoicePaymentAmount({ amount, totalDue, previousPaid });
 
-    if (paymentValue === null) {
-      return res.status(400).json({ error: "Payment amount must be a valid number greater than zero" });
+    if (!isTruthyOption(req.body.allowFuturePayment) && isPaymentDateTooFarInFuture(paymentDateObj)) {
+      return res.status(400).json({ error: "Payment date is too far in the future" });
     }
 
-    // Create payment record
-    const paymentRecord = await PaymentRecord.create({
-      building: invoice.building,
-      tenant: invoice.tenant,
-      invoice: invoice._id,
-      paymentDate: paymentDateObj,
-      amount: paymentValue,
-      paymentMethod: paymentMethod || 'cash',
-      reference: reference || '',
-      notes: notes || '',
-      receipt: normalizedReceipt,
-      recordedBy: req.user?.id || undefined
+    let paymentRecord;
+    let updatedInvoice;
+    let paymentValue = 0;
+    let totalDue = 0;
+    let idempotentReplay = false;
+
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const invoiceForUpdate = await Invoice.findById(req.params.id).session(session);
+
+      if (!invoiceForUpdate) {
+        throw createRouteError(404, "Invoice not found");
+      }
+
+      if (invoiceForUpdate.status === "paid") {
+        throw createRouteError(400, "Invoice is already paid");
+      }
+
+      const duplicatePayment = idempotencyKey
+        ? await PaymentRecord.findOne({
+          building: invoiceForUpdate.building,
+          invoice: invoiceForUpdate._id,
+          idempotencyKey
+        }).session(session)
+        : null;
+
+      if (duplicatePayment) {
+        paymentRecord = duplicatePayment;
+        updatedInvoice = invoiceForUpdate;
+        idempotentReplay = true;
+        return;
+      }
+
+      // Payment can include a late penalty based on the invoice due date.
+      const latePenalty = calculateLatePenalty(
+        invoiceForUpdate.dueDate,
+        paymentDateObj,
+        invoiceForUpdate.rentAmount
+      );
+      totalDue = invoiceForUpdate.rentAmount + latePenalty;
+      const previousPaid = invoiceForUpdate.amountPaid || 0;
+      paymentValue = getInvoicePaymentAmount({ amount, totalDue, previousPaid });
+
+      if (paymentValue === null) {
+        throw createRouteError(400, "Payment amount must be a valid number greater than zero");
+      }
+
+      const allowOverpayment = isTruthyOption(req.body.allowOverpayment);
+
+      if (!isInvoicePaymentWithinRemaining({
+        paymentAmount: paymentValue,
+        totalDue,
+        previousPaid,
+        allowOverpayment
+      })) {
+        throw createRouteError(400, "Payment amount cannot exceed the outstanding balance");
+      }
+
+      const createdPayments = await PaymentRecord.create([{
+        building: invoiceForUpdate.building,
+        tenant: invoiceForUpdate.tenant,
+        invoice: invoiceForUpdate._id,
+        paymentDate: paymentDateObj,
+        amount: paymentValue,
+        paymentMethod: paymentMethod || 'cash',
+        paymentKind: "rent",
+        reference: reference || '',
+        notes: notes || '',
+        receipt: normalizedReceipt,
+        idempotencyKey,
+        recordedBy: req.user?.id || undefined,
+        receiptSnapshot: {
+          sourceType: "invoice",
+          sourceId: String(invoiceForUpdate._id),
+          invoiceNumber: invoiceForUpdate.invoiceNumber,
+          tenant: String(invoiceForUpdate.tenant || ""),
+          amount: paymentValue,
+          paymentDate: paymentDateObj,
+          paymentMethod: paymentMethod || "cash",
+          paymentKind: "rent"
+        }
+      }], { session });
+
+      paymentRecord = createdPayments[0];
+
+      // Update invoice balance after this payment; paid status depends on remaining balance.
+      invoiceForUpdate.paymentDate = paymentDateObj;
+      invoiceForUpdate.latePenalty = latePenalty;
+      invoiceForUpdate.totalAmount = totalDue;
+      invoiceForUpdate.amountPaid = previousPaid + paymentValue;
+      invoiceForUpdate.outstandingBalance = Math.max(0, totalDue - invoiceForUpdate.amountPaid);
+      invoiceForUpdate.status = invoiceForUpdate.outstandingBalance <= 0
+        ? 'paid'
+        : getPartiallyPaidInvoiceStatus(invoiceForUpdate, paymentDateObj);
+      await invoiceForUpdate.save({ session });
+      updatedInvoice = invoiceForUpdate;
     });
 
-    // Update invoice balance after this payment; paid status depends on remaining balance.
-    invoice.paymentDate = paymentDateObj;
-    invoice.latePenalty = latePenalty;
-    invoice.totalAmount = totalDue;
-    invoice.amountPaid = previousPaid + paymentValue;
-    invoice.outstandingBalance = Math.max(0, totalDue - invoice.amountPaid);
-    invoice.status = invoice.outstandingBalance <= 0 ? 'paid' : 'pending';
-    await invoice.save();
-    await syncContractStatusFromInvoices(invoice.contract);
+    if (idempotentReplay) {
+      return res.json({
+        message: "Payment already recorded",
+        invoice: updatedInvoice,
+        payment: paymentRecord,
+        idempotent: true
+      });
+    }
+
+    await syncContractStatusFromInvoices(updatedInvoice.contract);
 
     await recordAuditLog({
-      building: invoice.building,
+      building: updatedInvoice.building,
       action: "recorded",
       entityType: "payment",
       entityId: paymentRecord._id,
-      entityLabel: paymentRecord.reference || getInvoiceLabel(invoice),
-      message: `Payment of Br ${paymentValue} recorded for invoice ${getInvoiceLabel(invoice)}`,
+      entityLabel: paymentRecord.reference || getInvoiceLabel(updatedInvoice),
+      message: `Payment of Br ${paymentValue} recorded for invoice ${getInvoiceLabel(updatedInvoice)}`,
       metadata: {
-        invoice: invoice._id,
+        invoice: updatedInvoice._id,
         amount: paymentValue,
         paymentMethod: paymentRecord.paymentMethod
       }
@@ -760,11 +911,20 @@ router.post('/invoices/:id/pay', async (req, res) => {
 
     res.json({
       message: "Payment recorded successfully",
-      invoice,
+      invoice: updatedInvoice,
       payment: paymentRecord
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    const duplicateKey = error?.code === 11000;
+    const statusCode = duplicateKey ? 409 : error.statusCode || 500;
+    const message = duplicateKey
+      ? "Payment was already recorded. Refresh and check the invoice."
+      : error.message;
+    res.status(statusCode).json({ error: message });
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
   }
 });
 
@@ -798,6 +958,10 @@ router.get('/invoices/reminders/history', async (req, res) => {
         tenantUnit: invoice.tenant?.unit?.unitId || "",
         type: reminder.type,
         sentAt: reminder.sentAt,
+        status: reminder.status || "sent",
+        channels: reminder.channels || [],
+        recipients: reminder.recipients || {},
+        errors: reminder.deliveryErrors || reminder.errors || [],
         message: reminder.message || ""
       }))
     ).sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
@@ -974,6 +1138,7 @@ router.get('/reports/monthly-income', async (req, res) => {
 
     const result = await PaymentRecord.aggregate([
       { $match: match },
+      ...getNonCancelledIncomeStages(),
       {
         $group: {
           _id: null,
@@ -1013,6 +1178,7 @@ router.get('/reports/building-income', async (req, res) => {
           paymentDate: { $gte: startDate, $lt: endDate }
         }
       },
+      ...getNonCancelledIncomeStages(),
       {
         $group: {
           _id: {

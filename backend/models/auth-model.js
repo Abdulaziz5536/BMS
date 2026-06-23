@@ -7,7 +7,9 @@ const userSchema = new mongoose.Schema({
     },
     email:{
         type:String,
-        required:true
+        required:true,
+        trim:true,
+        lowercase:true
     },
     password:{
         type:String,
@@ -19,5 +21,8 @@ const userSchema = new mongoose.Schema({
         default:"admin"
     },
 })
+userSchema.index(
+    { email: 1 },
+    { unique: true, collation: { locale: "en", strength: 2 } }
+);
 module.exports = mongoose.model('User',userSchema);
-

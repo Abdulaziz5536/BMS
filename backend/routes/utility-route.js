@@ -27,6 +27,7 @@ const {
   getFrequencyMonths,
   normalizePaymentFrequency
 } = require("../utils/payment-frequency-utils");
+const { isPaymentDateTooFarInFuture } = require("../utils/payment-date-utils");
 
 const getBuildingFilter = (building) => (building ? { building } : {});
 const PAYMENT_METHODS = new Set(["cash", "bank_transfer", "check", "mobile_money", "other"]);
@@ -115,6 +116,11 @@ const getPaymentDateFromRequest = (paymentDate) => {
   if (!paymentDate) return new Date();
   return parsePaymentDateInput(paymentDate);
 };
+
+const isTruthyOption = (value) => value === true || value === "true";
+
+const isAllowedPaymentDate = (req, paymentDate) =>
+  isTruthyOption(req.body?.allowFuturePayment) || !isPaymentDateTooFarInFuture(paymentDate);
 
 const getPaymentMethodFromRequest = (paymentMethod) => {
   const method = paymentMethod || "cash";
@@ -281,6 +287,14 @@ router.post("/utilities", async (req, res) => {
       return res.status(400).json({ error: "Invalid payment date" });
     }
 
+    if (status === "paid" && !isAllowedPaymentDate(req, paymentDateObj)) {
+      return res.status(400).json({ error: "Payment date is too far in the future" });
+    }
+
+    if (status === "paid" && getUtilityTotal({ waterAmount, lightAmount, generatorGasAmount }) <= 0) {
+      return res.status(400).json({ error: "Payment amount must be greater than zero" });
+    }
+
     const normalizedPaymentMethod = status === "paid" ? getPaymentMethodFromRequest(paymentMethod) : null;
     if (status === "paid" && !normalizedPaymentMethod) {
       return res.status(400).json({ error: "Invalid payment method" });
@@ -402,9 +416,17 @@ router.put("/utilities/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid payment date" });
     }
 
+    if (recordsNewPayment && !isAllowedPaymentDate(req, paymentDateObj)) {
+      return res.status(400).json({ error: "Payment date is too far in the future" });
+    }
+
     const normalizedPaymentMethod = recordsNewPayment ? getPaymentMethodFromRequest(paymentMethod) : null;
     if (recordsNewPayment && !normalizedPaymentMethod) {
       return res.status(400).json({ error: "Invalid payment method" });
+    }
+
+    if (recordsNewPayment && getUtilityTotal({ waterAmount, lightAmount, generatorGasAmount }) <= 0) {
+      return res.status(400).json({ error: "Payment amount must be greater than zero" });
     }
 
     const updatePayload = {
@@ -492,6 +514,14 @@ router.patch("/utilities/:id/status", async (req, res) => {
       return res.status(400).json({ error: "Invalid payment date" });
     }
 
+    if (recordsNewPayment && !isAllowedPaymentDate(req, paymentDateObj)) {
+      return res.status(400).json({ error: "Payment date is too far in the future" });
+    }
+
+    if (recordsNewPayment && getUtilityTotal(utility) <= 0) {
+      return res.status(400).json({ error: "Payment amount must be greater than zero" });
+    }
+
     const normalizedPaymentMethod = recordsNewPayment ? getPaymentMethodFromRequest(paymentMethod) : null;
     if (recordsNewPayment && !normalizedPaymentMethod) {
       return res.status(400).json({ error: "Invalid payment method" });
@@ -555,6 +585,14 @@ router.patch("/utilities/:id/pay", async (req, res) => {
     const paymentDateObj = getPaymentDateFromRequest(paymentDate);
     if (!paymentDateObj) {
       return res.status(400).json({ error: "Invalid payment date" });
+    }
+
+    if (!isAllowedPaymentDate(req, paymentDateObj)) {
+      return res.status(400).json({ error: "Payment date is too far in the future" });
+    }
+
+    if (getUtilityTotal(utility) <= 0) {
+      return res.status(400).json({ error: "Payment amount must be greater than zero" });
     }
 
     const normalizedPaymentMethod = getPaymentMethodFromRequest(paymentMethod);

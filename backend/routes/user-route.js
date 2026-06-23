@@ -1,6 +1,8 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const User = require("../models/auth-model");
+const { recordAuditLog } = require("../services/audit-log-service");
+const { withCaseInsensitiveCollation } = require("../utils/case-insensitive-utils");
 
 const router = express.Router();
 
@@ -44,7 +46,7 @@ router.post("/users/viewers", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Password should be 6 digits" });
     }
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await withCaseInsensitiveCollation(User.findOne({ email }));
 
     if (existingUser) {
       if (existingUser.role !== "viewer") {
@@ -89,6 +91,52 @@ router.post("/users/viewers", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch("/users/me/password", requireAdmin, async (req, res) => {
+  const currentPassword = String(req.body.currentPassword || "");
+  const newPassword = String(req.body.newPassword || "");
+
+  try {
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current and new PIN are required" });
+    }
+
+    if (!/^\d{6}$/.test(newPassword)) {
+      return res.status(400).json({ error: "New PIN should be 6 digits" });
+    }
+
+    const user = req.user?.id ? await User.findById(req.user.id) : null;
+    if (!user) {
+      return res.status(401).json({ error: "Login expired" });
+    }
+
+    const storedPassword = String(user.password || "");
+    const passwordIsHashed = /^\$2[aby]\$\d{2}\$/.test(storedPassword);
+    const isMatch = passwordIsHashed
+      ? await bcrypt.compare(currentPassword, storedPassword)
+      : currentPassword === storedPassword;
+
+    if (!isMatch) {
+      return res.status(400).json({ error: "Current PIN is incorrect" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    await recordAuditLog({
+      action: "updated",
+      entityType: "user",
+      entityId: user._id,
+      entityLabel: user.email,
+      message: "Manager PIN changed"
+    });
+
+    res.json({ message: "PIN changed successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to change PIN" });
   }
 });
 

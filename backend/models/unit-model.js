@@ -14,4 +14,11 @@ const unitSchema = new mongoose.Schema({
   type:String
 });
 
+unitSchema.index(
+  { building: 1, unitId: 1 },
+  { unique: true, collation: { locale: "en", strength: 2 } }
+);
+unitSchema.index({ floor: 1 });
+unitSchema.index({ building: 1, floor: 1 });
+
 module.exports = mongoose.model("Unit",unitSchema);

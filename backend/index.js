@@ -28,6 +28,7 @@ const {
   startDueDateReminderJob,
   startUtilityDueDateReminderJob
 } = require("./services/due-reminder-service");
+const { requestContextMiddleware } = require("./services/request-context-service");
 const { getSystemChecks } = require("./services/system-check-service");
 const {
   getAllowedCorsOrigins,
@@ -47,17 +48,11 @@ const frontendDistPath = path.join(__dirname, "..", "frontend", "dist");
 const frontendIndexPath = path.join(frontendDistPath, "index.html");
 const shouldServeBundledFrontend =
   process.env.SERVE_FRONTEND !== "false" && fs.existsSync(frontendIndexPath);
-const requiredProductionEnv = ["MONGO_URI", "JWT_SECRET"];
-const missingProductionEnv = requiredProductionEnv.filter((name) => !process.env[name]);
+const requiredStartupEnv = ["MONGO_URI", "JWT_SECRET"];
+const missingStartupEnv = requiredStartupEnv.filter((name) => !process.env[name]);
 
-if (!mongoUri) {
-  console.error(`Missing MONGO_URI. Add it to ${envPath} or set it in the server environment.`);
-  process.exit(1);
-}
-
-if (process.env.NODE_ENV === "production" && missingProductionEnv.length > 0) {
-  // Production should fail fast instead of running with broken login/database settings.
-  console.error(`Missing required production env: ${missingProductionEnv.join(", ")}`);
+if (missingStartupEnv.length > 0) {
+  console.error(`Missing required env: ${missingStartupEnv.join(", ")}. Add it to ${envPath} or set it in the server environment.`);
   process.exit(1);
 }
 
@@ -108,6 +103,7 @@ if (shouldServeBundledFrontend) {
 // Route order matters: each router owns a focused part of the BMS API.
 app.use(authRouter);
 app.use(requireAuth);
+app.use(requestContextMiddleware);
 app.use(requireDeletePin);
 app.use(buildingRouter);
 app.use(floorRouter);
@@ -162,6 +158,6 @@ mongoose
   })
   .catch((err) => {
     console.error("Failed to connect to MongoDB. Check MONGO_URI in backend/.env.");
-    console.error(err);
+    console.error(getShortErrorMessage(err, "MongoDB connection failed"));
     process.exit(1);
   });

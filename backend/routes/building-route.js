@@ -15,6 +15,7 @@ const {
   ETHIOPIAN_PHONE_ERROR,
   normalizeEthiopianPhone
 } = require("../utils/phone-utils");
+const { withCaseInsensitiveCollation } = require("../utils/case-insensitive-utils");
 
 // Building routes are the parent layer for almost every record in the system.
 // Most child tables store a building id, so delete/update logic here must protect related data.
@@ -32,10 +33,17 @@ router.post("/buildings", async (req, res) => {
   try {
     const { name, address, managerName, tinNumber, phone, notes } = req.body;
     // Owner TIN is stored on the building because receipts are issued by the selected building owner.
+    const normalizedName = String(name || "").trim();
     const normalizedTinNumber = String(tinNumber || "").trim();
 
-    if (!name) {
+    if (!normalizedName) {
       return res.status(400).json({ error: "Building name is required" });
+    }
+
+    const existingBuilding = await withCaseInsensitiveCollation(Building.findOne({ name: normalizedName }));
+
+    if (existingBuilding) {
+      return res.status(409).json({ error: "Building name already exists" });
     }
 
     // Normalize optional phone numbers once so stored data has a predictable format.
@@ -47,12 +55,12 @@ router.post("/buildings", async (req, res) => {
     }
 
     const building = await Building.create({
-      name,
-      address,
-      managerName,
+      name: normalizedName,
+      address: String(address || "").trim(),
+      managerName: String(managerName || "").trim(),
       tinNumber: normalizedTinNumber,
       phone: normalizedPhone,
-      notes
+      notes: String(notes || "").trim()
     });
 
     await recordAuditLog({
@@ -73,9 +81,10 @@ router.post("/buildings", async (req, res) => {
 router.put("/buildings/:id", async (req, res) => {
   try {
     const { name, address, managerName, tinNumber, phone, notes } = req.body;
+    const normalizedName = String(name || "").trim();
     const normalizedTinNumber = String(tinNumber || "").trim();
 
-    if (!name) {
+    if (!normalizedName) {
       return res.status(400).json({ error: "Building name is required" });
     }
 
@@ -87,9 +96,25 @@ router.put("/buildings/:id", async (req, res) => {
       return res.status(400).json({ error: ETHIOPIAN_PHONE_ERROR });
     }
 
+    const existingBuilding = await withCaseInsensitiveCollation(Building.findOne({
+      name: normalizedName,
+      _id: { $ne: req.params.id }
+    }));
+
+    if (existingBuilding) {
+      return res.status(409).json({ error: "Building name already exists" });
+    }
+
     const building = await Building.findByIdAndUpdate(
       req.params.id,
-      { name, address, managerName, tinNumber: normalizedTinNumber, phone: normalizedPhone, notes },
+      {
+        name: normalizedName,
+        address: String(address || "").trim(),
+        managerName: String(managerName || "").trim(),
+        tinNumber: normalizedTinNumber,
+        phone: normalizedPhone,
+        notes: String(notes || "").trim()
+      },
       { returnDocument: "after" }
     );
 

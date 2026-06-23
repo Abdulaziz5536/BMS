@@ -33,6 +33,7 @@ const tenantSchema = new mongoose.Schema({
   email:{
     type:String,
     trim:true,
+    lowercase:true,
     default:""
   },
   tinNumber:{
@@ -73,5 +74,14 @@ const tenantSchema = new mongoose.Schema({
 
 })
 tenantSchema.index({ building: 1, unit: 1 });
+tenantSchema.index(
+  { building: 1, email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { email: { $type: "string", $gt: "" } },
+    collation: { locale: "en", strength: 2 }
+  }
+);
+tenantSchema.index({ building: 1, tenantId: 1 });
 
 module.exports = mongoose.model('Tenant', tenantSchema);

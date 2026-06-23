@@ -27,10 +27,18 @@ const parseCookies = (cookieHeader = "") =>
       return cookies;
     }, {});
 
+const isCookieSecure = () => {
+  if (process.env.SESSION_COOKIE_SECURE === "false") {
+    return false;
+  }
+
+  return process.env.NODE_ENV === "production" || process.env.SESSION_COOKIE_SECURE === "true";
+};
+
 const getAuthCookieOptions = () => ({
   httpOnly: true,
   sameSite: "lax",
-  secure: process.env.SESSION_COOKIE_SECURE === "true",
+  secure: isCookieSecure(),
   path: "/",
   maxAge: AUTH_COOKIE_MAX_AGE_MS
 });
@@ -77,6 +85,7 @@ const getAuthTokenFromRequest = (req) => {
 module.exports = {
   AUTH_COOKIE_NAME,
   AUTH_COOKIE_MAX_AGE_MS,
+  isCookieSecure,
   parseCookies,
   getAuthCookieName,
   getAuthCookieOptions,

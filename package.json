@@ -4,13 +4,23 @@
   "main": "index.js",
   "scripts": {
     "dev": "start \"bms-backend\" /B node backend/index.js && npm.cmd --prefix frontend run dev",
+    "dev:checked": "powershell -ExecutionPolicy Bypass -File scripts/start-bms.ps1 -DevFrontend",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "node backend/index.js",
+    "start:checked": "powershell -ExecutionPolicy Bypass -File scripts/start-bms.ps1",
     "start": "node backend/index.js",
     "build": "npm --prefix frontend run build",
     "test": "node --test backend/tests/*.test.js && npm --prefix frontend run test && node verify_backend_routes.js",
+    "backup": "node scripts/backup-bms.js",
+    "restore:self-test": "node scripts/restore-bms.js --self-test",
+    "restore:check": "node scripts/restore-bms.js",
+    "restore:apply": "node scripts/restore-bms.js --apply --yes",
+    "migrate": "node scripts/run-migrations.js",
+    "db:indexes": "node scripts/ensure-db-indexes.js",
     "audit:payments": "node scripts/audit-payment-records.js",
     "cleanup:payments": "node scripts/audit-payment-records.js --apply",
+    "audit:orphans": "node scripts/cleanup-orphan-data.js",
+    "cleanup:orphans": "node scripts/cleanup-orphan-data.js --apply --yes",
     "install:frontend": "npm --prefix frontend install"
   },
   "engines": {

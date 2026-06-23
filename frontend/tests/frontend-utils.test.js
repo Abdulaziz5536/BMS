@@ -77,6 +77,10 @@ test("receipt FS numbers stay unique and stable per payment", () => {
   assert.equal(formatFsNumber(payment), "FS-20260526-00112233");
 });
 
+test("receipt FS numbers prefer stored backend values", () => {
+  assert.equal(formatFsNumber({ fsNumber: "FS-STORED-123" }), "FS-STORED-123");
+});
+
 test("payroll uses employee salary as basic pay", () => {
   const row = calculatePayrollRow({ name: "Alem", salary: 10000 });
 

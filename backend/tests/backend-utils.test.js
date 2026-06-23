@@ -3,6 +3,11 @@ const assert = require("node:assert/strict");
 
 const { buildCsv } = require("../utils/csv-utils");
 const {
+  CASE_INSENSITIVE_COLLATION,
+  normalizeCaseInsensitiveValue,
+  withCaseInsensitiveCollation
+} = require("../utils/case-insensitive-utils");
+const {
   ensureRecordMatchesRequestedBuilding,
   getRecordBuildingId,
   getRequestedBuildingId
@@ -28,15 +33,26 @@ const {
 const {
   AUTH_COOKIE_NAME,
   getAuthCookieName,
+  getAuthCookieOptions,
   getAuthTokenFromRequest
 } = require("../utils/session-cookie-utils");
 const { formatFloorLabel } = require("../utils/floor-label-utils");
 const { calculateLatePenalty } = require("../utils/late-penalty-utils");
 const {
   getInvoicePaymentAmount,
+  getInvoicePaymentRemaining,
+  isInvoicePaymentWithinRemaining,
   parsePositiveAmount
 } = require("../utils/payment-amount-utils");
+const {
+  isPaymentDateTooFarInFuture,
+  parseMaxFuturePaymentDays
+} = require("../utils/payment-date-utils");
 const { buildOutstandingRentFilter } = require("../utils/invoice-report-utils");
+const {
+  formatFsNumber: formatBackendFsNumber,
+  formatReceiptNumber: formatBackendReceiptNumber
+} = require("../utils/receipt-number-utils");
 const { normalizeEthiopianPhone } = require("../utils/phone-utils");
 const {
   getFrequencyMonths,
@@ -54,6 +70,7 @@ const {
   isPublicPath,
   isReadOnlyAllowedPath
 } = require("../middleware/auth-middleware");
+const { isSignupAllowed } = require("../routes/auth-route");
 const {
   clearReminderHistoryForScheduleChange,
   getDaysUntilDue,
@@ -61,6 +78,7 @@ const {
   shouldSkipReminder
 } = require("../services/due-reminder-service");
 const { syncPaymentRecordForPaidEntity } = require("../services/payment-record-service");
+const { createCheck } = require("../services/data-integrity-service");
 
 test("buildCsv escapes commas, quotes, and new lines", () => {
   const csv = buildCsv(
@@ -72,6 +90,20 @@ test("buildCsv escapes commas, quotes, and new lines", () => {
   );
 
   assert.equal(csv, 'Name,Note\n"Abebe ""A""","Paid, complete\nDone"');
+});
+
+test("case-insensitive helpers normalize and apply the shared collation", () => {
+  let appliedCollation = null;
+  const query = {
+    collation(value) {
+      appliedCollation = value;
+      return this;
+    }
+  };
+
+  assert.equal(normalizeCaseInsensitiveValue("  Tenant@Example.COM "), "tenant@example.com");
+  assert.equal(withCaseInsensitiveCollation(query), query);
+  assert.deepEqual(appliedCollation, CASE_INSENSITIVE_COLLATION);
 });
 
 test("parseFlexibleDateInput accepts Ethiopian-style date input", () => {
@@ -170,6 +202,21 @@ test("system checks returns a usable checklist shape", () => {
   assert.ok(result.checks.some((check) => check.name === "MongoDB connection"));
 });
 
+test("data integrity checks report failing counts consistently", () => {
+  assert.deepEqual(createCheck("Utilities missing tenant", 0, "Broken"), {
+    name: "Utilities missing tenant",
+    ok: true,
+    count: 0,
+    message: "OK"
+  });
+  assert.deepEqual(createCheck("Utilities missing tenant", 2, "Broken"), {
+    name: "Utilities missing tenant",
+    ok: false,
+    count: 2,
+    message: "Broken"
+  });
+});
+
 test("client errors are short and safe to display", () => {
   const duplicateMessage = "MongoServerError: E11000 duplicate key error collection: bms.units index: unitId_1 dup key: { unitId: \"A-101\" }";
   const longProviderMessage = `SMS provider returned 500: ${"provider details ".repeat(20)}`;
@@ -222,6 +269,57 @@ test("invoice payment amount defaults to the outstanding balance", () => {
   }), 750);
 });
 
+test("invoice payments cannot exceed the remaining balance unless explicitly allowed", () => {
+  assert.equal(getInvoicePaymentRemaining({ totalDue: 5000, previousPaid: 1250 }), 3750);
+  assert.equal(isInvoicePaymentWithinRemaining({
+    paymentAmount: 3750,
+    totalDue: 5000,
+    previousPaid: 1250
+  }), true);
+  assert.equal(isInvoicePaymentWithinRemaining({
+    paymentAmount: 3750.01,
+    totalDue: 5000,
+    previousPaid: 1250
+  }), true);
+  assert.equal(isInvoicePaymentWithinRemaining({
+    paymentAmount: 3750.02,
+    totalDue: 5000,
+    previousPaid: 1250
+  }), false);
+  assert.equal(isInvoicePaymentWithinRemaining({
+    paymentAmount: 6000,
+    totalDue: 5000,
+    previousPaid: 1250,
+    allowOverpayment: true
+  }), true);
+});
+
+test("future payment date helper allows only the configured forward window", () => {
+  const referenceDate = new Date("2026-06-23T12:00:00.000Z");
+
+  assert.equal(parseMaxFuturePaymentDays("3"), 3);
+  assert.equal(parseMaxFuturePaymentDays("bad"), 7);
+  assert.equal(isPaymentDateTooFarInFuture("2026-06-26T11:00:00.000Z", {
+    referenceDate,
+    maxFutureDays: 3
+  }), false);
+  assert.equal(isPaymentDateTooFarInFuture("2026-06-27T12:01:00.000Z", {
+    referenceDate,
+    maxFutureDays: 3
+  }), true);
+});
+
+test("backend receipt numbers are stable from payment id and date", () => {
+  const payment = {
+    _id: "6655aabbccddeeff00112233",
+    paymentDate: "2026-05-26T08:00:00.000Z"
+  };
+
+  assert.equal(formatBackendReceiptNumber(payment), "RCT-00112233");
+  assert.equal(formatBackendFsNumber(payment), "FS-20260526-00112233");
+  assert.equal(formatBackendFsNumber({ ...payment, paymentDate: new Date("2026-05-26T08:00:00.000Z") }), "FS-20260526-00112233");
+});
+
 test("payment records require exactly one source entity", async () => {
   const basePayment = {
     paymentDate: new Date("2026-06-01"),
@@ -230,10 +328,16 @@ test("payment records require exactly one source entity", async () => {
 
   const validPayment = new PaymentRecord({
     ...basePayment,
+    _id: "6655aabbccddeeff00112233",
     invoice: "6655aabbccddeeff00112233"
   });
   await assert.doesNotReject(() => validPayment.validate());
   assert.equal(PaymentRecord.getPaymentSourceCount(validPayment), 1);
+  assert.equal(validPayment.receiptNumber, "RCT-00112233");
+  assert.equal(validPayment.fsNumber, "FS-20260601-00112233");
+  assert.equal(validPayment.paymentKind, "rent");
+  assert.equal(validPayment.receiptSnapshot.receiptNumber, "RCT-00112233");
+  assert.equal(validPayment.receiptSnapshot.paymentKind, "rent");
 
   const missingSource = new PaymentRecord(basePayment);
   await assert.rejects(
@@ -253,6 +357,19 @@ test("payment records require exactly one source entity", async () => {
     () => multipleSources.validate(),
     (error) => {
       assert.match(error.errors.source.message, /exactly one invoice, contract, or utility/);
+      return true;
+    }
+  );
+
+  const negativePayment = new PaymentRecord({
+    paymentDate: new Date("2026-06-01"),
+    amount: -10,
+    invoice: "6655aabbccddeeff00112233"
+  });
+  await assert.rejects(
+    () => negativePayment.validate(),
+    (error) => {
+      assert.match(error.errors.amount.message, /greater than zero/);
       return true;
     }
   );
@@ -423,6 +540,61 @@ test("backend auth ignores malformed URI cookie values", () => {
     }),
     "cookie-token"
   );
+});
+
+test("auth cookie secure flag defaults on in production", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalCookieSecure = process.env.SESSION_COOKIE_SECURE;
+
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.SESSION_COOKIE_SECURE;
+    assert.equal(getAuthCookieOptions().secure, true);
+
+    process.env.SESSION_COOKIE_SECURE = "false";
+    assert.equal(getAuthCookieOptions().secure, false);
+  } finally {
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+
+    if (originalCookieSecure === undefined) {
+      delete process.env.SESSION_COOKIE_SECURE;
+    } else {
+      process.env.SESSION_COOKIE_SECURE = originalCookieSecure;
+    }
+  }
+});
+
+test("signup defaults closed in production unless explicitly allowed", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalAllowSignup = process.env.ALLOW_SIGNUP;
+
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.ALLOW_SIGNUP;
+    assert.equal(isSignupAllowed(), false);
+
+    process.env.ALLOW_SIGNUP = "true";
+    assert.equal(isSignupAllowed(), true);
+
+    process.env.ALLOW_SIGNUP = "false";
+    assert.equal(isSignupAllowed(), false);
+  } finally {
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+
+    if (originalAllowSignup === undefined) {
+      delete process.env.ALLOW_SIGNUP;
+    } else {
+      process.env.ALLOW_SIGNUP = originalAllowSignup;
+    }
+  }
 });
 
 test("manual reminder force option bypasses duplicate skip check", () => {

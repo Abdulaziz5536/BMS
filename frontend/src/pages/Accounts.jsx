@@ -14,9 +14,12 @@ export default function Accounts() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useShortError();
   const [loading, setLoading] = useState(false);
+  const [pinLoading, setPinLoading] = useState(false);
 
   const fetchViewers = useCallback(async () => {
     try {
@@ -57,7 +60,11 @@ export default function Accounts() {
       const res = await apiFetch(`${API_BASE}/users/viewers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password
+        })
       });
       const data = await readResponse(res);
 
@@ -74,6 +81,47 @@ export default function Accounts() {
       setError(error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const changeManagerPin = async () => {
+    setMessage("");
+    setError("");
+
+    if (!currentPin || !newPin) {
+      setError("Enter current and new PIN");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(newPin)) {
+      setError("New PIN must be exactly 6 digits");
+      return;
+    }
+
+    setPinLoading(true);
+
+    try {
+      const res = await apiFetch(`${API_BASE}/users/me/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: currentPin,
+          newPassword: newPin
+        })
+      });
+      const data = await readResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to change PIN");
+      }
+
+      setMessage(data.message || "PIN changed successfully");
+      setCurrentPin("");
+      setNewPin("");
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setPinLoading(false);
     }
   };
 
@@ -123,6 +171,42 @@ export default function Accounts() {
           <button onClick={saveReadOnlyAccount} disabled={loading}>
             <KeyIcon />
             {loading ? "Saving..." : "Save Read-Only Login"}
+          </button>
+        </div>
+      </section>
+
+      <section className="panel accounts-panel">
+        <div className="section-header">
+          <div>
+            <h2>Change Manager PIN</h2>
+            <p>Used for login and delete confirmation</p>
+          </div>
+          <KeyIcon className="accounts-panel-icon" />
+        </div>
+
+        <div className="form-grid">
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            value={currentPin}
+            onChange={(event) => setCurrentPin(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="Current 6-digit PIN"
+          />
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            value={newPin}
+            onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="New 6-digit PIN"
+          />
+        </div>
+
+        <div className="form-actions">
+          <button onClick={changeManagerPin} disabled={pinLoading}>
+            <KeyIcon />
+            {pinLoading ? "Changing..." : "Change PIN"}
           </button>
         </div>
       </section>

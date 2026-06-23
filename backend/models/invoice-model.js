@@ -90,6 +90,21 @@ const invoiceSchema = new mongoose.Schema({
       default: Date.now
     },
     message: String,
+    status: {
+      type: String,
+      enum: ['pending', 'sent', 'failed'],
+      default: 'sent'
+    },
+    runKey: {
+      type: String,
+      default: ''
+    },
+    channels: [String],
+    recipients: {
+      sms: String,
+      email: String
+    },
+    deliveryErrors: [String],
     hiddenFromInvoiceManagement: {
       type: Boolean,
       default: false

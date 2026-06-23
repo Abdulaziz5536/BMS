@@ -1,5 +1,10 @@
 import { getApiErrorMessage, formatErrorMessage } from "./utils/errorUtils";
-import { getAuthToken, isReadOnlyUser } from "./authSession";
+import {
+  clearAuthToken,
+  clearCurrentUser,
+  getAuthToken,
+  isReadOnlyUser
+} from "./authSession";
 import { confirmAction } from "./components/confirmAction";
 
 const defaultApiBase = import.meta.env.PROD
@@ -54,6 +59,27 @@ export const withBuilding = (path, buildingId = getSelectedBuildingId()) => {
   return url.toString();
 };
 
+const isAuthEndpoint = (url) => {
+  const value = String(url || "");
+  return value.includes("/login") || value.includes("/signup") || value.includes("/logout");
+};
+
+const handleExpiredSession = (url) => {
+  if (isAuthEndpoint(url) || typeof window === "undefined") {
+    return;
+  }
+
+  clearAuthToken();
+  clearCurrentUser();
+  setSelectedBuildingId("");
+  responseCache.clear();
+  prefetchedBuildings.clear();
+
+  if (window.location.pathname !== "/login") {
+    window.location.assign("/login");
+  }
+};
+
 export const apiFetch = async (url, options = {}) => {
   // Add the login token to private API calls. Login/signup still work because no token is required there.
   const token = getAuthToken();
@@ -85,10 +111,16 @@ export const apiFetch = async (url, options = {}) => {
     headers.set("X-Delete-Pin", pinResult.value || "");
   }
 
-  return fetch(url, {
+  const response = await fetch(url, {
     ...options,
     headers
   });
+
+  if (response.status === 401) {
+    handleExpiredSession(url);
+  }
+
+  return response;
 };
 
 export const readResponse = async (res) => {
