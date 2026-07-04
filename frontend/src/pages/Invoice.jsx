@@ -1249,7 +1249,7 @@ export default function Invoice() {
                     <div className="overdue-details">
                       <span>Due: {formatEthiopianDate(item.dueDate)}</span>
                       <span className="overdue-days">{item.daysOverdue} days overdue</span>
-                      <span className="late-penalty">Late Penalty: {formatCurrency(item.latePenalty)}</span>
+                      <span className="late-penalty">ቅጣት: {formatCurrency(item.latePenalty)}</span>
                     </div>
                     <div className="overdue-contact">
                       Phone: {item.tenantPhone} | Email: {item.tenantEmail}

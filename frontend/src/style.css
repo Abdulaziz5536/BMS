@@ -1397,6 +1397,16 @@ button:disabled {
   color: #b91c1c;
   background: #fef2f2;
   border-color: #fecaca;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.15;
+  padding: 0.32rem 0.45rem;
+}
+
+.dashboard-due-meta .dashboard-penalty-meta svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
 }
 
 
@@ -3606,10 +3616,28 @@ span.secondary-btn {
 }
 
 .payment-row-fact-large svg {
-  width: 21px;
-  height: 21px;
+  width: 15px;
+  height: 15px;
   flex-basis: 21px;
   color: #0f4c81;
+}
+
+.payment-row-facts .payment-penalty-meta {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.15;
+  padding: 0.30rem 0.4rem;
+}
+
+.payment-row-facts .payment-penalty-meta svg {
+  color: #b91c1c;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
 }
 
 .payment-status-pill {

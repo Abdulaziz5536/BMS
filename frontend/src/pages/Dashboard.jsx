@@ -434,7 +434,7 @@ export default function Dashboard() {
                 {activeDueList === "rent" && item.alertType === "overdue" && Number(item.latePenalty || 0) > 0 && (
                   <span className="dashboard-penalty-meta">
                     <CurrencyDollarIcon />
-                    + {formatCurrency(item.latePenalty)} Penalty
+                    + {formatCurrency(item.latePenalty)} ቅጣት
                   </span>
                 )}
                 <span>

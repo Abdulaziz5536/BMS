@@ -35,7 +35,13 @@ const {
   isInvoicePaymentWithinRemaining
 } = require('../utils/payment-amount-utils');
 const { isPaymentDateTooFarInFuture } = require('../utils/payment-date-utils');
-const { buildOutstandingRentFilter } = require('../utils/invoice-report-utils');
+const {
+  buildCurrentOutstandingRentFilter,
+  buildOutstandingRentFilter,
+  getCurrentOutstandingRentDueCutoff,
+  getInvoiceOutstandingBalance,
+  getInvoiceOutstandingWithPenalty
+} = require('../utils/invoice-report-utils');
 
 const MAX_FILE_DATA_LENGTH = 7000000;
 
@@ -175,11 +181,11 @@ const getRequestedEthiopianMonthRange = (query, referenceDate = new Date()) => {
   };
 };
 
-const getInvoiceOutstandingBalance = (invoice) =>
-  Number(invoice?.outstandingBalance ?? Math.max(0, Number(invoice?.totalAmount || 0) - Number(invoice?.amountPaid || 0)));
-
 const getPaymentStatusItem = (tenant, invoice = null, options = {}) => {
-  const rawOutstandingBalance = invoice ? getInvoiceOutstandingBalance(invoice) : 0;
+  const outstanding = invoice
+    ? getInvoiceOutstandingWithPenalty(invoice, options.referenceDate || new Date())
+    : { outstandingBalance: 0, latePenalty: 0, amountDue: 0 };
+  const rawOutstandingBalance = outstanding.outstandingBalance;
   const hasDueInvoice = Boolean(invoice) && (
     options.dueCutoffDate
       ? isInvoiceDueBefore(invoice, options.dueCutoffDate)
@@ -188,7 +194,8 @@ const getPaymentStatusItem = (tenant, invoice = null, options = {}) => {
   const outstandingBalance = hasDueInvoice ? rawOutstandingBalance : 0;
   const isPaid = invoice?.status === "paid";
   const amountPaid = Number(invoice?.amountPaid || 0);
-  const amountDue = isPaid ? amountPaid : rawOutstandingBalance;
+  const latePenalty = !isPaid && hasDueInvoice ? outstanding.latePenalty : 0;
+  const amountDue = isPaid ? amountPaid : outstanding.amountDue;
   const displayDate = isPaid && invoice?.paymentDate ? invoice.paymentDate : invoice?.dueDate || null;
   const sourceTenant = tenant || invoice?.tenant || {};
 
@@ -207,6 +214,9 @@ const getPaymentStatusItem = (tenant, invoice = null, options = {}) => {
     totalAmount: Number(invoice?.totalAmount || 0),
     amountPaid,
     outstandingBalance,
+    baseOutstandingBalance: rawOutstandingBalance,
+    latePenalty,
+    additionalLatePenalty: !isPaid && hasDueInvoice ? outstanding.additionalLatePenalty : 0,
     amountDue,
     displayAmount: amountDue,
     displayDate,
@@ -239,8 +249,11 @@ router.get('/payment-status', async (req, res) => {
 
     const currentMonthStart = ethiopianMonthRange.start;
     const nextMonthStart = ethiopianMonthRange.end;
-    const notPaidDueCutoffDate = new Date(today);
-    notPaidDueCutoffDate.setDate(notPaidDueCutoffDate.getDate() + 8);
+    const notPaidDueCutoffDate = getCurrentOutstandingRentDueCutoff(today) || nextMonthStart;
+    const notPaidInvoiceFilter = {
+      ...buildCurrentOutstandingRentFilter(filter.building, today),
+      status: { $in: ["pending", "overdue"] }
+    };
 
     const invoiceFilter = {
       ...filter,
@@ -249,16 +262,12 @@ router.get('/payment-status', async (req, res) => {
           status: "paid",
           paymentDate: { $gte: currentMonthStart, $lt: nextMonthStart }
         },
-        {
-          status: { $in: ["pending", "overdue"] },
-          dueDate: { $lt: notPaidDueCutoffDate },
-          outstandingBalance: { $gt: 0 }
-        }
+        notPaidInvoiceFilter
       ]
     };
 
     const tenantListFields = "tenantName phone email unit building";
-    const invoiceListFields = "building tenant invoiceNumber periodStart periodEnd dueDate paymentDate totalAmount amountPaid outstandingBalance status createdAt";
+    const invoiceListFields = "building tenant invoiceNumber periodStart periodEnd dueDate paymentDate rentAmount totalAmount amountPaid outstandingBalance latePenalty status createdAt";
 
     const tenants = await Tenant.find(filter)
       .select(tenantListFields)
@@ -320,10 +329,11 @@ router.get('/payment-status', async (req, res) => {
     invoices.forEach((invoice) => {
       const tenantId = invoice.tenant?._id ? String(invoice.tenant._id) : "";
       const visibility = getPaymentStatusVisibility(invoice);
-      const outstandingBalance = getInvoiceOutstandingBalance(invoice);
+      const outstanding = getInvoiceOutstandingWithPenalty(invoice, today);
+      const outstandingBalance = outstanding.outstandingBalance;
 
       if (visibility === "not_paid" && outstandingBalance > 0) {
-        totalOutstanding += outstandingBalance;
+        totalOutstanding += outstanding.amountDue;
       }
 
       if (!visibility) {
@@ -1078,8 +1088,9 @@ router.get('/invoices/overdue', async (req, res) => {
       filter.building = new mongoose.Types.ObjectId(req.query.building);
     }
     // Overdue list includes unpaid invoices whose due date is before today.
-    filter.status = 'pending';
+    filter.status = { $in: ['pending', 'overdue'] };
     filter.dueDate = { $lt: today };
+    filter.outstandingBalance = { $gt: 0 };
 
     const invoices = await Invoice.find(filter)
       .populate({
@@ -1091,7 +1102,12 @@ router.get('/invoices/overdue', async (req, res) => {
 
     const overdue = invoices.map(invoice => {
       const daysOverdue = Math.abs(getDaysUntilDue(invoice.dueDate, today));
-      const latePenalty = calculateLatePenalty(invoice.dueDate, today, invoice.rentAmount);
+      const {
+        outstandingBalance,
+        latePenalty,
+        additionalLatePenalty,
+        amountDue
+      } = getInvoiceOutstandingWithPenalty(invoice, today);
 
       return {
         invoiceId: invoice._id,
@@ -1100,9 +1116,11 @@ router.get('/invoices/overdue', async (req, res) => {
         tenantPhone: invoice.tenant?.phone || '',
         tenantEmail: invoice.tenant?.email || '',
         tenantUnit: invoice.tenant?.unit?.unitId || '',
-        amount: invoice.rentAmount,
+        amount: outstandingBalance,
+        outstandingBalance,
         latePenalty,
-        totalAmount: invoice.rentAmount + latePenalty,
+        additionalLatePenalty,
+        totalAmount: amountDue,
         dueDate: invoice.dueDate,
         daysOverdue
       };

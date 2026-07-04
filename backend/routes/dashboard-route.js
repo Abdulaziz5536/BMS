@@ -11,6 +11,10 @@ const PaymentRecord = require("../models/payment-record-model");
 const AuditLog = require("../models/audit-log-model");
 const { getEthiopianMonthRange, parseFlexibleDateInput } = require("../utils/date-utils");
 const { getMonthlyRevenueValue } = require("../utils/payment-frequency-utils");
+const {
+  buildCurrentOutstandingRentFilter,
+  getInvoiceOutstandingWithPenalty
+} = require("../utils/invoice-report-utils");
 
 // Dashboard route builds a compact summary for the selected building.
 // It reads from several collections, so every query must use the same building filter.
@@ -36,6 +40,7 @@ router.get("/dashboard", async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const currentDate = parseFlexibleDateInput(today) || today;
     const ethiopianMonthRange = getEthiopianMonthRange(today);
+    const outstandingRentFilter = buildCurrentOutstandingRentFilter(aggregateFilter.building, today);
 
     const dueSoonEnd = new Date(today);
     dueSoonEnd.setDate(dueSoonEnd.getDate() + 7);
@@ -171,17 +176,10 @@ router.get("/dashboard", async (req, res) => {
         ...filter,
         status: "pending"
       }),
-      // Outstanding rent matches the viewer Not Paid rule: unpaid invoices due this Ethiopian month or earlier.
-      Invoice.aggregate([
-        {
-          $match: {
-            ...aggregateFilter,
-            outstandingBalance: { $gt: 0 },
-            dueDate: { $lt: ethiopianMonthRange.end }
-          }
-        },
-        { $group: { _id: null, total: { $sum: "$outstandingBalance" }, count: { $sum: 1 } } }
-      ]),
+      // Outstanding rent matches the viewer Not Paid rule and includes late penalties.
+      Invoice.find(outstandingRentFilter)
+        .select("outstandingBalance amountPaid totalAmount rentAmount latePenalty dueDate")
+        .lean(),
       Invoice.countDocuments({
         ...filter,
         status: { $in: ["pending", "overdue"] },
@@ -240,8 +238,11 @@ router.get("/dashboard", async (req, res) => {
     );
     const totalRevenue = Number((rentRevenueResult[0]?.total || 0).toFixed(2));
     const monthlyUtilityCollected = Number((monthlyUtilityCollectedResult[0]?.total || 0).toFixed(2));
-    const outstandingRent = invoiceOutstanding[0]?.total || 0;
-    const outstandingInvoiceCount = invoiceOutstanding[0]?.count || 0;
+    const outstandingRent = invoiceOutstanding.reduce(
+      (sum, invoice) => sum + getInvoiceOutstandingWithPenalty(invoice, today).amountDue,
+      0
+    );
+    const outstandingInvoiceCount = invoiceOutstanding.length;
 
     res.json({
       totalUnits,

@@ -364,6 +364,12 @@ export default function PaymentStatus() {
                     <CurrencyDollarIcon />
                      {formatCurrency(item.amountDue ?? item.outstandingBalance ?? item.totalAmount)}
                   </span>
+                  {item.status !== "paid" && Number(item.latePenalty || 0) > 0 && (
+                    <span className="payment-row-fact-large payment-penalty-meta">
+                      <CurrencyDollarIcon />
+                      + {formatCurrency(item.latePenalty)} ቅጣት
+                    </span>
+                  )}
                   <span className="payment-row-fact-large">
                     <CalendarDaysIcon />
                     የክፍያ ቀን: {item.dueDate ? formatEthiopianDate(item.dueDate) : "No invoice"}

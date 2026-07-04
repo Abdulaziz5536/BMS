@@ -48,7 +48,12 @@ const {
   isPaymentDateTooFarInFuture,
   parseMaxFuturePaymentDays
 } = require("../utils/payment-date-utils");
-const { buildOutstandingRentFilter } = require("../utils/invoice-report-utils");
+const {
+  buildCurrentOutstandingRentFilter,
+  buildOutstandingRentFilter,
+  getCurrentOutstandingRentDueCutoff,
+  getInvoiceOutstandingWithPenalty
+} = require("../utils/invoice-report-utils");
 const {
   formatFsNumber: formatBackendFsNumber,
   formatReceiptNumber: formatBackendReceiptNumber
@@ -385,6 +390,53 @@ test("outstanding rent reports exclude cancelled invoices", () => {
     status: { $ne: "cancelled" },
     building: "6655aabbccddeeff00112233"
   });
+});
+
+test("current outstanding rent uses the current Ethiopian month cutoff", () => {
+  const referenceDate = new Date("2026-07-04T00:00:00.000Z");
+
+  assert.equal(toIsoDate(getCurrentOutstandingRentDueCutoff(referenceDate)), "2026-07-08");
+  assert.deepEqual(buildCurrentOutstandingRentFilter("6655aabbccddeeff00112233", referenceDate), {
+    outstandingBalance: { $gt: 0 },
+    status: { $ne: "cancelled" },
+    building: "6655aabbccddeeff00112233",
+    dueDate: { $lt: new Date("2026-07-08T00:00:00.000Z") }
+  });
+});
+
+test("outstanding rent totals add late penalties without double counting stored penalties", () => {
+  assert.deepEqual(
+    getInvoiceOutstandingWithPenalty({
+      dueDate: "2026-05-10",
+      rentAmount: 20000,
+      totalAmount: 20000,
+      amountPaid: 0,
+      outstandingBalance: 20000
+    }, "2026-05-11"),
+    {
+      outstandingBalance: 20000,
+      latePenalty: 2000,
+      additionalLatePenalty: 2000,
+      amountDue: 22000
+    }
+  );
+
+  assert.deepEqual(
+    getInvoiceOutstandingWithPenalty({
+      dueDate: "2026-05-10",
+      rentAmount: 20000,
+      totalAmount: 22000,
+      latePenalty: 2000,
+      amountPaid: 15000,
+      outstandingBalance: 7000
+    }, "2026-05-12"),
+    {
+      outstandingBalance: 7000,
+      latePenalty: 2000,
+      additionalLatePenalty: 0,
+      amountDue: 7000
+    }
+  );
 });
 
 test("floor labels show basement floors as B levels", () => {
